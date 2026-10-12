@@ -139,6 +139,14 @@ struct SessionListView: View {
         } message: {
             Text(model.waterfallAbandonedMessage ?? "")
         }
+        .onChange(of: model.hasChannelSupport) { _, supported in
+            // 主机把 IM 插件停掉了 —— 正在看的频道页要退回会话，
+            // 否则会停在一个再也刷不出内容的标签上。
+            if !supported, scope == .channels {
+                scope = .sessions
+                workspace = nil
+            }
+        }
         .task {
             #if DEBUG
             if UserDefaults.standard.bool(forKey: "DSHShowNewSession") { showNewSession = true }
@@ -153,6 +161,11 @@ struct SessionListView: View {
                 }
             }
         }
+    }
+
+    /// 可用的范围。频道只在主机真的支持时才出现。
+    private var availableScopes: [SessionScope] {
+        SessionScope.allCases.filter { $0 == .sessions || model.hasChannelSupport }
     }
 
     private var hasActiveFilter: Bool {
@@ -394,7 +407,10 @@ struct SessionListView: View {
                 // 范围放在菜单里而不是分段控件：分段控件钉在搜索框下方会把
                 // 搜索框挤掉一行（实测截图里"会话/频道"压在"搜索标题或摘要"上）。
                 Picker("范围", selection: $scope) {
-                    ForEach(SessionScope.allCases) { option in
+                    // 频道是 IM 插件产生的效果，不是 App 自带的能力。
+                    // 主机没装/没启用那个插件时**不摆这个入口** ——
+                    // 点进去只会看到"没有频道会话"，然后怀疑是不是坏了。
+                    ForEach(availableScopes) { option in
                         Text(option.label).tag(option)
                     }
                 }

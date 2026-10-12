@@ -382,6 +382,62 @@ public actor DSHClient {
         ])
     }
 
+    // MARK: - 主机插件
+
+    /// 主机上的插件清单。
+    ///
+    /// 线上形状是 `{args: {}}`（这个端点没有参数）。返回里带 `readOnlyReason`，
+    /// 说明哪些**不能**开关 —— 不能自己猜哪些可以。
+    public func listPlugins() async throws -> [HostPlugin] {
+        let value = try await rpc.call(method: "pluginManager/listPlugins", payload: ["args": .object([:])])
+        return (value.arrayValue ?? []).map(HostPlugin.init(json:))
+    }
+
+    /// 开关一个插件。`id` 用 `entryId`。
+    ///
+    /// 线上形状：`{args: {id, enabled}}`（实测报错信息直接点名了这两个字段）。
+    @discardableResult
+    public func setPluginEnabled(id: String, enabled: Bool) async throws -> JSONValue {
+        try await rpc.call(method: "pluginManager/setPluginEnabled", payload: [
+            "args": .object([
+                "id": .string(id),
+                "enabled": .bool(enabled),
+            ])
+        ])
+    }
+
+    // MARK: - 主机设置
+
+    /// 读取主机的设置命名空间（`settings/describe`）。
+    public func settings() async throws -> SettingsSnapshot {
+        SettingsSnapshot.decode(try await rpc.call(method: "settings/describe", payload: ["args": .object([:])]))
+    }
+
+    /// 改一个设置命名空间里的值。
+    ///
+    /// 线上形状：`{args: {ns, ops:[{op:"set", path:[…], value}], expectedRevision}}`。
+    /// `expectedRevision` 是乐观并发控制 —— 传上一份快照的 revision，
+    /// 别人在你之后改过就会被拒，而不是悄悄覆盖掉。
+    public func mutateSettings(
+        namespace: String,
+        operations: [(op: String, path: [String], value: JSONValue)],
+        expectedRevision: Int?
+    ) async throws -> SettingsNamespace {
+        var args: [String: JSONValue] = [
+            "ns": .string(namespace),
+            "ops": .array(operations.map { operation in
+                .object([
+                    "op": .string(operation.op),
+                    "path": .array(operation.path.map { .string($0) }),
+                    "value": operation.value,
+                ])
+            }),
+        ]
+        if let expectedRevision { args["expectedRevision"] = .number(Double(expectedRevision)) }
+        let value = try await rpc.call(method: "settings/mutate", payload: ["args": .object(args)])
+        return SettingsNamespace(json: value, isWritable: true)
+    }
+
     // MARK: - 权限档位
 
     /// 可选的权限档位（`permissionPresets/catalog`，只读）。

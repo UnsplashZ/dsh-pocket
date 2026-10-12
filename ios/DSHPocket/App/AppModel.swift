@@ -59,6 +59,12 @@ public final class AppModel {
     /// 已归档的会话 ID。**只有 `workspace/follow` 会告诉你这个** —— `session/list` 里没有。
     private(set) var archivedSessionIds: Set<String> = []
     private(set) var pinnedSessionIds: Set<String> = []
+    /// 主机上的插件清单。用来决定某些入口要不要显示（比如"频道"）。
+    private(set) var hostPlugins: [HostPlugin] = []
+    /// 主机设置（`settings/describe`）。
+    private(set) var hostSettings: SettingsSnapshot?
+    private(set) var isLoadingHostSettings = false
+
     /// 全部工作区，来自 `workspace/follow` 的 baseline。
     ///
     /// **不能从会话反推** —— 那样会漏掉"已添加但还没有会话"的工作区
@@ -86,6 +92,9 @@ public final class AppModel {
         guard !sessionId.isEmpty else { return nil }
         return sessions.first { $0.sessionId == sessionId }?.title
     }
+
+    /// 主机设置的错误文案。
+    var hostSettingsError: String?
 
     /// 连接换代导致待处理作废时给用户的一句说明。
     var waterfallAbandonedMessage: String?
@@ -428,6 +437,7 @@ public final class AppModel {
         await observeMuxState()
         await observeTetherMessages()
         await observeWorkspace()
+        await refreshHostPlugins()
         await refreshSessions()
         startListRefreshLoop()
     }
@@ -556,6 +566,91 @@ public final class AppModel {
         public var cwd: String
         public var workspaceId: String
         public var sessionCount: Int
+    }
+
+    // MARK: 频道（IM）可用性
+
+    /// 这台主机上有没有"把外部聊天接进来"的能力。
+    ///
+    /// 频道不是 App 自己的功能，是 IM 插件产生的效果。**插件没装或没启用时不该
+    /// 摆一个空标签页** —— 用户点进去只会看到"没有频道会话"，然后怀疑是不是坏了。
+    ///
+    /// 判据分两路，任一成立就显示：
+    ///   1. 有**启用中**的插件名字像 IM 类（没有更硬的信号：插件不声明自己产出什么）；
+    ///   2. 已经存在 `im:` 会话 —— 插件后来被停用了，但历史还在，那些会话仍要看。
+    var hasChannelSupport: Bool {
+        if hostPlugins.contains(where: { $0.enabled && Self.looksLikeChannelPlugin($0) }) { return true }
+        return sessions.contains { $0.category.isChannel }
+    }
+
+    /// 名字像不像"把外部聊天接进 DSH"的插件。
+    ///
+    /// 这是**启发式**：插件没有声明能力的字段，只能看名字。
+    /// 本机实测的那个叫 `@michengai/dsh-im-connect`（第三方，不在 `@deepseek-ai/` 下），
+    /// 所以不能只匹配官方前缀。认不出时**宁可少一个入口**，也不要给一个空标签页。
+    static func looksLikeChannelPlugin(_ plugin: HostPlugin) -> Bool {
+        let blob = (plugin.moduleName + " " + plugin.title + " " + (plugin.summary ?? "")).lowercased()
+        let hints = ["im-connect", "dsh-im", "im-plugin", "im-bridge", "feishu", "weixin", "wechat", "lark", "instant-messag"]
+        return hints.contains { blob.contains($0) }
+    }
+
+    /// 拉一次插件清单（连接建立后、以及需要时）。
+    func refreshHostPlugins() async {
+        do {
+            hostPlugins = try await client.listPlugins()
+            logs.log(.info, "主机插件 \(hostPlugins.count) 个，其中启用 \(hostPlugins.filter(\.enabled).count) 个")
+        } catch {
+            // 拉不到就当没有 —— 这时频道入口会退回"有 im: 会话才显示"。
+            logs.log(.debug, "插件清单拉取失败：\(error.localizedDescription)")
+        }
+    }
+
+    /// 开关一个插件，然后刷新清单。
+    func setPluginEnabled(id: String, enabled: Bool) async -> String? {
+        do {
+            try await client.setPluginEnabled(id: id, enabled: enabled)
+            await refreshHostPlugins()
+            logs.log(.info, "插件 \(id) → \(enabled ? "启用" : "停用")")
+            return nil
+        } catch {
+            return (error as? DSHClientError)?.displayMessage ?? error.localizedDescription
+        }
+    }
+
+    // MARK: 主机设置
+
+    func refreshHostSettings() async {
+        isLoadingHostSettings = true
+        defer { isLoadingHostSettings = false }
+        do {
+            hostSettings = try await client.settings()
+        } catch {
+            hostSettingsError = (error as? DSHClientError)?.displayMessage ?? error.localizedDescription
+        }
+    }
+
+    /// 改一组设置。返回错误文案（成功返回 nil）。
+    func mutateSettings(
+        namespace: String,
+        operations: [(op: String, path: [String], value: JSONValue)],
+        expectedRevision: Int?
+    ) async -> String? {
+        do {
+            _ = try await client.mutateSettings(
+                namespace: namespace,
+                operations: operations,
+                expectedRevision: expectedRevision
+            )
+            await refreshHostSettings()
+            return nil
+        } catch {
+            return (error as? DSHClientError)?.displayMessage ?? error.localizedDescription
+        }
+    }
+
+    /// 模型清单（主机设置里选默认模型要用）。
+    func modelCatalog() async throws -> ModelCatalog {
+        try await client.modelCatalog()
     }
 
     /// 新建会话的可选工作区。

@@ -54,6 +54,11 @@ public final class SessionModel {
     private(set) var modelSelection: ModelSelection?
     /// 这个会话当前的文件读写/审批档位（`projections.permissions.currentValue`）。
     private(set) var currentPermission: String?
+    /// 排队中的消息（`projections.inbox`）。
+    ///
+    /// 队列**不在会话日志里** —— 实测：轮次跑着的时候发一条，日志里一条 `user/message`
+    /// 都没有，它只出现在这个投影里。所以想显示"排队中"，唯一的数据来源是它。
+    private(set) var queuedMessages: [QueuedMessage] = []
     private(set) var contextPressure: ContextPressure?
     private(set) var todos: [TimelineItem.TodoEntry] = []
 
@@ -299,6 +304,10 @@ public final class SessionModel {
         if let value = values.string("permissions.currentValue") ?? values["permissions"]?.string("currentValue") {
             currentPermission = value
         }
+        let inbox = InboxState(json: values["inbox"] ?? .object([:]))
+        if inbox.total != queuedMessages.count || inbox.nextTurn.map(\.id) != queuedMessages.map(\.id) {
+            publishQueuedMessages(inbox)
+        }
         if let raw = values["modelSelection"] {
             // 嵌套形状：`{lastUsed: {...}, next: {...}}`。当扁平读会永远拿到空值。
             let chosen = raw["next"] ?? raw["lastUsed"] ?? raw
@@ -505,6 +514,20 @@ public final class SessionModel {
         )
         modelLabel = model
         modelSelection = ModelSelection(provider: provider, model: model, reasoningEffort: reasoningEffort)
+    }
+
+    /// 队列变了：更新列表，并把已经被队列接管的乐观插入撤掉。
+    ///
+    /// 不撤的话同一句话会显示两遍 —— 一遍是"发送中…"的乐观气泡，
+    /// 一遍是"排队中"的队列项。
+    private func publishQueuedMessages(_ inbox: InboxState) {
+        queuedMessages = inbox.nextTurn + inbox.nextStep
+        let queuedRpcIds = Set(queuedMessages.compactMap(\.rpcId))
+        guard !queuedRpcIds.isEmpty else { return }
+        for rpcId in queuedRpcIds {
+            _ = builder.removeOptimisticUserMessage(rpcId: rpcId)
+        }
+        publish()
     }
 
     /// 可选的权限档位。

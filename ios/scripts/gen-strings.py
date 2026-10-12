@@ -548,6 +548,44 @@ EN: dict[str, str] = {
     "这条已经不能在这里回答了（连接中断过，电脑会按默认方式继续）":
         "This one can no longer be answered here (the connection dropped; your computer will use its default).",
     "别的会话": "Another session",
+    # 电脑设置
+    "电脑设置": "Computer settings",
+    "在手机上改**电脑上**的配置：插件开关、新会话的默认模型与思考等级。其余设置在电脑上改更合适。":
+        "Change settings on your **computer** from here: plugin toggles, and the default model and thinking level for new sessions. Other settings are better changed on the computer.",
+    "新会话的默认值": "Defaults for new sessions",
+    "默认模型": "Default model",
+    "思考等级": "Thinking level",
+    "未设置": "Not set",
+    "正在读取…": "Loading…",
+    "这台电脑没有暴露默认模型设置。": "This computer doesn’t expose a default-model setting.",
+    "只影响**之后新建**的会话；已经在跑的会话各自保留自己的模型（那个在会话菜单里改）。":
+        "Affects **new** sessions only; running sessions keep their own model (change that in the session menu).",
+    "插件": "Plugins",
+    "没有读到插件清单。": "Couldn’t read the plugin list.",
+    "已启用 · %lld": "Enabled · %lld",
+    "已停用 · %lld": "Disabled · %lld",
+    "已启用": "Enabled",
+    "已停用": "Disabled",
+    "运行中": "Running",
+    "没有可寻址的位置，改不了": "No addressable location — can’t be changed",
+    "管理插件，不能自己关自己": "Management plugin — it can’t turn itself off",
+    "不可修改": "Not editable",
+    "停用这个插件？": "Disable this plugin?",
+    "停用": "Disable",
+    "停用后，依赖它的功能会立刻失效（比如 IM 插件停掉之后频道会话就不再更新）。在电脑上重启 DSH 也能恢复。":
+        "Anything depending on it stops working immediately (disable the IM plugin and channel sessions stop updating). Restarting DSH on your computer restores it.",
+    "改不了": "Couldn’t change it",
+    "搜索插件": "Search plugins",
+    "先连上电脑才能改这些。": "Connect to your computer first.",
+    "停用这个插件": "Disable this plugin",
+    "启用这个插件": "Enable this plugin",
+    # 排队
+    "1 条排队中": "1 queued",
+    "%lld 条排队中": "%lld queued",
+    "%lld 条消息排队中": "%lld messages queued",
+    "%lld 张图片": "%lld images",
+    "%lld 个文件": "%lld files",
+    "电脑跑完这一轮就会发出去。": "Your computer sends it when this turn finishes.",
 }
 
 # 哪些插值表达式是整数。判错的后果是英文界面上显示成 `%lld` 字面量，

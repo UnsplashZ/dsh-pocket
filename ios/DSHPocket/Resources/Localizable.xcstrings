@@ -79,6 +79,17 @@
         }
       }
     },
+    "%lld 个文件": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld files"
+          }
+        }
+      }
+    },
     "%lld 个问题": {
       "extractionState": "manual",
       "localizations": {
@@ -101,6 +112,39 @@
         }
       }
     },
+    "%lld 张图片": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld images"
+          }
+        }
+      }
+    },
+    "%lld 条排队中": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld queued"
+          }
+        }
+      }
+    },
+    "%lld 条消息排队中": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld messages queued"
+          }
+        }
+      }
+    },
     "%lld 毫秒": {
       "extractionState": "manual",
       "localizations": {
@@ -108,6 +152,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld ms"
+          }
+        }
+      }
+    },
+    "1 条排队中": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 queued"
           }
         }
       }
@@ -251,6 +306,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Context compacted"
+          }
+        }
+      }
+    },
+    "不可修改": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not editable"
           }
         }
       }
@@ -448,6 +514,28 @@
         }
       }
     },
+    "停用": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disable"
+          }
+        }
+      }
+    },
+    "停用后，依赖它的功能会立刻失效（比如 IM 插件停掉之后频道会话就不再更新）。在电脑上重启 DSH 也能恢复。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anything depending on it stops working immediately (disable the IM plugin and channel sessions stop updating). Restarting DSH on your computer restores it."
+          }
+        }
+      }
+    },
     "先在电脑上的 DSH 里添加一个工作区，然后再来这里新建会话。": {
       "extractionState": "manual",
       "localizations": {
@@ -466,6 +554,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Try these three things"
+          }
+        }
+      }
+    },
+    "先连上电脑才能改这些。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connect to your computer first."
           }
         }
       }
@@ -723,6 +822,17 @@
         }
       }
     },
+    "只影响**之后新建**的会话；已经在跑的会话各自保留自己的模型（那个在会话菜单里改）。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Affects **new** sessions only; running sessions keep their own model (change that in the session menu)."
+          }
+        }
+      }
+    },
     "只影响这个会话。改完电脑端会记一条权限变更，时间线上也看得到。": {
       "extractionState": "manual",
       "localizations": {
@@ -813,6 +923,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Pick a session on the left, or pull to refresh."
+          }
+        }
+      }
+    },
+    "在手机上改**电脑上**的配置：插件开关、新会话的默认模型与思考等级。其余设置在电脑上改更合适。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Change settings on your **computer** from here: plugin toggles, and the default model and thinking level for new sessions. Other settings are better changed on the computer."
           }
         }
       }
@@ -1105,6 +1226,23 @@
         }
       }
     },
+    "已停用 · %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disabled · %lld"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已停用 · %lld"
+          }
+        }
+      }
+    },
     "已取消": {
       "extractionState": "manual",
       "localizations": {
@@ -1112,6 +1250,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Cancelled"
+          }
+        }
+      }
+    },
+    "已启用 · %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enabled · %lld"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已启用 · %lld"
           }
         }
       }
@@ -1486,6 +1641,17 @@
         }
       }
     },
+    "思考等级": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thinking level"
+          }
+        }
+      }
+    },
     "思考过程": {
       "extractionState": "manual",
       "localizations": {
@@ -1745,6 +1911,17 @@
         }
       }
     },
+    "插件": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Plugins"
+          }
+        }
+      }
+    },
     "搜索工作区": {
       "extractionState": "manual",
       "localizations": {
@@ -1763,6 +1940,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Search archived sessions"
+          }
+        }
+      }
+    },
+    "搜索插件": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search plugins"
           }
         }
       }
@@ -1796,6 +1984,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "File"
+          }
+        }
+      }
+    },
+    "新会话的默认值": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Defaults for new sessions"
           }
         }
       }
@@ -1906,6 +2105,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Not started"
+          }
+        }
+      }
+    },
+    "未设置": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not set"
           }
         }
       }
@@ -2070,6 +2280,17 @@
         }
       }
     },
+    "正在读取…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading…"
+          }
+        }
+      }
+    },
     "正在读取会话内容": {
       "extractionState": "manual",
       "localizations": {
@@ -2165,6 +2386,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "No snapshot received"
+          }
+        }
+      }
+    },
+    "没有读到插件清单。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn’t read the plugin list."
           }
         }
       }
@@ -2473,6 +2705,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Your computer closed this session stream"
+          }
+        }
+      }
+    },
+    "电脑设置": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Computer settings"
+          }
+        }
+      }
+    },
+    "电脑跑完这一轮就会发出去。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your computer sends it when this turn finishes."
           }
         }
       }
@@ -3091,6 +3345,17 @@
         }
       }
     },
+    "这台电脑没有暴露默认模型设置。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This computer doesn’t expose a default-model setting."
+          }
+        }
+      }
+    },
     "这台设备不能扫码": {
       "extractionState": "manual",
       "localizations": {
@@ -3473,6 +3738,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Expand reasoning by default"
+          }
+        }
+      }
+    },
+    "默认模型": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Default model"
           }
         }
       }

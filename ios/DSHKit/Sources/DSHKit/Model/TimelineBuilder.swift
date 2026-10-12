@@ -618,6 +618,10 @@ public struct TimelineBuilder: Sendable {
         return TimelineDelta(updated: [items[index]])
     }
 
+    /// 撤掉一条乐观插入。
+    ///
+    /// 用在"它已经出现在队列里"的时候：那条消息交给队列渲染成「排队中」，
+    /// 乐观插入再留着就会变成两个气泡。
     public mutating func removeOptimisticUserMessage(rpcId: String) -> TimelineDelta {
         guard let itemId = optimisticItems[rpcId], let index = indexById[itemId] else { return .none }
         optimisticItems[rpcId] = nil
@@ -734,7 +738,11 @@ public struct TimelineBuilder: Sendable {
             case "text":
                 return .text(block.string("text") ?? "")
             case "reasoning":
-                return .reasoning(block.string("text") ?? "")
+                // 空/纯空白的推理块不产出 —— 画出来就是一张空的"思考过程"卡片。
+                let reasoning = block.string("text") ?? ""
+                return reasoning.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? nil
+                    : .reasoning(reasoning)
             case "tool-call":
                 return .toolCall(callId: block.string("id") ?? "", name: block.string("name") ?? "")
             case "image":
@@ -1032,7 +1040,9 @@ public struct TimelineBuilder: Sendable {
 
     private func blocks(for attempt: LiveAttempt) -> [TimelineItem.AssistantBlock] {
         var blocks: [TimelineItem.AssistantBlock] = []
-        if !attempt.reasoning.isEmpty { blocks.append(.reasoning(attempt.reasoning)) }
+        if !attempt.reasoning.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            blocks.append(.reasoning(attempt.reasoning))
+        }
         if !attempt.text.isEmpty { blocks.append(.text(attempt.text)) }
         for index in attempt.toolCalls.keys.sorted() {
             guard let call = attempt.toolCalls[index], !call.id.isEmpty else { continue }

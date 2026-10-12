@@ -221,6 +221,77 @@ final class ProtocolContractTests: XCTestCase {
         }
     }
 
+    // MARK: 队列（inbox）
+
+    /// 排队中的消息**不在会话日志里** —— 实测：轮次跑着的时候发一条，
+    /// 日志里一条 `user/message` 都没有，只出现在 `inbox` 投影里。
+    /// 所以队列 UI 唯一的数据来源就是它。
+    func testInboxProjectionParsesQueuedMessages() throws {
+        let projections = Fixture.json(#"""
+        {"values":{"inbox":{"next-turn":[
+            {"content":[{"type":"text","text":"排队的第一条"}],"source":{"kind":"user","rpcId":"r2"},"role":"user","id":"q1"},
+            {"content":[{"type":"text","text":"排队的第二条"},{"type":"image","mediaType":"image/png","data":"AAAA"}],"source":{"kind":"user"},"role":"user","id":"q2"}
+         ],"next-step":[]}}}
+        """#)
+        let parsed = SessionProjections(json: projections)
+        XCTAssertEqual(parsed.inbox.nextTurn.count, 2)
+        XCTAssertEqual(parsed.inbox.nextTurn[0].text, "排队的第一条")
+        XCTAssertEqual(parsed.inbox.nextTurn[0].rpcId, "r2", "rpcId 用来跟乐观插入对上，避免同一句话显示两遍")
+        XCTAssertEqual(parsed.inbox.nextTurn[1].imageCount, 1)
+        XCTAssertTrue(parsed.inbox.nextStep.isEmpty)
+    }
+
+    func testInboxIsEmptyWhenTheProjectionOmitsIt() throws {
+        let parsed = SessionProjections(json: Fixture.json(#"{"values":{}}"#))
+        XCTAssertTrue(parsed.inbox.isEmpty)
+    }
+
+    // MARK: 主机插件
+
+    func testPluginParsesToggleabilityAndReadOnlyReason() throws {
+        let plugins = [
+            Fixture.json(#"{"entryId":"include:timer","moduleName":"@deepseek-ai/cordis-plugin-timer","enabled":true,"fiberPhase":"active"}"#),
+            Fixture.json(#"{"entryId":"include:plugin-manager","moduleName":"@deepseek-ai/dsh-plugin-manager","enabled":true,"fiberPhase":"active","readOnlyReason":"management-required"}"#),
+            Fixture.json(#"{"entryId":"include","moduleName":"cordis:include","enabled":true,"fiberPhase":"active","readOnlyReason":"unaddressable"}"#),
+            Fixture.json(#"{"entryId":"include:tool-fs","moduleName":"@deepseek-ai/dsh-tool-fs","enabled":false,"fiberPhase":null,"meta":{"title":"文件工具","description":"读写文件"}}"#),
+        ].map(HostPlugin.init(json:))
+
+        XCTAssertTrue(plugins[0].isToggleable)
+        XCTAssertEqual(plugins[0].statusLabel, String(localized: "运行中"))
+
+        // 不能开关的必须说明原因，而不是摆一个灰开关让人猜
+        XCTAssertFalse(plugins[1].isToggleable)
+        XCTAssertNotNil(plugins[1].readOnlyExplanation)
+        XCTAssertFalse(plugins[2].isToggleable)
+
+        XCTAssertTrue(plugins[3].isToggleable)
+        XCTAssertEqual(plugins[3].title, "文件工具", "meta.title 优先于 moduleName")
+        XCTAssertEqual(plugins[3].summary, "读写文件")
+        XCTAssertEqual(plugins[3].statusLabel, String(localized: "已停用"))
+    }
+
+    // MARK: 主机设置
+
+    func testSettingsSnapshotParsesNamespacesAndOverrideFlag() throws {
+        let snapshot = SettingsSnapshot.decode(Fixture.json(#"""
+        {"writable":true,"hasDocument":true,"namespaces":[
+          {"ns":"agent-default-model","applies":"live","revision":3,
+           "value":{"provider":"wb","model":"deepseek-v4.1-flash","reasoningEffort":"high"},
+           "base":{"provider":"deepseek-official","model":"deepseek-flash"},
+           "user":{"provider":"wb","model":"deepseek-v4.1-flash","reasoningEffort":"high"}},
+          {"ns":"locale","applies":"live","revision":0,"value":{"language":"zh-Hans"},"user":{}}
+        ]}
+        """#))
+        XCTAssertTrue(snapshot.writable)
+        let model = try XCTUnwrap(snapshot.namespace("agent-default-model"))
+        XCTAssertEqual(model.value.string("model"), "deepseek-v4.1-flash")
+        XCTAssertEqual(model.revision, 3, "乐观并发控制要用这个 revision")
+        XCTAssertTrue(model.hasUserOverride)
+        // 判断"用户改过没有"要看 `user`，不是 `value`
+        XCTAssertFalse(try XCTUnwrap(snapshot.namespace("locale")).hasUserOverride)
+        XCTAssertNil(snapshot.namespace("不存在"))
+    }
+
     // MARK: 模型清单
 
     /// 实测返回里模型在 `groups[].models[]`，不在 `models[]` / `providers[]`。

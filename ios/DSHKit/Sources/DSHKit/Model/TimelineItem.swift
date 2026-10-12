@@ -96,10 +96,18 @@ extension TimelineItem {
     }
 
     /// 默认视图里要不要渲染这一条。
+    ///
+    /// 除了 `raw`（机器注入的上下文），**没有任何可渲染内容的助手消息也不渲染** ——
+    /// 否则流式刚开始、或宿主发来一个空 `assistant/message` 时，
+    /// 屏幕上会先冒出一个空气泡再被填上，看起来像"空消息"。
     public var isConversational: Bool {
         switch kind {
-        case .raw: return false
-        default: return true
+        case .raw:
+            return false
+        case .assistantMessage(let message):
+            return message.hasRenderableContent
+        default:
+            return true
         }
     }
 
@@ -132,6 +140,15 @@ extension TimelineItem {
             self.isStreaming = isStreaming
             self.interrupted = interrupted
             self.isSettled = isSettled
+        }
+
+        /// 有没有值得画出来的东西。
+        ///
+        /// 空白（含只有换行/空格的）推理块不算 —— 实测宿主会发来 `text: ""` 的
+        /// `reasoning` 块，渲染出来就是一个点不开也看不到内容的"思考过程"卡片。
+        public var hasRenderableContent: Bool {
+            if !blocks.isEmpty { return true }
+            return false
         }
 
         public var plainText: String {
@@ -463,7 +480,7 @@ public struct TimelineDelta: Sendable {
 
     public static let none = TimelineDelta()
 
-    mutating func merge(_ other: TimelineDelta) {
+    public mutating func merge(_ other: TimelineDelta) {
         inserted.append(contentsOf: other.inserted)
         updated.append(contentsOf: other.updated)
         removedIds.append(contentsOf: other.removedIds)

@@ -119,6 +119,8 @@ public struct SessionProjections: Sendable, Hashable {
     public let permissions: PermissionState?
     public let plan: PlanState?
     public let userQuestions: UserQuestionsState
+    /// 排队中的消息。见 `InboxState` 的说明 —— 队列**不在会话日志里**。
+    public let inbox: InboxState
     public let subagents: [SubagentEntry]
     public let container: JSONValue
 
@@ -149,6 +151,7 @@ public struct SessionProjections: Sendable, Hashable {
         self.permissions = values["permissions"].map(PermissionState.init(json:))
         self.plan = values["plan"].map(PlanState.init(json:))
         self.userQuestions = UserQuestionsState(json: values["userQuestions"] ?? .object([:]))
+        self.inbox = InboxState(json: values["inbox"] ?? .object([:]))
         self.subagents = (values.array("subagentCatalog") ?? []).map(SubagentEntry.init(json:))
         self.container = values
     }
@@ -243,6 +246,65 @@ public struct PlanState: Sendable, Hashable {
     public init(json: JSONValue) {
         isActive = json.bool("active") ?? false
         isPending = json.bool("pending") ?? false
+    }
+}
+
+/// 会话的收件箱 —— **排队中的消息就在这里**。
+///
+/// 线上形状（实测）：`{"next-turn":[…],"next-step":[]}`。
+///
+/// 这一点很反直觉但很关键：**排队中的消息不在会话日志里**，没有对应的
+/// `user/message` 事件。实测：轮次跑着的时候发一条，日志里一条 `user/message` 都没有，
+/// 它只出现在这个投影里（`next-turn`），等下一轮真正开始时才落到日志。
+/// 所以想显示"排队中"，唯一的数据来源是它。
+public struct InboxState: Sendable, Hashable {
+    /// 排给下一轮的消息（`mode: 'queue'`）。
+    public var nextTurn: [QueuedMessage]
+    /// 插进当前这一步的消息（`mode: 'steer'`）。
+    public var nextStep: [QueuedMessage]
+
+    public var isEmpty: Bool { nextTurn.isEmpty && nextStep.isEmpty }
+    public var total: Int { nextTurn.count + nextStep.count }
+
+    public init(nextTurn: [QueuedMessage] = [], nextStep: [QueuedMessage] = []) {
+        self.nextTurn = nextTurn
+        self.nextStep = nextStep
+    }
+
+    public init(json: JSONValue) {
+        self.nextTurn = (json.array("next-turn") ?? []).map(QueuedMessage.init(json:))
+        self.nextStep = (json.array("next-step") ?? []).map(QueuedMessage.init(json:))
+    }
+}
+
+/// 一条排队中的用户消息。
+public struct QueuedMessage: Sendable, Hashable, Identifiable {
+    public var id: String
+    public var text: String
+    /// 客户端发出去时用的 `rpcId` —— 用它跟乐观插入的那条对上，避免同一句话显示两遍。
+    public var rpcId: String?
+    /// 附件**只留数量**：图片在线上是内联 base64，为了显示"排队中"去解它不值当。
+    public var imageCount: Int
+    public var fileCount: Int
+
+    public init(json: JSONValue) {
+        self.id = json.string("id") ?? UUID().uuidString
+        let content = json.array("content") ?? []
+        var text = ""
+        var images = 0
+        var files = 0
+        for part in content {
+            switch part.string("type") {
+            case "text": text += part.string("text") ?? ""
+            case "image": images += 1
+            case "file": files += 1
+            default: break
+            }
+        }
+        self.text = text
+        self.imageCount = images
+        self.fileCount = files
+        self.rpcId = json.string("source.rpcId")
     }
 }
 

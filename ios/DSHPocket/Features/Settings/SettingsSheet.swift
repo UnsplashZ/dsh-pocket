@@ -12,6 +12,8 @@ struct SettingsSheet: View {
     #if DEBUG
     /// 调试用：`defaults write cc.zexa.dshpocket DSHShowArchived -bool YES` 直接打开归档页。
     @State private var showArchived = false
+    @State private var showHostSettings = false
+    @State private var showHostSettingsFromDebug = false
     @State private var cacheStats: (sessions: Int, bytes: Int) = (0, 0)
     #endif
 
@@ -24,6 +26,7 @@ struct SettingsSheet: View {
                 developerModeSection
                 #endif
                 hostsSection
+                hostSettingsSection
                 cacheSection
                 archivedSection
                 notificationsSection
@@ -45,6 +48,7 @@ struct SettingsSheet: View {
             }
             .task {
                 if UserDefaults.standard.bool(forKey: "DSHShowArchived") { showArchived = true }
+                if UserDefaults.standard.bool(forKey: "DSHShowHostSettings") { showHostSettingsFromDebug = true }
             }
             #endif
             .alert("重命名主机", isPresented: Binding(
@@ -166,6 +170,29 @@ struct SettingsSheet: View {
         } footer: {
             Text("归档过的会话不会出现在对话列表里，在这里可以恢复或重新打开。")
         }
+    }
+
+    // MARK: 电脑设置
+
+    @ViewBuilder
+    private var hostSettingsSection: some View {
+        Section {
+            Button {
+                showHostSettings = true
+            } label: {
+                LabeledContent {
+                    Text(model.connection.isConnected ? "" : String(localized: "未连接"))
+                        .foregroundStyle(.secondary)
+                } label: {
+                    Label("电脑设置", systemImage: "desktopcomputer")
+                }
+            }
+            .disabled(!model.connection.isConnected)
+        } footer: {
+            Text("在手机上改**电脑上**的配置：插件开关、新会话的默认模型与思考等级。其余设置在电脑上改更合适。")
+        }
+        .sheet(isPresented: $showHostSettings) { HostSettingsView() }
+        .sheet(isPresented: $showHostSettingsFromDebug) { HostSettingsView() }
     }
 
     // MARK: 缓存

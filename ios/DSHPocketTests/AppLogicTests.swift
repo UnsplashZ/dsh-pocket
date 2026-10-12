@@ -164,6 +164,43 @@ final class AppLogicTests: XCTestCase {
         XCTAssertEqual(summary.path, "/Users/example/dev/Github/analytics")
     }
 
+    // MARK: 频道（IM 插件）
+
+    /// 频道是 IM 插件产生的效果，不是 App 自带的能力。
+    ///
+    /// 判据是**启发式**（插件不声明自己产出什么，只能看名字）：本机实测那个叫
+    /// `@michengai/dsh-im-connect`，是第三方插件，所以不能只匹配官方前缀。
+    /// 认不出时宁可少一个入口 —— 摆一个空标签页会让人以为坏了。
+    @MainActor
+    func testChannelPluginDetectionCoversThirdPartyNames() {
+        func plugin(_ module: String, title: String = "", summary: String? = nil, enabled: Bool = true) -> HostPlugin {
+            var object: [String: JSONValue] = [
+                "entryId": .string(module),
+                "moduleName": .string(module),
+                "enabled": .bool(enabled),
+            ]
+            var meta: [String: JSONValue] = [:]
+            if !title.isEmpty { meta["title"] = .string(title) }
+            if let summary { meta["description"] = .string(summary) }
+            if !meta.isEmpty { object["meta"] = .object(meta) }
+            return HostPlugin(json: .object(object))
+        }
+
+        // 本机实际装的那个（第三方）
+        XCTAssertTrue(AppModel.looksLikeChannelPlugin(plugin("@michengai/dsh-im-connect")))
+        // 常见替代
+        XCTAssertTrue(AppModel.looksLikeChannelPlugin(plugin("@someone/dsh-feishu-bridge")))
+        XCTAssertTrue(AppModel.looksLikeChannelPlugin(plugin("@x/lark-connect")))
+        XCTAssertTrue(AppModel.looksLikeChannelPlugin(plugin("@x/wechat-im")))
+        // 名字里能看出来时也算
+        XCTAssertTrue(AppModel.looksLikeChannelPlugin(plugin("@x/whatever", summary: "Connect instant-messaging channels")))
+
+        // 无关插件不该被误判 —— 误判会让频道入口在不该出现时出现
+        XCTAssertFalse(AppModel.looksLikeChannelPlugin(plugin("@deepseek-ai/dsh-tool-fs")))
+        XCTAssertFalse(AppModel.looksLikeChannelPlugin(plugin("@deepseek-ai/dsh-agent-loop")))
+        XCTAssertFalse(AppModel.looksLikeChannelPlugin(plugin("@deepseek-ai/cordis-plugin-timer")))
+    }
+
     // MARK: Markdown 块级解析
 
     /// 表格曾经原样显示成 `| 方向 | 能做什么 |` —— 因为压根没有块级解析。
