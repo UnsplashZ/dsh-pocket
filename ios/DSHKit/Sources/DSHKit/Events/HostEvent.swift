@@ -60,7 +60,14 @@ public struct WaterfallRequest: Sendable, Identifiable {
         (request.array("questions") ?? []).map(Question.init(json:))
     }
 
-    public var questionCallId: String? { request.string("callId") }
+    /// 待答问题的 `callId`。
+    ///
+    /// 线上它在 `request.wait.callId`。但要注意：**网关转发给远端时会把 `wait` 整个剥掉**
+    /// （实测确认），所以远端客户端永远拿不到它 —— 远端只能按 `eventId` 回 waterfall。
+    /// 这里保留读取是为了本机/未来形态下仍然正确。
+    public var questionCallId: String? {
+        (request["wait"] ?? .null).string("callId") ?? request.string("callId")
+    }
 
     public struct Question: Sendable, Hashable, Identifiable {
         public var id: String
@@ -108,6 +115,18 @@ extension WaterfallRequest {
         .object([
             "kind": .string("result"),
             "value": .string(decision.rawValue),
+        ])
+    }
+
+    /// 拒绝/作罢的结论。宿主会把 `error` 还原成一个异常抛给发起方 ——
+    /// 用途是"用户明确表示不回答"，让 agent 立刻知道，而不是干等到超时。
+    public static func rejectionOutcome(name: String, message: String) -> JSONValue {
+        .object([
+            "kind": .string("rejected"),
+            "error": .object([
+                "name": .string(name),
+                "message": .string(message),
+            ]),
         ])
     }
 

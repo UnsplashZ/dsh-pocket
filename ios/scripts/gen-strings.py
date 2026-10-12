@@ -531,6 +531,15 @@ EN: dict[str, str] = {
     "清空缓存": "Clear cache",
     "会话内容会缓存在本机，切回之前的会话时不用再等一次远程加载。缓存放在系统可回收的位置，随时可以清空 —— 清空只影响速度，不会丢任何东西。":
         "Sessions are cached on this device, so switching back doesn’t wait for a remote reload. The cache lives in a system-reclaimable location and you can clear it anytime — clearing only costs speed, nothing is lost.",
+    # 提问交互
+    "跳过这个问题": "Skip this question",
+    "用户跳过了这个问题，没有作答。": "The user skipped this question without answering.",
+    "还有 1 个问题没回答": "1 question still needs an answer",
+    "还有 %lld 个问题没回答": "%lld questions still need answers",
+    "待处理已作废": "Pending items expired",
+    "连接中断过，%lld 条待处理已经作废 —— 电脑端会按默认方式继续。":
+        "The connection dropped, so %lld pending item(s) expired — your computer will continue using its defaults.",
+    "都不回答（结束这次提问）": "Answer none (end this question)",
 }
 
 # 哪些插值表达式是整数。判错的后果是英文界面上显示成 `%lld` 字面量，
@@ -592,10 +601,43 @@ def unescape(raw: str) -> str:
     return raw.replace('\\"', '"').replace("\\n", "\n")
 
 
+def strip_comments(text: str) -> str:
+    r"""把行注释抹掉，保留行号（只把 `//` 之后的部分换成空格）。
+
+    为什么必须做：注释里常会举例说明"别这么写"，例如
+    `// （写成 Text("\(index + 1)") 会生成一条 key 为 %lld 的条目）`。
+    不抹注释的话这个**反例**会被当成真的调用点抽出来，凭空多一条 `%lld` 的 key ——
+    实测踩过。`//` 在字符串字面量里（比如 URL）不算注释，所以要跟踪引号状态。
+    """
+    out: list[str] = []
+    for line in text.split("\n"):
+        in_string = False
+        escaped = False
+        cut = len(line)
+        index = 0
+        while index < len(line) - 1:
+            character = line[index]
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif character == "\\":
+                    escaped = True
+                elif character == '"':
+                    in_string = False
+            elif character == '"':
+                in_string = True
+            elif character == "/" and line[index + 1] == "/":
+                cut = index
+                break
+            index += 1
+        out.append(line[:cut])
+    return "\n".join(out)
+
+
 def extract() -> dict[str, str]:
     found: dict[str, str] = {}
     for path in sorted(SOURCE_DIR.rglob("*.swift")):
-        text = path.read_text()
+        text = strip_comments(path.read_text())
         for pattern in EXTRACTION_PATTERNS:
             for match in re.finditer(pattern, text):
                 raw = match.group(1)

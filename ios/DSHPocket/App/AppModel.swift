@@ -78,6 +78,20 @@ public final class AppModel {
     /// 等用户决定的审批/提问。**App 永不自动决策**（IOS-DESIGN §4 S4）。
     private(set) var pendingApprovals: [WaterfallRequest] = []
     private(set) var pendingQuestions: [WaterfallRequest] = []
+    /// 连接换代导致待处理作废时给用户的一句说明。
+    var waterfallAbandonedMessage: String?
+
+    /// 一条审批/提问的**身份**：哪个会话的哪件事。
+    ///
+    /// 用它而不是 `eventId` 去重 —— 宿主重放未决 waterfall 时会换新的 `eventId`。
+    private struct ApprovalKey: Hashable {
+        var sessionId: String
+        var callId: String
+    }
+
+    /// 已经摆到界面上（或已经处理过）的审批/提问。清空的时机见 `activateClient`。
+    private var handledApprovalKeys: Set<ApprovalKey> = []
+    private var handledQuestionKeys: Set<ApprovalKey> = []
 
     /// 最近一次送达前台的审批（用于从通知跳回来时高亮）。
     var focusedApprovalId: String?
@@ -204,7 +218,14 @@ public final class AppModel {
         defer { isConnecting = false }
 
         connection = .connecting(hostId: hostId)
-        if !silent { pendingApprovals.removeAll(); pendingQuestions.removeAll() }
+        if !silent {
+            pendingApprovals.removeAll()
+            pendingQuestions.removeAll()
+            // 去重集合也要一起清 —— 连接重建之后宿主会重放未决的那些，
+            // 不清的话重放会被当成"已处理"而丢掉，用户就再也答不上了。
+            handledApprovalKeys.removeAll()
+            handledQuestionKeys.removeAll()
+        }
         do {
             _ = try await tether.connect(hostId: hostId, pairingCode: pairingCode)
             // 真正把 client 接上去的是状态流里的 .connected 分支 ——
@@ -380,7 +401,11 @@ public final class AppModel {
 
         let coordinator = EventStreamCoordinator(client: client, logger: logs)
         await coordinator.setAnswerer { [weak self] request in
-            await self?.route(request)
+            // `self` 没了就没人在意这条 —— 交回宿主自己的默认实现。
+            await self?.route(request) ?? .next
+        }
+        await coordinator.setAbandonmentHandler { [weak self] requests in
+            await self?.handleAbandonedWaterfalls(requests)
         }
         await coordinator.setHandler { [weak self] event in
             await self?.observe(event)
@@ -650,38 +675,64 @@ public final class AppModel {
 
     // MARK: waterfall 路由
 
-    /// 到期未被处理的审批/提问统一收在这里。返回 `nil` 表示"我不答"，
-    /// 协调器会回 `{kind:'next'}`（审批那边最终落到 fail-closed 的 unavailable）。
-    private func route(_ request: WaterfallRequest) async -> JSONValue? {
+    /// 到期未被处理的审批/提问统一收在这里。
+    ///
+    /// 这两种都是"用户还没决定" → **必须返回 `.deferred`**，让协调器把 waterfall 挂着。
+    /// 返回 `.next`（或以前那个表示"我不答"的 `nil`）会让宿主立刻收到 `next` 并结案，
+    /// 用户在界面上点提交就成了摆设 —— 这正是"提问支持得不好"的根因。
+    private func route(_ request: WaterfallRequest) async -> WaterfallDecision {
+        // 去重按"**哪条**待处理"，不是按 `eventId`。
+        //
+        // 宿主会把未决的 waterfall **重放**给新客户端（比如 $events 重连之后），
+        // 重放带的是**新的 eventId** —— 按 eventId 去重的话，同一个问题会在界面上
+        // 变成两张卡片，而且用户很可能点中那张早就作废的。
         if request.isApproval {
-            guard !pendingApprovals.contains(where: { $0.eventId == request.eventId }) else { return nil }
+            let key = ApprovalKey(sessionId: request.agentId, callId: request.approvalCallId ?? request.eventId)
+            guard !handledApprovalKeys.contains(key) else { return .deferred }
+            handledApprovalKeys.insert(key)
             pendingApprovals.append(request)
             await notifier.postApproval(toolName: request.approvalToolName, reason: request.approvalReason, eventId: request.eventId)
-            return nil   // 等用户决定；由 decide(...) 负责应答
+            return .deferred
         }
         if request.isUserQuestion {
-            guard !pendingQuestions.contains(where: { $0.eventId == request.eventId }) else { return nil }
+            let key = ApprovalKey(
+                sessionId: request.agentId,
+                callId: request.questions.map(\.id).sorted().joined(separator: ",")
+            )
+            guard !handledQuestionKeys.contains(key) else { return .deferred }
+            handledQuestionKeys.insert(key)
             pendingQuestions.append(request)
             await notifier.postQuestion(count: request.questions.count, eventId: request.eventId)
-            return nil
+            return .deferred
         }
-        return nil
+        return .next
+    }
+
+    /// 连接换代时，那些再也答不了的卡片要撤掉并如实告知 ——
+    /// 否则用户会对着一个"点了没反应"的卡片反复点。
+    private func handleAbandonedWaterfalls(_ requests: [WaterfallRequest]) async {
+        let approvals = requests.filter(\.isApproval).map(\.eventId)
+        let questions = requests.filter(\.isUserQuestion).map(\.eventId)
+        pendingApprovals.removeAll { approvals.contains($0.eventId) }
+        pendingQuestions.removeAll { questions.contains($0.eventId) }
+        // 作废的那些不该再挡住重放
+        handledApprovalKeys = handledApprovalKeys.filter { key in
+            !requests.contains { $0.isApproval && $0.agentId == key.sessionId }
+        }
+        handledQuestionKeys = handledQuestionKeys.filter { key in
+            !requests.contains { $0.isUserQuestion && $0.agentId == key.sessionId }
+        }
+        guard !requests.isEmpty else { return }
+        waterfallAbandonedMessage = String(localized: "连接中断过，\(requests.count) 条待处理已经作废 —— 电脑端会按默认方式继续。")
+        logs.log(.warning, "连接换代，\(requests.count) 条 waterfall 作废")
     }
 
     /// 用户对审批作出了决定。**这是唯一的应答入口**，保证恰好一次。
     func decide(approval request: WaterfallRequest, decision: WaterfallRequest.ApprovalDecision) async {
         pendingApprovals.removeAll { $0.eventId == request.eventId }
         guard let coordinator = eventCoordinator else { return }
-        do {
-            try await client.answerEvent(
-                clientId: await coordinator.currentGeneration()?.clientId ?? "",
-                eventId: request.eventId,
-                outcome: WaterfallRequest.approvalOutcome(decision)
-            )
-            logs.log(.info, "审批 \(request.eventId) → \(decision.rawValue)")
-        } catch {
-            logs.log(.warning, "审批应答失败：\(error)")
-        }
+        await coordinator.respond(request, outcome: WaterfallRequest.approvalOutcome(decision))
+        logs.log(.info, "审批 \(request.eventId) → \(decision.rawValue)")
     }
 
     /// 用户回答了提问。批里必须**恰好一次**地命名每个问题。
@@ -691,16 +742,26 @@ public final class AppModel {
     ) async {
         pendingQuestions.removeAll { $0.eventId == request.eventId }
         guard let coordinator = eventCoordinator else { return }
-        do {
-            try await client.answerEvent(
-                clientId: await coordinator.currentGeneration()?.clientId ?? "",
-                eventId: request.eventId,
-                outcome: WaterfallRequest.answersOutcome(answers)
+        // 交给协调器发：只有它知道这条 waterfall 是不是还挂着。
+        await coordinator.respond(request, outcome: WaterfallRequest.answersOutcome(answers))
+        logs.log(.info, "提问 \(request.eventId) 已作答")
+    }
+
+    /// 用户明确不回答这个问题。
+    ///
+    /// 走**拒绝**而不是"交给下一个"：后者会让宿主一直等一个永远不来的回答，
+    /// agent 只能挂到超时。拒绝会立刻把"用户跳过了"这个事实交给 agent。
+    func decline(question request: WaterfallRequest) async {
+        pendingQuestions.removeAll { $0.eventId == request.eventId }
+        guard let coordinator = eventCoordinator else { return }
+        await coordinator.respond(
+            request,
+            outcome: WaterfallRequest.rejectionOutcome(
+                name: "UserSkippedQuestion",
+                message: String(localized: "用户跳过了这个问题，没有作答。")
             )
-            logs.log(.info, "提问 \(request.eventId) 已作答")
-        } catch {
-            logs.log(.warning, "提问应答失败：\(error)")
-        }
+        )
+        logs.log(.info, "提问 \(request.eventId) 被用户跳过")
     }
 
     /// 把一条 waterfall 收起来"稍后处理"（UI 层只是把它从当前聚焦移开，仍然欠着应答）。

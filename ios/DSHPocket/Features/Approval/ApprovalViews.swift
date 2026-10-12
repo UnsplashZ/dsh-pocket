@@ -152,7 +152,9 @@ struct ApprovalSheet: View {
 
                 ForEach(model.pendingQuestions, id: \.eventId) { request in
                     Section {
-                        UserQuestionForm(request: request)
+                        UserQuestionForm(request: request) {
+                            Task { await model.decline(question: request) }
+                        }
                     }
                 }
             }
@@ -168,8 +170,18 @@ struct ApprovalSheet: View {
 }
 
 /// `user-questions/request` 的作答表单：单选 / 多选 / 开放文本。
+/// 回答 agent 的提问。
+///
+/// 三处是照 HIG 与协议约定改的（原版都能用，但"支持得不好"）：
+///   · **多选用勾选行，不用开关**。HIG：开关是"立即生效的设置"，多选列表用勾选；
+///     而且开关在一列里视觉噪音很大。
+///   · **必须每题都有答案才能提交**。协议侧要求答案批"恰好一次地命名每个问题"，
+///     允许空提交等于让 agent 收到一个空回答。
+///   · **可以跳过**。用户不想答时得有条出路，而不是被逼着编一个答案。
 struct UserQuestionForm: View {
     let request: WaterfallRequest
+    /// 用户跳过时回调（调用方负责把 waterfall 按"拒绝"结掉）。
+    var onSkip: (() -> Void)?
 
     @Environment(AppModel.self) private var model
     @State private var singleChoice: [String: String] = [:]
@@ -177,97 +189,180 @@ struct UserQuestionForm: View {
     @State private var customText: [String: String] = [:]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Token.Spacing.compact) {
-            ForEach(request.questions) { question in
-                VStack(alignment: .leading, spacing: Token.Spacing.tight) {
-                    if let header = question.header {
-                        Text(header)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                    Text(question.question)
-                        .font(.body)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if let detail = question.detail {
-                        Text(detail).font(.caption).foregroundStyle(.secondary)
-                    }
+        VStack(alignment: .leading, spacing: Token.Spacing.section) {
+            ForEach(Array(request.questions.enumerated()), id: \.element.id) { index, question in
+                questionBlock(question, index: index)
+            }
 
-                    if question.options.isEmpty {
-                        TextField("你的回答", text: binding(for: question.id))
-                            .textFieldStyle(.roundedBorder)
-                    } else if question.isMultiSelect {
-                        ForEach(question.options) { option in
-                            Toggle(isOn: multiBinding(questionId: question.id, label: option.label)) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(option.label)
-                                    if let description = option.description {
-                                        Text(description).font(.caption).foregroundStyle(.secondary)
-                                    }
-                                }
-                            }
-                            .toggleStyle(.switch)
+            VStack(spacing: Token.Spacing.tight) {
+                Button {
+                    submit()
+                } label: {
+                    Text("提交回答").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!isComplete)
+
+                if !isComplete {
+                    Text(unansweredHint)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                if let onSkip {
+                    // 说的是"这一整次提问"而不是"这个问题"：一批可能有好几个问题，
+                    // 跳过是把整批都作罢，措辞不能让人以为只跳一个。
+                    Button(request.questions.count > 1 ? "都不回答（结束这次提问）" : "跳过这个问题", role: .destructive) {
+                        onSkip()
+                    }
+                    .font(.footnote)
+                    .frame(maxWidth: .infinity)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func questionBlock(_ question: WaterfallRequest.Question, index: Int) -> some View {
+        VStack(alignment: .leading, spacing: Token.Spacing.tight) {
+            HStack(alignment: .firstTextBaseline, spacing: Token.Spacing.hairline) {
+                if request.questions.count > 1 {
+                    // `verbatim`：这只是个序号，不该进本地化目录
+                    // （写成 `Text("\(index + 1)")` 会生成一条 key 为 `%lld` 的条目）。
+                    Text(verbatim: String(index + 1))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                }
+                if let header = question.header {
+                    Text(header)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if !question.question.isEmpty {
+                // 问句里常有 `code`、列表、强调 —— 走同一套 Markdown 渲染。
+                MarkdownBody(text: question.question)
+            }
+            if let detail = question.detail, !detail.isEmpty {
+                MarkdownBody(text: detail)
+                    .foregroundStyle(.secondary)
+            }
+
+            if question.options.isEmpty {
+                TextField("你的回答", text: binding(for: question.id), axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+            } else if question.isMultiSelect {
+                VStack(spacing: 0) {
+                    ForEach(question.options) { option in
+                        Button {
+                            toggle(questionId: question.id, label: option.label)
+                        } label: {
+                            optionRow(option, isSelected: multiChoices[question.id]?.contains(option.label) ?? false)
                         }
-                        TextField("补充说明（可选）", text: binding(for: question.id))
-                            .textFieldStyle(.roundedBorder)
-                    } else {
-                        Picker("选择", selection: singleBinding(question.id)) {
-                            Text("未选择").tag("")
-                            ForEach(question.options) { option in
-                                Text(option.label).tag(option.label)
-                            }
-                        }
-                        .pickerStyle(.inline)
-                        .labelsHidden()
-                        TextField("其它（可选）", text: binding(for: question.id))
-                            .textFieldStyle(.roundedBorder)
+                        .buttonStyle(.plain)
+                        if option.id != question.options.last?.id { Divider() }
                     }
                 }
-                .padding(.vertical, Token.Spacing.hairline)
+                .background(
+                    RoundedRectangle(cornerRadius: Token.Radius.chip, style: .continuous)
+                        .fill(Color(.tertiarySystemFill))
+                )
+                TextField("补充说明（可选）", text: binding(for: question.id), axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(question.options) { option in
+                        Button {
+                            singleChoice[question.id] = option.label
+                        } label: {
+                            optionRow(option, isSelected: singleChoice[question.id] == option.label)
+                        }
+                        .buttonStyle(.plain)
+                        if option.id != question.options.last?.id { Divider() }
+                    }
+                }
+                .background(
+                    RoundedRectangle(cornerRadius: Token.Radius.chip, style: .continuous)
+                        .fill(Color(.tertiarySystemFill))
+                )
+                TextField("其它（可选）", text: binding(for: question.id), axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
             }
-
-            Button {
-                submit()
-            } label: {
-                Text("提交回答").frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
         }
+        .accessibilityElement(children: .contain)
+    }
+
+    private func optionRow(_ option: WaterfallRequest.Question.Option, isSelected: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: Token.Spacing.tight) {
+            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(.tertiary))
+            VStack(alignment: .leading, spacing: 2) {
+                // 选项标签也走 Markdown：agent 经常把 `**重点**` 写进 label。
+                // 渲染只影响显示 —— 回给宿主的仍然是 `option.label` 原文。
+                InlineMarkdown(option.label)
+                    .foregroundStyle(.primary)
+                if let description = option.description, !description.isEmpty {
+                    Text(description).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, Token.Spacing.tight)
+        .padding(.vertical, Token.Spacing.hairline)
+        .frame(minHeight: Token.minimumHitTarget)
+        .contentShape(Rectangle())
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+
+    // MARK: 校验与提交
+
+    /// 每个问题都要有答案：选了选项，或者写了自定义回答。
+    private var isComplete: Bool {
+        request.questions.allSatisfy(hasAnswer)
+    }
+
+    private func hasAnswer(_ question: WaterfallRequest.Question) -> Bool {
+        let custom = customText[question.id]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard question.options.isEmpty else {
+            if question.isMultiSelect {
+                return !(multiChoices[question.id]?.isEmpty ?? true) || !custom.isEmpty
+            }
+            return (singleChoice[question.id]?.isEmpty == false) || !custom.isEmpty
+        }
+        return !custom.isEmpty
+    }
+
+    private var unansweredHint: String {
+        let missing = request.questions.filter { !hasAnswer($0) }.count
+        return missing == 1
+            ? String(localized: "还有 1 个问题没回答")
+            : String(format: String(localized: "还有 %lld 个问题没回答"), missing)
     }
 
     private func submit() {
         let answers: [(id: String, selected: [String], custom: String?)] = request.questions.map { question in
+            let custom = customText[question.id]?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedCustom = (custom?.isEmpty ?? true) ? nil : custom
             if question.options.isEmpty {
-                return (question.id, [], customText[question.id])
+                return (question.id, [], trimmedCustom)
             }
             if question.isMultiSelect {
-                return (question.id, Array(multiChoices[question.id] ?? []).sorted(), customText[question.id])
+                return (question.id, Array(multiChoices[question.id] ?? []).sorted(), trimmedCustom)
             }
             let choice = singleChoice[question.id].map { $0.isEmpty ? [] : [$0] } ?? []
-            return (question.id, choice, customText[question.id])
+            return (question.id, choice, trimmedCustom)
         }
         Task { await model.answer(question: request, answers: answers) }
     }
 
-    private func singleBinding(_ id: String) -> Binding<String> {
-        Binding(
-            get: { singleChoice[id] ?? "" },
-            set: { singleChoice[id] = $0 }
-        )
-    }
-
-    private func multiBinding(questionId: String, label: String) -> Binding<Bool> {
-        Binding(
-            get: { multiChoices[questionId]?.contains(label) ?? false },
-            set: { isOn in
-                var set = multiChoices[questionId] ?? []
-                if isOn { set.insert(label) } else { set.remove(label) }
-                multiChoices[questionId] = set
-            }
-        )
+    private func toggle(questionId: String, label: String) {
+        var set = multiChoices[questionId] ?? []
+        if set.contains(label) { set.remove(label) } else { set.insert(label) }
+        multiChoices[questionId] = set
     }
 
     /// 开放文本/补充说明的绑定。
-    private func binding(for id: String, key: String = "custom") -> Binding<String> {
+    private func binding(for id: String) -> Binding<String> {
         Binding(
             get: { customText[id] ?? "" },
             set: { customText[id] = $0 }
@@ -278,12 +373,17 @@ struct UserQuestionForm: View {
 /// 会话顶部常驻的"待处理"条：有待审批时把重要性提升到前台（HIG 的 Depth 原则）。
 struct PendingBanner: View {
     @Environment(AppModel.self) private var model
-    @State private var showSheet = false
+    /// 外部可以把 sheet 顶开（会话列表用它把待处理直接亮出来）。
+    @Binding var isPresented: Bool
+
+    init(isPresented: Binding<Bool> = .constant(false)) {
+        self._isPresented = isPresented
+    }
 
     var body: some View {
         if !model.pendingApprovals.isEmpty || !model.pendingQuestions.isEmpty {
             Button {
-                showSheet = true
+                isPresented = true
             } label: {
                 HStack(spacing: Token.Spacing.tight) {
                     Image(systemName: "exclamationmark.bubble.fill")
@@ -300,7 +400,7 @@ struct PendingBanner: View {
                 .background(.regularMaterial)
             }
             .buttonStyle(.plain)
-            .sheet(isPresented: $showSheet) { ApprovalSheet() }
+            .sheet(isPresented: $isPresented) { ApprovalSheet() }
             .accessibilityLabel(Text(countLabel))
             .accessibilityHint(Text("打开待处理列表"))
         }

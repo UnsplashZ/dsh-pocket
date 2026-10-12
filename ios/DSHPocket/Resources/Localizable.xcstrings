@@ -1876,17 +1876,6 @@
         }
       }
     },
-    "未选择": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Not selected"
-          }
-        }
-      }
-    },
     "本项目以 MIT 许可发布。以上组件各自保留原许可与版权声明。": {
       "extractionState": "manual",
       "localizations": {
@@ -2274,6 +2263,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Now"
+          }
+        }
+      }
+    },
+    "用户跳过了这个问题，没有作答。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The user skipped this question without answering."
           }
         }
       }
@@ -2875,6 +2875,28 @@
         }
       }
     },
+    "还有 %lld 个问题没回答": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld questions still need answers"
+          }
+        }
+      }
+    },
+    "还有 1 个问题没回答": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 question still needs an answer"
+          }
+        }
+      }
+    },
     "还没有会话": {
       "extractionState": "manual",
       "localizations": {
@@ -3134,6 +3156,23 @@
         }
       }
     },
+    "连接中断过，%lld 条待处理已经作废 —— 电脑端会按默认方式继续。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The connection dropped, so %lld pending item(s) expired — your computer will continue using its defaults."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接中断过，%lld 条待处理已经作废 —— 电脑端会按默认方式继续。"
+          }
+        }
+      }
+    },
     "连接失败": {
       "extractionState": "manual",
       "localizations": {
@@ -3180,17 +3219,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Connect to computer"
-          }
-        }
-      }
-    },
-    "选择": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Choose"
           }
         }
       }

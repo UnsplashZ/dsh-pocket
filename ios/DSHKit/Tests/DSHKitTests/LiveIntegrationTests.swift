@@ -431,6 +431,120 @@ final class LiveIntegrationTests: XCTestCase {
         _ = try? await client.archiveSession(sessionId: sessionId)
     }
 
+    /// **端到端**验证"用户回答 agent 的提问"这条链路真的通。
+    ///
+    /// 之前这里是坏的：`AppModel.route` 对提问返回"我不答"，协调器立刻回 `{kind:'next'}`
+    /// 并清掉 pending —— 于是界面上弹出了问题卡片、点提交却毫无作用，agent 只能等到超时。
+    ///
+    /// 这条测试把整条链路跑一遍：真的让 agent 提问 → 拿到 waterfall → **挂起** →
+    /// 用 `respond` 把答案交回去 → 断言 agent 收到了这个答案并继续跑完。
+    ///
+    /// 会真的起两轮 agent，默认跳过：`DSH_LIVE_PROMPT=1`。
+    func testUserQuestionRoundTripActuallyReachesTheAgent() async throws {
+        try requireLive()
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["DSH_LIVE_PROMPT"] == "1",
+            "会真的起 agent。设 DSH_LIVE_PROMPT=1 才跑。"
+        )
+        let client = makeClient()
+        let sessionId = try await client.createSession(cwd: NSHomeDirectory())
+        defer { Task { _ = try? await client.cancel(sessionId: sessionId) } }
+
+        // 新会话没有默认模型，不选会直接 `session/model-unavailable`。
+        let catalog = try await client.modelCatalog()
+        if let fallback = catalog.defaultSelection {
+            try await client.selectModel(
+                sessionId: sessionId,
+                provider: fallback.provider,
+                model: fallback.model,
+                reasoningEffort: fallback.reasoningEffort
+            )
+        }
+
+        let coordinator = EventStreamCoordinator(client: client)
+        let seen = AsyncStream.makeStream(of: WaterfallRequest.self)
+        await coordinator.setAnswerer { request in
+            // **只认这个会话的提问**：宿主会把别的会话里未决的 waterfall 一并重放给
+            // 新客户端（实测：一次连接里收到三条来自不同会话的），不做过滤就会答错人。
+            guard request.isUserQuestion, request.agentId == sessionId else { return .next }
+            seen.continuation.yield(request)
+            // **挂起** —— 这正是被修掉的那个 bug 所在的位置。
+            return .deferred
+        }
+        await coordinator.start()
+        defer { Task { await coordinator.stop() } }
+
+        _ = try await client.prompt(
+            sessionId: sessionId,
+            requestId: RpcId.make(),
+            text: """
+            Call the ask_user_question tool exactly once: ask which color I prefer, \
+            with header "Color", question id "color", and exactly two options: Red and Blue. \
+            Output nothing else.
+            """,
+            mode: .queue
+        )
+
+        var request: WaterfallRequest?
+        for await candidate in seen.stream {
+            request = candidate
+            break
+        }
+        let question = try XCTUnwrap(request, "40 秒内应当收到 user-questions/request")
+        XCTAssertFalse(question.questions.isEmpty)
+        XCTAssertNil(question.questionCallId, "网关转发时会把 wait/callId 剥掉，远端只能按 eventId 回")
+
+        // 挂起状态：这时候答，必须还能送达。
+        let pending = await coordinator.isPending(eventId: question.eventId)
+        XCTAssertTrue(pending, "deferred 之后这条 waterfall 必须还挂着，否则回答案就是白发")
+
+        let answers = question.questions.map { item in
+            (id: item.id, selected: [item.options.first?.label ?? "Red"], custom: String?.none)
+        }
+        await coordinator.respond(question, outcome: WaterfallRequest.answersOutcome(answers))
+
+        // agent 应当收到答案、恢复、跑完
+        var finished = false
+        for _ in 0..<40 {
+            try await Task.sleep(for: .seconds(2))
+            let sessions = try await client.listSessions()
+            if sessions.first(where: { $0.sessionId == sessionId })?.isRunning == false {
+                finished = true
+                break
+            }
+        }
+        XCTAssertTrue(finished, "回答之后 agent 应当恢复并跑完（否则就是答案没送到，它会一直等到超时）")
+
+        // 答案内容要真的落进日志：`ask_user_question` 的 tool/result 里应当出现所选标签
+        var resultText = ""
+        for try await frame in client.follow(sessionId: sessionId, assistantStream: false) {
+            guard case .snapshot(let snapshot) = frame else { break }
+            for event in snapshot.events {
+                // `tool/result` 的正文在 `data.message.content[].text` ——
+                // **不是** `data.output`，也没有 `data.name`（名字只在 `tool/call` 上）。
+                if event.type == "tool/result" {
+                    resultText += (event.data.array("message.content") ?? [])
+                        .compactMap { $0.string("text") }
+                        .joined(separator: "\n")
+                }
+                // 用户的回答还会作为一条 `user-question-reply` 消息进日志
+                if event.type == "user/message",
+                   event.string("data.source.kind") == "user-question-reply" {
+                    resultText += (event.data.array("content") ?? [])
+                        .compactMap { $0.string("text") }
+                        .joined(separator: "\n")
+                }
+            }
+            break
+        }
+        XCTAssertTrue(
+            resultText.contains("Red"),
+            "日志里应当能看到这次回答的内容，实际：\(resultText.prefix(200))"
+        )
+
+        _ = try? await client.archiveSession(sessionId: sessionId)
+    }
+
     func testModelCatalogAndUnaryErrorShape() async throws {
         try requireLive()
         let client = makeClient()

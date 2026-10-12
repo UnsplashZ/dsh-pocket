@@ -22,9 +22,22 @@ struct SessionListView: View {
     @State private var archivingRunning: SessionSummary?
     @State private var renameText = ""
     @State private var showNewSession = false
+    @State private var showPending = false
 
     var body: some View {
         List {
+            // 待处理的审批/提问放在列表最上面。
+            //
+            // 之前只有会话页里有这条，于是**在首页时 agent 提问完全没有任何提示** ——
+            // 你得先进对的那个会话才知道有人在等你。
+            if !model.pendingApprovals.isEmpty || !model.pendingQuestions.isEmpty {
+                Section {
+                    PendingBanner(isPresented: $showPending)
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                }
+            }
+
             if hasActiveFilter {
                 filterChipSection
             }
@@ -118,9 +131,18 @@ struct SessionListView: View {
         } message: {
             Text("归档会先把这一轮停掉。已经跑出来的内容会保留。")
         }
+        .alert("待处理已作废", isPresented: Binding(
+            get: { model.waterfallAbandonedMessage != nil },
+            set: { if !$0 { model.waterfallAbandonedMessage = nil } }
+        )) {
+            Button("知道了", role: .cancel) { model.waterfallAbandonedMessage = nil }
+        } message: {
+            Text(model.waterfallAbandonedMessage ?? "")
+        }
         .task {
             #if DEBUG
             if UserDefaults.standard.bool(forKey: "DSHShowNewSession") { showNewSession = true }
+            if UserDefaults.standard.bool(forKey: "DSHShowPending") { showPending = true }
             #endif
         }
         .sheet(isPresented: $showNewSession) {

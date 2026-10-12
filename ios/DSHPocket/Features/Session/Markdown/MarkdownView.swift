@@ -109,7 +109,7 @@ struct MarkdownBody: View {
 /// 内联 Markdown（粗体、斜体、行内代码、链接）。
 ///
 /// 解析失败就退回纯文本 —— 一条渲染不了的富文本不该让整条消息消失。
-private struct InlineMarkdown: View {
+struct InlineMarkdown: View {
     let text: String
 
     init(_ text: String) { self.text = text }

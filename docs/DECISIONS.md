@@ -207,3 +207,40 @@ SwiftPM 状态"上。
 - 会话列表也缓存（冷启动第一屏不用等 `session/list`）；
 - 代价：多了一份可能过期的本地副本。用 `resume` 的 cursor 校验 + 版本号兜住了；
   设置页有「清空缓存」，只影响速度、不丢东西。
+
+## ADR-0017 · waterfall 的 `deferred`：用户没决定时**必须挂住**，不能回 `next`
+
+**日期**：2026-10-12
+**背景**：用户反馈"agent 提问支持得不是特别好"。查下来是个**功能性 bug**，不是观感问题：
+界面上会正常弹出问题卡片，用户选完点提交 —— **什么都不会发生**，agent 一直等到超时。
+
+**根因**：`EventStreamCoordinator.dispatch` 把应答回调返回的 `nil` 当成"我不答这条"，
+立刻回 `{kind:'next'}` 并把 pending 清掉。而 `AppModel.route` 恰恰用 `nil` 表示
+"用户还没决定，先挂着"。于是 waterfall 在卡片出现的那一瞬间就已经结案了，
+之后 UI 调 `$events/result` 送答案，宿主那边早就不欠这条了。
+
+**并且没有第二条路**：远端客户端**不可能**改用 `userQuestions/answer(callId)` 绕过它 ——
+实测网关转发 waterfall 时会把 `wait` 整个剥掉，远端永远拿不到 `callId`：
+
+```json
+{"type":"waterfall","event":"user-questions/request","eventId":"…","agentId":"…",
+ "request":{"questions":[…]}}          // 没有 wait，没有 callId
+```
+
+**决定**：把回调的返回值从 `JSONValue?` 换成显式的 `WaterfallDecision`
+（`.answer` / `.next` / `.deferred`）。审批与提问一律 `.deferred`，
+由 UI 走 `coordinator.respond(_:outcome:)` 结案 —— 从 `pending` 摘除与发送放在同一个地方，
+"恰好一次应答"这条保证才守得住。
+另加 `abandonmentHandler`：连接换代导致某几条作废时通知 UI 撤掉卡片，
+否则用户会对着一个"点了没反应"的卡片反复点。
+
+**后果**：
+- 提问链路端到端打通，有活宿主测试钉住（`testUserQuestionRoundTripActuallyReachesTheAgent`：
+  真的让 agent 提问 → 挂起 → 交答案 → 断言 agent 恢复并跑完、且日志里能看到所选内容）；
+- 去重从 `eventId` 改成"**哪个会话的哪件事**"。宿主会把未决 waterfall **重放**给新客户端
+  （重放带新 `eventId`），按 eventId 去重会让同一个问题变成两张卡片，
+  用户很可能点中那张已作废的；
+- "跳过"走 `{kind:'rejected', error:{…}}` 而不是 `next`：后者会让宿主继续等一个永不到来的
+  回答、agent 挂到超时；拒绝能立刻把"用户跳过了"交给 agent；
+- 顺带修掉一个抽取脚本的 bug：注释里举例的 `Text("\\(index + 1)")` 会被当成真调用点抽出，
+  凭空多一条 key 为 `%lld` 的目录条目（之前那条 `%@` 误报同源）。现在抽之前先抹掉行注释。
