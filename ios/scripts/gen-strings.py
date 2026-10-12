@@ -495,13 +495,31 @@ def main() -> int:
             },
         }
         if key != raw:
-            # 有插值的 key：把源语言那一侧也写全，便于译者对照
+            # 有插值的 key：源语言那一侧必须是**占位符形式**（%@ / %lld），
+            # 不是源码里的 \(expr)。写成源码形式的话，SwiftUI 在 zh-Hans 下查不到
+            # 带占位符的值，就会退化成把 key 当字面量显示。
             entry["localizations"][SOURCE_LANGUAGE] = {
-                "stringUnit": {"state": "translated", "value": raw}
+                "stringUnit": {"state": "translated", "value": key}
             }
         catalog_strings[key] = entry
 
+    # 第三类错误：值里混进了源码形式的插值。这正是"界面上直接把
+    # `\(model.localEndpointId.prefix(16))` 显示出来"那个 bug 的形状 ——
+    # 源语言那一侧写了源码表达式而不是占位符，SwiftUI 就查不到带占位符的值。
+    literal_interpolation = [
+        f"{key}  →  {value}"
+        for key, value in [(k, v["localizations"][SOURCE_LANGUAGE]["stringUnit"]["value"])
+                           for k, v in catalog_strings.items()
+                           if SOURCE_LANGUAGE in v["localizations"]]
+        if "\\(" in value
+    ]
+
     problems = []
+    if literal_interpolation:
+        problems.append(
+            f"值里出现了源码形式的插值 {len(literal_interpolation)} 条（应该写成 %@ / %lld）：\n  "
+            + "\n  ".join(literal_interpolation[:10])
+        )
     if missing:
         problems.append(f"缺少英文翻译 {len(missing)} 条：\n  " + "\n  ".join(missing[:20]))
     if mismatched:

@@ -96,6 +96,8 @@ struct RootView: View {
     /// 让"截一张时间线的图"这种验证不必依赖 UI 自动化点按。
     private func openDebugSessionIfRequested() async {
         let defaults = UserDefaults.standard
+        if defaults.bool(forKey: "DSHShowSettings") { showSettings = true }
+        if defaults.bool(forKey: "DSHShowWelcome") { showWelcome = true }
         guard let sessionId = defaults.string(forKey: "DSHOpenSessionId"), !sessionId.isEmpty else { return }
         // 列表可能还没拉回来，等一拍
         for _ in 0..<20 {

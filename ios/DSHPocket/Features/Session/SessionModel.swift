@@ -158,6 +158,8 @@ public final class SessionModel {
         phase = .live
         isTurnRunning = false
         publish()
+        // 快照分完了：这时候布局才稳定，明确要求滚到底一次。
+        requestScrollToBottom()
     }
 
     private func apply(_ event: SessionEvent) {
@@ -209,11 +211,18 @@ public final class SessionModel {
         let visible = settings.showRawEvents ? builder.items : conversational
         items = visible
         shadowedItems = visible.filter(\.isShadowed)
-        needsPublishHaptic = false
     }
 
-    /// 供 UI 判断"要不要贴底滚动"（由 View 读时间线尾部自行决定，这里只留钩子）。
-    private(set) var needsPublishHaptic = false
+    /// 每次"应该滚到底"时自增。View 观察它做一次 `scrollTo`。
+    ///
+    /// 为什么不能只靠"最后一条 item 变了就滚"：快照是分批入视图的，分批期间
+    /// 布局还没稳定，`scrollTo` 会落在半路上；而分完之后最后一条又不一定再变。
+    /// 所以由模型显式发一个"滚到底"的信号。
+    private(set) var scrollToBottomTicket = 0
+
+    func requestScrollToBottom() {
+        scrollToBottomTicket &+= 1
+    }
 
     // MARK: 断线与补齐
 
@@ -283,6 +292,7 @@ public final class SessionModel {
         attachments = []
         isTurnRunning = true
         publish()
+        requestScrollToBottom()
 
         do {
             // 附件先上传拿到 receipt，再随 prompt 一起提交。

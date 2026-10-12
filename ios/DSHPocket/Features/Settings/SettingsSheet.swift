@@ -87,7 +87,7 @@ struct SettingsSheet: View {
             Text("主机")
         } footer: {
             if !model.localEndpointId.isEmpty {
-                Text("这台手机的设备 ID：\(model.localEndpointId.prefix(16))…\n电脑端按这把公钥授权；删掉它需要重新配对。")
+                Text("这台手机的设备 ID：\(String(model.localEndpointId.prefix(16)))…\n电脑端按这把公钥授权；删掉它需要重新配对。")
             }
         }
     }

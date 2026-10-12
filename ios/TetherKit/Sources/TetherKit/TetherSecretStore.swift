@@ -83,6 +83,22 @@ public struct KeychainSecretStore: TetherSecretStore {
 }
 #endif
 
+/// 落盘时用的写选项。
+///
+/// `.completeFileProtection*` 是 **iOS 的**数据保护类。在 macOS 上带上它写出来的文件
+/// **读不回来**（`Data(contentsOf:)` 直接返回 nil，且写入本身不报错）—— 也就是说
+/// 身份文件会静默丢失，表现成"每次启动都换一把新密钥、每次都要重新配对"。
+/// `swift test` 与 M0b spike 都跑在 macOS 上，所以必须分平台。
+enum TetherFileWrite {
+    static var options: Data.WritingOptions {
+        #if os(iOS)
+        return [.atomic, .completeFileProtectionUnlessOpen]
+        #else
+        return [.atomic]
+        #endif
+    }
+}
+
 /// 文件实现：`0600`、在 App 的 Application Support 下。
 /// 用于单元测试与命令行 spike（无签名上下文时 Keychain 不可用）。
 public struct FileSecretStore: TetherSecretStore {
@@ -105,7 +121,7 @@ public struct FileSecretStore: TetherSecretStore {
         let target = url(key)
         let temporary = target.appendingPathExtension("tmp")
         do {
-            try value.write(to: temporary, options: [.atomic, .completeFileProtectionUnlessOpen])
+            try value.write(to: temporary, options: TetherFileWrite.options)
             try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: temporary.path)
             _ = try? FileManager.default.removeItem(at: target)
             try FileManager.default.moveItem(at: temporary, to: target)

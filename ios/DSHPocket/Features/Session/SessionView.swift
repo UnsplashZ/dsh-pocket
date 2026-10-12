@@ -139,6 +139,11 @@ struct SessionView: View {
                 lastKnownTailId = newValue
                 scrollToBottom(proxy, animated: true)
             }
+            // 模型显式要求"滚到底"（快照分完、自己发了消息）：这时候布局已经稳定。
+            .onChange(of: session.scrollToBottomTicket) { _, _ in
+                isFollowingBottom = true
+                scrollToBottom(proxy, animated: false)
+            }
             .onChange(of: model.focusedApprovalId) { _, newValue in
                 guard let newValue else { return }
                 scroll(to: newValue, proxy: proxy)

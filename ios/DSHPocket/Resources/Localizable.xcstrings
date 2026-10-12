@@ -24,7 +24,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "\\(entry.text)，\\(statusLabel(entry.status))"
+            "value": "%@，%@"
           }
         }
       }
@@ -41,7 +41,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "\\(group.sessions.count) 个会话"
+            "value": "%lld 个会话"
           }
         }
       }
@@ -377,7 +377,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "你说：\\(message.text)"
+            "value": "你说：%@"
           }
         }
       }
@@ -801,7 +801,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "审批请求：\\(approval.toolName)。\\(approval.reason)"
+            "value": "审批请求：%@。%@"
           }
         }
       }
@@ -862,7 +862,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "工具 \\(call.name)"
+            "value": "工具 %@"
           }
         }
       }
@@ -956,7 +956,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "已断开：\\(reason)"
+            "value": "已断开：%@"
           }
         }
       }
@@ -995,7 +995,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "已被压缩取代的 \\(session.shadowedItems.count) 条内容"
+            "value": "已被压缩取代的 %lld 条内容"
           }
         }
       }
@@ -1133,7 +1133,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "快照 \\(count) 条事件"
+            "value": "快照 %lld 条事件"
           }
         }
       }
@@ -1326,7 +1326,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "拿到 \\(sessions.count) 个会话"
+            "value": "拿到 %lld 个会话"
           }
         }
       }
@@ -1926,7 +1926,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "移除附件 \\(attachment.name)"
+            "value": "移除附件 %@"
           }
         }
       }
@@ -1965,7 +1965,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "第 \\(turn) 轮"
+            "value": "第 %lld 轮"
           }
         }
       }
@@ -1982,7 +1982,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "第 \\(turn) 轮，\\(Format.time(item.time)) 开始"
+            "value": "第 %lld 轮，%@ 开始"
           }
         }
       }
@@ -1999,7 +1999,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "第 \\(turn) 轮：\\(reasonLabel(reason))"
+            "value": "第 %lld 轮：%@"
           }
         }
       }
@@ -2104,7 +2104,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "认不出的事件 \\(type)"
+            "value": "认不出的事件 %@"
           }
         }
       }
@@ -2341,7 +2341,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "这台手机的设备 ID：\\(model.localEndpointId.prefix(16))…\n电脑端按这把公钥授权；删掉它需要重新配对。"
+            "value": "这台手机的设备 ID：%@…\n电脑端按这把公钥授权；删掉它需要重新配对。"
           }
         }
       }

@@ -39,7 +39,8 @@ public struct TetherHostBook: Sendable, Codable {
         let target = url ?? TetherStorage.file("hosts.json")
         do {
             let data = try JSONEncoder.dshCompact.encode(self)
-            try data.write(to: target, options: [.atomic, .completeFileProtectionUnlessOpen])
+            // 同 FileSecretStore：`.completeFileProtection*` 在 macOS 上会让文件读不回来。
+            try data.write(to: target, options: TetherFileWrite.options)
             try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
         } catch {
             // 主机簿写不进去不该让 App 崩溃：退化为"本次会话内有效"。

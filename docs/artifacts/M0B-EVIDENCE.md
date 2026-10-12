@@ -110,6 +110,33 @@ swift run m0b-interop \
 swift run m0b-interop --endpoint <endpoint_id> --data-dir /tmp/m0b-client
 ```
 
+## 验证过程中抓到的一个真 bug
+
+第一次跑通之后，为了抓干净证据重启了 sidecar，再跑就报：
+
+```
+ConnectionLost(ApplicationClosed(ApplicationClose { error_code: 1, reason: b"protocol" }))
+```
+
+电脑端 `reason: b"protocol"` 的含义是"已配对连接的首行不是 Hello"（`host/src/main.rs`
+的 `_ =>` 分支）。可我们发的就是 Hello。真正的原因是**设备身份没有持久化**：
+
+```swift
+try value.write(to: temporary, options: [.atomic, .completeFileProtectionUnlessOpen])
+```
+
+`.completeFileProtection*` 是 **iOS 的**数据保护类。在 macOS 上带着它写出来的文件
+**写不报错、但读不回来**（`Data(contentsOf:)` 直接返回 nil）。于是每次运行
+`TetherIdentity.loadOrCreate` 都读不到旧身份、生成一把新密钥 —— 对电脑端来说
+这就是一台从未配对过的新设备，Hello 自然被拒。
+
+修法是分平台给写选项（`TetherFileWrite.options`）。这个 bug 在**真机上不会出现**
+（iOS 上数据保护类是正常工作的），所以它只会在 `swift test` 与命令行 spike 上炸 ——
+而那两个正是我们用来验证真机路径的东西。`TetherContractTests` 里的
+`testFileSecretStoreRoundTripAndPermissions` 现在会把它钉住。
+
+修完之后重跑：第一次配对成功，第二次**沿用同一把身份**走 Hello，不再需要配对码。
+
 ## 这次验证改变了什么
 
 1. **ADR-0002 的回退方案不需要了**：iroh-ffi 1.1.0 ↔ iroh 1.0.3 直接互通，
