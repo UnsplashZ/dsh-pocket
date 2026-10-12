@@ -18,8 +18,9 @@ xcuserdata/
 
 # 构建产物（ios/build.sh 与 xcodebuild 都写在这里，保持仓库根干净）
 ios/.derived/
-ios/.derived-device/
 ios/.module-cache/
+# 真机构建的产物目录（scripts/install-device.sh 用）
+.derived-device/
 ios/.spm-cache/
 ios/.spm-config/
 ios/.spm-security/
