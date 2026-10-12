@@ -136,17 +136,56 @@ bash scripts/install-device.sh     # 装到真机（含证书续期提示）
 
 ---
 
-## 三种连接方式（按可靠性从高到低）
+## 连接方式
 
-| 方式 | 怎么用 | 什么时候选它 |
-|---|---|---|
-| **直连网关（Tailscale / 局域网）** | 电脑上 `node tools/direct-gateway.mjs --host <tailnet或局域网地址> --token <令牌>`；App 设置 → 连接方式 → 直连网关，填地址与令牌 | 电脑和手机在同一个 tailnet / 同一 Wi-Fi。走的是 WireGuard 或局域网的**稳定 TCP**，不受 iroh 打洞波动影响 |
-| **远端连接（iroh）** | 电脑上装好 `dsh-plugin-tether`，App 扫码配对 | 公网、跨网络、不想开任何端口。打洞成功时不经第三方；失败回退中转（只见密文） |
-| **开发直连（本机）** | `node tools/direct-gateway.mjs`（绑回环） | 模拟器里开发界面与协议，不需要手机也不需要配对 |
+**产品上只有一条：iroh 点对点。** 公网可用、打洞成功时不经第三方、回退中转只见密文 ——
+已经覆盖全部真实场景，所以设置里不再暴露"连接方式"这个开关。
 
-> **手机上开着代理/VPN 时优先用直连网关**：sing-box / Clash 这类 TUN 模式会把 UDP 一并接管，
-> iroh 的 QUIC 打洞会被干扰（表现为"连上一会儿就断"或直接超时）。
-> 直连网关走 TCP，隧道对它友好得多。App 的连接失败提示与诊断页都写了这一条。
+### 两台设备已经在同一个 tailnet 里，iroh 会走 Tailscale 吗？
+
+**会，而且算「直连」。** 依据不是推测，是 iroh 二进制里的事实：它会**枚举所有网卡**并订阅地址变化
+
+```
+netwatch::interfaces::Interface / ::State
+netdev::os::macos::sc::SCInterface          ← macOS 用 SystemConfiguration 枚举
+iroh::socket::transports::Transports::local_addrs_watch
+n0_watcher                                   ← 网卡变化监听
+```
+
+所以 Tailscale 的 `utun` 与它上面的 `100.x.y.z` **也是候选地址之一**。两端都在 tailnet 里时，
+发往 `100.x` 的探测能通 → iroh 就选这条路，`paths()` 报 `isRelay: false`。
+
+三点要说清楚：
+
+1. **不是"iroh 认识 Tailscale"，而是"Tailscale 的地址恰好可达"。**
+   iroh 并不知道那是 Tailscale，它只是把候选地址都试一遍。所以 tailnet 只是**多了一条可用的直连路径**，
+   不会改变它的行为。
+2. **怎么确认走的是哪条**：App 的「设置 → 诊断」里有 `加密路径`（直连 / 中转）与 `远端` 地址。
+   看到 `100.x.y.z` 就是走的 Tailscale。
+3. **电脑上常驻 TUN 类代理（sing-box / Clash）时要想清楚路由**：Tailscale 自己会为
+   `100.64.0.0/10` 装一条明细路由，按最长前缀匹配它会赢过 TUN 的 `0/1 + 128/1`，
+   也就是说 **Tailscale 流量通常不会进 sing-box**。但如果你的分流规则显式把 tailnet 段
+   也代理进去了（UDP 再套一层 UDP），打洞就会变脆 —— 那种情况下关掉代理，或者
+   在分流里把 `100.64.0.0/10` 设为直连。
+
+### 开发者模式（不在设置页里）
+
+模拟器里开发界面/协议时不需要真机、也不需要配对，所以保留了"直连网关"这条路，
+但**只在 DEBUG 构建里通过 defaults 打开**：
+
+```bash
+# 模拟器 DEV-DIRECT：打本机回环上的 dev 网关
+node tools/direct-gateway.mjs &
+xcrun simctl spawn booted defaults write cc.zexa.dshpocket settings.transportMode -string devDirect
+
+# Tailscale / 局域网直连（需要令牌，绑非回环地址时强制要求）
+node tools/direct-gateway.mjs --host 100.x.y.z --token <随机串>
+xcrun simctl spawn booted defaults write cc.zexa.dshpocket settings.transportMode -string directGateway
+xcrun simctl spawn booted defaults write cc.zexa.dshpocket settings.gatewayURL -string http://100.x.y.z:8788
+xcrun simctl spawn booted defaults write cc.zexa.dshpocket settings.gatewayToken -string <随机串>
+```
+
+打开后设置页最上面会出现一条「调试」提示，一键改回 iroh。
 
 > ⚠️ 直连网关会代替你向 DSH 认证 —— **谁能连上它，谁就等于拿到了你的 DSH**。
 > 所以绑非回环地址时它强制要求 `--token`；公网使用请再套一层 TLS 反向代理。

@@ -46,8 +46,19 @@ public struct NotificationPreferences: Sendable, Equatable {
     public var anyEnabled: Bool { approvals || questions || completions }
 }
 
-/// 连接方式。三种模式在协议层看来完全一样（都只是一个 base URL），
-/// 区别只在"这个 URL 是怎么来的"。
+/// 连接方式。
+///
+/// **不在设置页里暴露** —— 产品上默认且只用 iroh（`.remote`）：它公网可用、
+/// 打洞成功时不经第三方、回退中转只见密文，已经覆盖了全部真实场景。
+///
+/// 另外两种是**开发者模式**，只在 DEBUG 构建里通过 `UserDefaults` 打开：
+/// ```bash
+/// xcrun simctl spawn booted defaults write cc.zexa.dshpocket settings.transportMode -string devDirect
+/// ```
+/// - `.devDirect`：打本机回环上的直连网关，模拟器里开发界面/协议时不需要真机与配对；
+/// - `.directGateway`：打一个带令牌的直连网关（Tailscale / 局域网 / 反代后面）。
+///   **实测过 iroh 本身就能走 Tailscale**（它的 netdev 会枚举所有网卡，
+///   tailnet 地址也是候选地址之一），所以这条现在只是"iroh 走不通时的备用路"。
 public enum TransportMode: String, CaseIterable, Identifiable, Sendable {
     /// 走 iroh P2P：公网可用，打洞成功时不经第三方，失败回退中转（只见密文）。
     case remote
@@ -71,6 +82,19 @@ public enum TransportMode: String, CaseIterable, Identifiable, Sendable {
         case .remote: return "point.3.connected.trianglepath.dotted"
         case .devDirect: return "laptopcomputer"
         case .directGateway: return "network"
+        }
+    }
+
+    /// 已解析的字符串。
+    ///
+    /// `label` 是 `LocalizedStringKey`，**不能**再插进另一个 `LocalizedStringKey` 里 ——
+    /// 那样插进去的是它的 `description`（会原样显示成
+    /// `LocalizedStringKey(key: "开发直连（本机）", …)`）。需要拼接时用这个。
+    public var resolvedLabel: String {
+        switch self {
+        case .remote: return String(localized: "远端连接（iroh）")
+        case .devDirect: return String(localized: "开发直连（本机）")
+        case .directGateway: return String(localized: "直连网关（Tailscale / 局域网）")
         }
     }
 }
@@ -134,7 +158,7 @@ public final class AppSettings {
         didSet { defaults.set(devDirectEnabled, forKey: Key.devDirect) }
     }
 
-    /// 连接方式。默认走 iroh。
+    /// 连接方式。默认走 iroh；非 `.remote` 只在 DEBUG 里由开发者打开。
     public var transportMode: TransportMode {
         didSet { defaults.set(transportMode.rawValue, forKey: Key.transportMode) }
     }

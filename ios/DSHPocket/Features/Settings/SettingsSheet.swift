@@ -19,7 +19,9 @@ struct SettingsSheet: View {
 
         NavigationStack {
             Form {
-                transportSection
+                #if DEBUG
+                developerModeSection
+                #endif
                 hostsSection
                 archivedSection
                 notificationsSection
@@ -53,59 +55,36 @@ struct SettingsSheet: View {
         }
     }
 
-    // MARK: 连接方式
+    #if DEBUG
+    // MARK: 开发者模式提示
 
-    private var transportSection: some View {
-        @Bindable var settings = model.settings
-
-        return Section {
-            Picker("连接方式", selection: $settings.transportMode) {
-                ForEach(TransportMode.allCases) { mode in
-                    Label(mode.label, systemImage: mode.symbol).tag(mode)
+    /// 连接方式已经不在设置页里暴露（产品上默认且只用 iroh）。
+    /// 但开发者仍可用 defaults 打开另两种模式 —— 没有这块的话，
+    /// 改完 defaults 之后界面上没有任何地方能看出来，也没法改回去。
+    @ViewBuilder
+    private var developerModeSection: some View {
+        if model.settings.transportMode != .remote {
+            Section {
+                Label {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(String(localized: "开发者模式：") + model.settings.transportMode.resolvedLabel)
+                        Text("正常使用请改回「远端连接（iroh）」")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } icon: {
+                    Image(systemName: "hammer")
                 }
-            }
-            .pickerStyle(.inline)
-            .labelsHidden()
-
-            switch settings.transportMode {
-            case .remote:
-                EmptyView()
-
-            case .devDirect:
-                TextField("开发直连地址", text: $settings.devDirectBaseURL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .font(.callout.monospaced())
-
-            case .directGateway:
-                TextField("网关地址", text: $settings.gatewayURL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .font(.callout.monospaced())
-                SecureField("令牌", text: $settings.gatewayToken)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .font(.callout.monospaced())
-                Button {
+                Button("改回 iroh") {
+                    model.settings.transportMode = .remote
                     Task { await model.activateConfiguredTransport() }
-                } label: {
-                    Label("用这个地址连接", systemImage: "bolt.horizontal")
                 }
-                .disabled(settings.gatewayURL.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
-        } header: {
-            Text("连接方式")
-        } footer: {
-            switch settings.transportMode {
-            case .remote:
-                Text("走 iroh 点对点：公网可用，打洞成功时不经第三方，回退中转时中转只见密文。")
-            case .devDirect:
-                Text("打本机回环上的直连网关，模拟器开发用。需要先在电脑上跑 node tools/direct-gateway.mjs。")
-            case .directGateway:
-                Text("打你电脑上的直连网关。适合手机上开着代理/VPN（iroh 的 UDP 打洞会被隧道干扰），或者电脑和手机在同一个 tailnet / 局域网时。\n电脑上：node tools/direct-gateway.mjs --host <你的 tailnet 或局域网地址> --token <令牌>\n这条路依赖 tailnet / 局域网自身的加密；公网使用请放在 TLS 反向代理后面。")
+            } header: {
+                Text("调试")
             }
         }
     }
+    #endif
 
     // MARK: 主机
 

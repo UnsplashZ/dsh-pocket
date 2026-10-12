@@ -236,6 +236,10 @@ WS   ws://127.0.0.1:<port>/api/remote.mux          （见 PROTOCOL-NOTES §4.2�
 | **TUN 类代理（sing-box / Clash）** | ⚠️ 隧道会接管 UDP：打洞多半退化成中转，分流规则禁 UDP 时直接不通 | ✅ TCP，隧道友好 |
 | 认证 | 配对码 + 设备公钥白名单 | 共享令牌（`Authorization: Bearer`） |
 
+> **产品上只用 iroh**（见 ADR-0015）。直连网关降级为开发者模式，只在 DEBUG 构建里
+> 通过 defaults 打开 —— 因为实测 iroh 本身就能走 tailnet / 局域网（它的 netdev 会枚举
+> 所有网卡并订阅地址变化，`100.x.y.z` 也是候选地址）。直连网关留作"iroh 走不通时的备用路"。
+
 **实测**：iPhone 在 5G 上、电脑在 Wi-Fi 上，iroh 也能打洞直连成功
 （sidecar 日志 `peer-path {"kind":"direct","remote":"114.246.237.30:65180"}`）。
 所以 iroh 这条路是通的；但**电脑上常驻 TUN 代理时它会更脆**，这时直连网关更稳。

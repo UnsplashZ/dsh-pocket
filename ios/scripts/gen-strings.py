@@ -519,6 +519,11 @@ EN: dict[str, str] = {
         "The new session belongs to the workspace you pick; you go straight into it.",
     "电脑没有返回新建的会话。": "Your computer didn’t return the new session.",
     "建不了会话": "Couldn’t create the session",
+    # 开发者模式（仅 DEBUG）
+    "调试": "Debug",
+    "开发者模式：": "Developer mode: ",
+    "改回 iroh": "Switch back to iroh",
+    "正常使用请改回「远端连接（iroh）」": "For normal use, switch back to “Remote (iroh)”.",
 }
 
 # 哪些插值表达式是整数。判错的后果是英文界面上显示成 `%lld` 字面量，
