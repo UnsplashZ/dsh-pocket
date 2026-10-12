@@ -189,6 +189,46 @@ final class AppLogicTests: XCTestCase {
         XCTAssertFalse(ready)
     }
 
+    // MARK: 归档分流
+
+    @MainActor
+    func testArchivedSessionsAreKeptOutOfTheList() {
+        let sessions = [
+            makeSummary(id: "a", title: "在用的一号", updatedAt: 300),
+            makeSummary(id: "b", title: "归档的二号", updatedAt: 200),
+            makeSummary(id: "c", title: "在用的三号", updatedAt: 100),
+        ]
+        let archived: Set<String> = ["b"]
+
+        let active = SessionPartition.active(sessions, archived: archived)
+        XCTAssertEqual(active.map(\.sessionId), ["a", "c"], "归档的不能留在对话列表里")
+
+        let archivedList = SessionPartition.archived(sessions, archived: archived)
+        XCTAssertEqual(archivedList.map(\.sessionId), ["b"])
+    }
+
+    @MainActor
+    func testArchivedListIsSortedByRecencyAndSurvivesUnknownIds() {
+        let sessions = [
+            makeSummary(id: "old", title: "旧的", updatedAt: 100),
+            makeSummary(id: "new", title: "新的", updatedAt: 900),
+        ]
+        // 归档集合里可能有 session/list 还没返回的 id（两条流到达顺序不定）——
+        // 不能因此崩，也不能把别的会话误判成归档。
+        let archived: Set<String> = ["old", "new", "not-yet-loaded"]
+        let list = SessionPartition.archived(sessions, archived: archived)
+        XCTAssertEqual(list.map(\.sessionId), ["new", "old"], "归档列表按最近更新排序")
+        XCTAssertEqual(SessionPartition.active(sessions, archived: archived).count, 0)
+    }
+
+    private func makeSummary(id: String, title: String, updatedAt: TimeInterval) -> SessionSummary {
+        SessionSummary.decode(Fixture.json("""
+        {"sessionId":"\(id)","updatedAt":\(updatedAt * 1000),"agentAvailable":true,"running":false,"blank":false,
+         "cwd":"/Users/example/dev/Github/demo",
+         "projections":{"kind":"sequenced","asOfSeq":1,"values":{"title":"\(title)"}}}
+        """))!
+    }
+
     // MARK: 依赖注入的合理性
 
     @MainActor

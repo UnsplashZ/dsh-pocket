@@ -400,6 +400,37 @@ EN: dict[str, str] = {
     "%.1f 秒": "%.1f s",
     "%lld 毫秒": "%lld ms",
     "%@，%@": "%@, %@",
+    # 归档管理 / 连接状态 / 代理提示
+    "已归档的会话": "Archived sessions",
+    "已归档": "Archived",
+    "恢复到对话列表": "Restore to session list",
+    "恢复": "Restore",
+    "恢复这个会话？": "Restore this session?",
+    "没有归档的会话": "No archived sessions",
+    "左滑会话列表里的行就能把它归档到这里。": "Swipe a row in the session list to archive it here.",
+    "搜索已归档的会话": "Search archived sessions",
+    "左滑可恢复到对话列表": "Swipe to restore it to the session list",
+    "归档过的会话不会出现在对话列表里，在这里可以恢复或重新打开。":
+        "Archived sessions don’t appear in the session list. Restore or reopen them here.",
+    "已置顶": "Pinned",
+    "正在和电脑握手，第一次可能要几秒。": "Shaking hands with your computer — the first time can take a few seconds.",
+    "配对一次之后，手机会记住这台电脑。": "After pairing once, this phone remembers your computer.",
+    "正在连接…": "Connecting…",
+    "正在连接电脑": "Connecting to your computer",
+    "已连接到电脑": "Connected to your computer",
+    "已连接，正在重连会话流": "Connected, reconnecting the session stream",
+    "连接失败：%@": "Connection failed: %@",
+    "先试这三件事": "Try these three things",
+    "1. 确认电脑上的 DSH 开着、插件已加载；\n2. 手机设置里允许本 App 使用「本地网络」；\n3. 关掉手机上的代理/VPN 再连一次（它会接管 UDP，打洞会失败）。":
+        "1. Make sure DSH is running on your computer and the plugin is loaded;\n2. Allow Local Network access for this app in iOS Settings;\n3. Turn off any proxy/VPN on the phone and try again (it takes over UDP, so hole-punching fails).",
+    "手机上开着代理或 VPN（sing-box、Clash、Surge 等）时，隧道会把 UDP 一并接管：打洞多半会退化成中转（仍然加密，只是慢），分流规则里禁掉 UDP 的话 QUIC 会被直接拦死。连不上就先关掉代理试一次。":
+        "With a proxy or VPN running on the phone (sing-box, Clash, Surge…), the tunnel also captures UDP: hole-punching usually degrades to a relay (still encrypted, just slower), and if your rules block UDP, QUIC is blocked outright. If it won’t connect, turn the proxy off and try once.",
+    "这个会话正在跑": "This session is running",
+    "停止并归档": "Stop and archive",
+    "归档会先把这一轮停掉。已经跑出来的内容会保留。":
+        "Archiving stops the running turn first. Everything already produced is kept.",
+    "这个会话正在跑，DSH 不允许直接归档。先停下它再归档。":
+        "This session is running, and DSH won’t archive it as-is. Stop it first, then archive.",
 }
 
 # 哪些插值表达式是整数。判错的后果是英文界面上显示成 `%lld` 字面量，

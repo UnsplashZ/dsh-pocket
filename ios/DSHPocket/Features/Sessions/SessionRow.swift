@@ -7,6 +7,7 @@ import SwiftUI
 /// 尾部 = 相对时间 + 状态。设计上刻意不显示 sessionId（那是"复制 ID"菜单的事）。
 struct SessionRow: View {
     let summary: SessionSummary
+    var isPinned = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
@@ -19,12 +20,6 @@ struct SessionRow: View {
                         .lineLimit(1)
                     if summary.isRunning {
                         StatusDot(tone: .success, label: String(localized: "正在运行"))
-                    }
-                    if !summary.agentAvailable {
-                        Image(systemName: "moon.zzz")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .accessibilityLabel(Text("这台电脑上暂时不可用"))
                     }
                 }
 
@@ -54,11 +49,13 @@ struct SessionRow: View {
                 Text(Format.relativeTime(summary.updatedAt))
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
-                if summary.parentSessionId != nil {
-                    Image(systemName: "person.2")
+                // 只留真正可操作的信号：置顶。子会话/冷会话那些标记对列表没帮助，
+                // 反而让人猜（上一版的 moon.zzz 就被问"那是什么意思"）。
+                if isPinned {
+                    Image(systemName: "pin.fill")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
-                        .accessibilityLabel(Text("这是一个子会话"))
+                        .accessibilityLabel(Text("已置顶"))
                 }
             }
         }

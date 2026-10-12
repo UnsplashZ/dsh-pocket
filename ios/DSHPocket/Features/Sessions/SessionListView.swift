@@ -14,6 +14,8 @@ struct SessionListView: View {
 
     @State private var query = ""
     @State private var renaming: SessionSummary?
+    /// 正在跑、需要先停下来才能归档的会话。
+    @State private var archivingRunning: SessionSummary?
     @State private var renameText = ""
     @State private var showNewSession = false
 
@@ -29,12 +31,15 @@ struct SessionListView: View {
                         Button {
                             onSelect(summary)
                         } label: {
-                            SessionRow(summary: summary)
+                            SessionRow(
+                                summary: summary,
+                                isPinned: model.pinnedSessionIds.contains(summary.sessionId)
+                            )
                         }
                         .buttonStyle(.plain)
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
-                                Task { await model.archive(summary.sessionId) }
+                                requestArchive(summary)
                             } label: {
                                 Label("归档", systemImage: "archivebox")
                             }
@@ -53,7 +58,7 @@ struct SessionListView: View {
                             }
                             Divider()
                             Button(role: .destructive) {
-                                Task { await model.archive(summary.sessionId) }
+                                requestArchive(summary)
                             } label: {
                                 Label("归档", systemImage: "archivebox")
                             }
@@ -85,6 +90,26 @@ struct SessionListView: View {
                 renaming = nil
             }
         }
+        // 归档一个正在跑的会话：宿主会拒绝（workspace/session-active），
+        // 所以先问清楚 —— 同意的话我们会带 stopActivity 一起提交。
+        .confirmationDialog(
+            "这个会话正在跑",
+            isPresented: Binding(
+                get: { archivingRunning != nil },
+                set: { if !$0 { archivingRunning = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("停止并归档", role: .destructive) {
+                if let target = archivingRunning {
+                    Task { await model.archive(target.sessionId, stopActivity: true) }
+                }
+                archivingRunning = nil
+            }
+            Button("取消", role: .cancel) { archivingRunning = nil }
+        } message: {
+            Text("归档会先把这一轮停掉。已经跑出来的内容会保留。")
+        }
         .confirmationDialog("新建会话", isPresented: $showNewSession, titleVisibility: .visible) {
             ForEach(workspaces, id: \.self) { workspace in
                 Button(workspace) {
@@ -104,12 +129,24 @@ struct SessionListView: View {
         }
     }
 
+    /// 归档请求的入口：正在跑的会话先确认，其余直接归档。
+    private func requestArchive(_ summary: SessionSummary) {
+        if summary.isRunning {
+            archivingRunning = summary
+        } else {
+            Task { await model.archive(summary.sessionId) }
+        }
+    }
+
     // MARK: 分组
 
     private var filtered: [SessionSummary] {
+        // 已归档的会话统一去「设置 → 已归档」管理，不混进对话列表（否则本机 32 个归档
+        // 会把列表彻底淹没）。
+        let active = model.activeSessions
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return model.sessions }
-        return model.sessions.filter { summary in
+        guard !trimmed.isEmpty else { return active }
+        return active.filter { summary in
             summary.title.localizedCaseInsensitiveContains(trimmed)
                 || summary.subtitle.localizedCaseInsensitiveContains(trimmed)
                 || summary.workspaceName.localizedCaseInsensitiveContains(trimmed)
@@ -143,41 +180,92 @@ struct SessionListView: View {
     @ViewBuilder
     private var disconnectedSection: some View {
         Section {
-            VStack(alignment: .leading, spacing: Token.Spacing.tight) {
-                Label {
+            HStack(spacing: Token.Spacing.tight) {
+                Image(systemName: disconnectedSymbol)
+                    .font(.title3)
+                    .foregroundStyle(disconnectedTone.color)
+                    .frame(width: 26)
+                VStack(alignment: .leading, spacing: 2) {
                     Text(model.connection.label)
                         .font(.headline)
-                } icon: {
-                    Image(systemName: model.connection.isConnected ? "checkmark.circle.fill" : "bolt.horizontal.circle")
-                }
-                .foregroundStyle(model.connection.isConnected ? Color.green : Color.secondary)
-
-                if case .failed(let message) = model.connection {
-                    Text(message)
+                    Text(disconnectedDetail)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-
-                // 失败必须有可执行动作，不能只有一句"失败了"
-                if let hostId = model.settings.activeHostId, !hostId.isEmpty {
-                    Button {
-                        Task { await model.connect(hostId: hostId, pairingCode: nil) }
-                    } label: {
-                        Label("重新连接", systemImage: "arrow.clockwise")
-                    }
-                    .buttonStyle(.bordered)
-                } else {
-                    Button {
-                        onPair()
-                    } label: {
-                        Label("连接电脑", systemImage: "qrcode")
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
             }
             .padding(.vertical, Token.Spacing.hairline)
+            .accessibilityElement(children: .combine)
+
+            if case .failed = model.connection {
+                // 失败不能只有一句"失败了"：给一条用户当下能做的事。
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("先试这三件事")
+                        .font(.footnote.weight(.semibold))
+                    Text("1. 确认电脑上的 DSH 开着、插件已加载；\n2. 手机设置里允许本 App 使用「本地网络」；\n3. 关掉手机上的代理/VPN 再连一次（它会接管 UDP，打洞会失败）。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.vertical, Token.Spacing.hairline)
+                .accessibilityElement(children: .combine)
+            }
+
+            // 行样式而不是大胶囊：List 里 `.borderedProminent` 会被撑成整行宽，
+            // 视觉上像个横幅而不是一个动作。
+            Button {
+                if let hostId = model.settings.activeHostId, !hostId.isEmpty {
+                    Task { await model.connect(hostId: hostId, pairingCode: nil) }
+                } else {
+                    onPair()
+                }
+            } label: {
+                Label(disconnectedActionTitle, systemImage: disconnectedActionSymbol)
+            }
+            .disabled(isConnecting)
         }
+    }
+
+    private var isConnecting: Bool {
+        if case .connecting = model.connection { return true }
+        return false
+    }
+
+    private var disconnectedSymbol: String {
+        switch model.connection {
+        case .connecting: return "arrow.triangle.2.circlepath"
+        case .failed: return "exclamationmark.triangle.fill"
+        default: return "bolt.horizontal.circle"
+        }
+    }
+
+    private var disconnectedTone: StatusTone {
+        switch model.connection {
+        case .connecting: return .info
+        case .failed: return .failure
+        default: return .neutral
+        }
+    }
+
+    private var disconnectedDetail: String {
+        switch model.connection {
+        case .connecting: return String(localized: "正在和电脑握手，第一次可能要几秒。")
+        case .failed(let message): return message
+        default: return String(localized: "配对一次之后，手机会记住这台电脑。")
+        }
+    }
+
+    private var disconnectedActionTitle: String {
+        if isConnecting { return String(localized: "正在连接…") }
+        if let hostId = model.settings.activeHostId, !hostId.isEmpty {
+            return String(localized: "重新连接")
+        }
+        return String(localized: "连接电脑")
+    }
+
+    private var disconnectedActionSymbol: String {
+        if let hostId = model.settings.activeHostId, !hostId.isEmpty { return "arrow.clockwise" }
+        return "qrcode"
     }
 
     @ViewBuilder
@@ -232,21 +320,20 @@ struct SessionListView: View {
     }
 }
 
-/// 顶栏连接状态：**小圆点 + 文字**，不做"假在线"。
+/// 顶栏连接状态。
+///
+/// 工具栏里空间很窄，"已连接"三个字在中文下会被挤成竖排（实测过）——
+/// 所以这里**只放一个圆点**，把文字放进无障碍标签与长按提示里。
+/// 状态本身在列表首行也有完整表述，不需要在顶栏重复。
 struct ConnectionIndicator: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        HStack(spacing: Token.Spacing.hairline) {
-            StatusDot(tone: tone, label: model.connection.label)
-            if case .connected = model.connection {
-                Text(shortLabel)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(Text(model.connection.label))
+        StatusDot(tone: tone, label: label)
+            .frame(width: Token.minimumHitTarget, height: Token.minimumHitTarget)
+            .accessibilityElement()
+            .accessibilityLabel(Text(label))
+            .accessibilityAddTraits(.isStaticText)
     }
 
     private var tone: StatusTone {
@@ -258,8 +345,18 @@ struct ConnectionIndicator: View {
         }
     }
 
-    private var shortLabel: String {
-        if case .failed = model.connection { return String(localized: "断开") }
-        return model.muxState.isHealthy ? String(localized: "已连接") : String(localized: "重连中")
+    private var label: String {
+        switch model.connection {
+        case .connected:
+            return model.muxState.isHealthy
+                ? String(localized: "已连接到电脑")
+                : String(localized: "已连接，正在重连会话流")
+        case .connecting:
+            return String(localized: "正在连接电脑")
+        case .failed(let message):
+            return String(localized: "连接失败：\(message)")
+        case .idle:
+            return String(localized: "未连接")
+        }
     }
 }

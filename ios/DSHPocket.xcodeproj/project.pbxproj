@@ -16,6 +16,7 @@
 		2F2037A1772AE4F088992348 /* HostEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E5E5C710758154A562F575D /* HostEvent.swift */; };
 		3379AE831FF66E5DA0E09FB1 /* Retry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31CE6B371F32508FBC3EA5B7 /* Retry.swift */; };
 		3A03754D58D00923BFE2F2E7 /* DSHKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = F714C252B15543051C29E9C2 /* DSHKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		3A77B6E2FAAF72732395F060 /* ArchivedSessionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4B82B84D34748F34AB480E7 /* ArchivedSessionsView.swift */; };
 		401AD194FBC1A5CFE9895B4A /* SessionModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42AD7FF2C0BB55901583FD66 /* SessionModel.swift */; };
 		40605810D9F3726B5807B249 /* SessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97BB8F4E3F13184B4BCA31B0 /* SessionView.swift */; };
 		410C4DDB28BB404E39511F64 /* Network.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 08306E6C972F98DCB1348670 /* Network.framework */; };
@@ -30,6 +31,7 @@
 		5A8B17FDF4B38B446DD30163 /* TetherIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3FFD174FD60E9DC57F54FF3 /* TetherIdentity.swift */; };
 		5BA98D3D35912124CBD15736 /* Projections.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6607BBF3D413D89A4B537871 /* Projections.swift */; };
 		5E9D06012AD7777CCDDAFC04 /* MuxClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C78763CE3BDD07B0CCD4293E /* MuxClient.swift */; };
+		63B4AEBB49A2986D8B848C37 /* WorkspaceFrame.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EF1F42C52A900A991734E25 /* WorkspaceFrame.swift */; };
 		69882D66922A4F6677764464 /* SettingsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4662D3F79BDEB3E7FA8D5C7 /* SettingsSheet.swift */; };
 		6DB90D5832BBE03DE5A07AAD /* TetherLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0DEE2C65B00CABFAB497AB6 /* TetherLink.swift */; };
 		7352887FCBB27A5B83281625 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 40F731E69C3E40534DA3287A /* Assets.xcassets */; };
@@ -145,6 +147,7 @@
 		11DD1FE84C8891CE789BA08F /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
 		20391EC33E89609CD0C82B2E /* FilesSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilesSheet.swift; sourceTree = "<group>"; };
 		2151DE06AE4BA2D88CBE912C /* DSHError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSHError.swift; sourceTree = "<group>"; };
+		2EF1F42C52A900A991734E25 /* WorkspaceFrame.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceFrame.swift; sourceTree = "<group>"; };
 		30AC58D8B9981CB968F5B72C /* Composer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Composer.swift; sourceTree = "<group>"; };
 		31CE6B371F32508FBC3EA5B7 /* Retry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Retry.swift; sourceTree = "<group>"; };
 		332E9727DA5B522FCF725E72 /* TimelineItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineItem.swift; sourceTree = "<group>"; };
@@ -187,6 +190,7 @@
 		C78763CE3BDD07B0CCD4293E /* MuxClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MuxClient.swift; sourceTree = "<group>"; };
 		C8088DA54E74F0EC85BF1FB4 /* SessionListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListView.swift; sourceTree = "<group>"; };
 		D3FFD174FD60E9DC57F54FF3 /* TetherIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TetherIdentity.swift; sourceTree = "<group>"; };
+		D4B82B84D34748F34AB480E7 /* ArchivedSessionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchivedSessionsView.swift; sourceTree = "<group>"; };
 		E056E04F55E32F4971BE31A7 /* TetherKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = TetherKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		E0DEE2C65B00CABFAB497AB6 /* TetherLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TetherLink.swift; sourceTree = "<group>"; };
 		E6171EF0D2E0ED43307720E3 /* DSHPocketTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = DSHPocketTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -268,6 +272,7 @@
 				E67688A27EA05DFC126FA9D6 /* SessionEvent.swift */,
 				79B7887EBC326BB1948E7ABE /* TimelineBuilder.swift */,
 				332E9727DA5B522FCF725E72 /* TimelineItem.swift */,
+				2EF1F42C52A900A991734E25 /* WorkspaceFrame.swift */,
 			);
 			path = Model;
 			sourceTree = "<group>";
@@ -407,6 +412,7 @@
 		927A2E9CB3E60989F72E2EF7 /* Settings */ = {
 			isa = PBXGroup;
 			children = (
+				D4B82B84D34748F34AB480E7 /* ArchivedSessionsView.swift */,
 				8228B8138EE7502853E22F63 /* DiagnosticsView.swift */,
 				F4662D3F79BDEB3E7FA8D5C7 /* SettingsSheet.swift */,
 			);
@@ -677,6 +683,7 @@
 				F4CD12090587030CFFD87AF8 /* SessionEvent.swift in Sources */,
 				78E396D2D850FB21020E1833 /* TimelineBuilder.swift in Sources */,
 				122EA2D82CF1FAF439A5C61E /* TimelineItem.swift in Sources */,
+				63B4AEBB49A2986D8B848C37 /* WorkspaceFrame.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -717,6 +724,7 @@
 				4122BFF70BA7A48C3589BF8D /* AppModel.swift in Sources */,
 				7414F4E68D5512C52D2705A4 /* AppSettings.swift in Sources */,
 				4BA0021D775CDA4309770840 /* ApprovalViews.swift in Sources */,
+				3A77B6E2FAAF72732395F060 /* ArchivedSessionsView.swift in Sources */,
 				8A956C5313E815D2ADB5A673 /* Composer.swift in Sources */,
 				07D4AFEDDD493F17EDB21685 /* DSHPocketApp.swift in Sources */,
 				8ED4D3A2D9AE5EA283F32DBE /* DiagnosticsView.swift in Sources */,

@@ -255,12 +255,60 @@ public actor DSHClient {
         ])
     }
 
-    public func archiveSession(sessionId: String) async throws {
-        _ = try await rpc.call(method: "workspace/archiveSession", payload: [
+    /// 归档一个会话。返回**完整的**已归档集合（宿主是权威，别自己维护增量）。
+    @discardableResult
+    public func archiveSession(sessionId: String, stopActivity: Bool = false) async throws -> [String] {
+        var request: [String: JSONValue] = ["sessionId": .string(sessionId)]
+        if stopActivity { request["stopActivity"] = .bool(true) }
+        let value = try await rpc.call(method: "workspace/archiveSession", payload: [
+            "args": .object(["request": .object(request)])
+        ])
+        return value.array("archivedSessionIds")?.compactMap(\.stringValue) ?? []
+    }
+
+    /// 从归档里恢复。同样返回完整的已归档集合。
+    @discardableResult
+    public func unarchiveSession(sessionId: String) async throws -> [String] {
+        let value = try await rpc.call(method: "workspace/unarchiveSession", payload: [
             "args": .object([
                 "request": .object(["sessionId": .string(sessionId)])
             ])
         ])
+        return value.array("archivedSessionIds")?.compactMap(\.stringValue) ?? []
+    }
+
+    // MARK: - 工作区流
+
+    /// `workspace/follow`：**已归档/已置顶的会话集合只有这一条路能拿到**。
+    ///
+    /// `session/list` 里没有 `archived` 字段 —— 归档状态属于工作区，不属于会话。
+    /// 首帧是 `baseline`（带完整的 `archivedSessionIds`），之后是增量帧
+    /// （`archived` / `pinned` / `upsert` / `order`…）。
+    public nonisolated func workspaceFollow() -> AsyncThrowingStream<WorkspaceFrame, any Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                let stream = await self.mux.open(endpoint: "workspace/follow", payload: .object(["args": .object([:])]))
+                do {
+                    for try await frame in stream {
+                        switch frame {
+                        case .item(let value):
+                            guard let value else { continue }
+                            continuation.yield(WorkspaceFrame.decode(value))
+                        case .end:
+                            continuation.finish()
+                            return
+                        case .error(let error):
+                            continuation.finish(throwing: DSHClientError.remote(error))
+                            return
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: MuxClient.asClientError(error))
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
     }
 
     // MARK: - 模型

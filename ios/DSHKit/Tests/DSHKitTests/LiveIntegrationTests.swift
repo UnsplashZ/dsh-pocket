@@ -135,6 +135,85 @@ final class LiveIntegrationTests: XCTestCase {
         XCTAssertNotNil(generation, "$events 的首帧必须是 ready")
     }
 
+    /// `workspace/follow` 是**唯一**能拿到"哪些会话被归档了"的地方 ——
+    /// `session/list` 里没有这个字段。归档没被过滤掉的表现是列表被淹没。
+    func testWorkspaceFollowReportsArchivedSessions() async throws {
+        try requireLive()
+        let client = makeClient()
+        var archived: [String]?
+        var pinned: [String]?
+
+        try await withTimeout(15) {
+            for try await frame in client.workspaceFollow() {
+                if case .baseline(let archivedIds, let pinnedIds, _) = frame {
+                    archived = archivedIds
+                    pinned = pinnedIds
+                    break
+                }
+            }
+        }
+
+        let archivedIds = try XCTUnwrap(archived, "workspace/follow 的首帧必须是 baseline")
+        XCTAssertNotNil(pinned)
+        // 本机确实有归档会话（实测 30+），所以这里能验证"真的读到了东西"，
+        // 而不是只验证"没崩"。
+        XCTAssertFalse(archivedIds.isEmpty, "这台机器上应该有已归档的会话")
+        for id in archivedIds {
+            XCTAssertFalse(id.isEmpty)
+        }
+    }
+
+    /// 归档 → 恢复 的往返。用一个真实存在的会话，最后恢复原状。
+    func testArchiveRoundTripRestoresOriginalSet() async throws {
+        try requireLive()
+        let client = makeClient()
+        let sessions = try await client.listSessions()
+        // 必须挑**没在跑**的：DSH 会以 `workspace/session-active` 拒绝归档
+        // 有活跃 turn/job 的会话（本机实测踩到过，当时挑中的正是当前会话）。
+        let target = try XCTUnwrap(
+            sessions.first { !$0.sessionId.hasPrefix("im:") && !$0.isRunning },
+            "需要一个空闲的真实会话来验证归档往返"
+        )
+
+        var before: [String] = []
+        try await withTimeout(10) {
+            for try await frame in client.workspaceFollow() {
+                if case .baseline(let archivedIds, _, _) = frame {
+                    before = archivedIds
+                    break
+                }
+            }
+        }
+        XCTAssertFalse(before.contains(target.sessionId), "挑的会话不该已经在归档里")
+
+        let afterArchive = try await client.archiveSession(sessionId: target.sessionId)
+        XCTAssertTrue(afterArchive.contains(target.sessionId), "归档后集合里应该有它")
+
+        let afterUnarchive = try await client.unarchiveSession(sessionId: target.sessionId)
+        XCTAssertFalse(afterUnarchive.contains(target.sessionId), "恢复后集合里不该有它")
+        XCTAssertEqual(Set(afterUnarchive), Set(before), "往返之后应该回到原来的集合")
+    }
+
+    /// 归档一个正在跑的会话必须被拒绝，且错误码可分类 ——
+    /// App 要靠它决定"先停下来再归档"这条提示。
+    func testArchivingARunningSessionIsRefused() async throws {
+        try requireLive()
+        let client = makeClient()
+        let sessions = try await client.listSessions()
+        guard let running = sessions.first(where: { $0.isRunning && !$0.sessionId.hasPrefix("im:") }) else {
+            throw XCTSkip("此刻没有正在跑的会话，跳过")
+        }
+        do {
+            _ = try await client.archiveSession(sessionId: running.sessionId)
+            XCTFail("正在跑的会话不该被归档成功")
+        } catch let error as DSHClientError {
+            XCTAssertEqual(error.kind, .remote)
+            if case .remote(let remote) = error {
+                XCTAssertEqual(remote.code, "workspace/session-active")
+            }
+        }
+    }
+
     func testModelCatalogAndUnaryErrorShape() async throws {
         try requireLive()
         let client = makeClient()

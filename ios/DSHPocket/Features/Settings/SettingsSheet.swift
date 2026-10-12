@@ -9,6 +9,10 @@ struct SettingsSheet: View {
 
     @State private var showPairing = false
     @State private var renamingHost: TetherHostRecord?
+    #if DEBUG
+    /// 调试用：`defaults write cc.zexa.dshpocket DSHShowArchived -bool YES` 直接打开归档页。
+    @State private var showArchived = false
+    #endif
 
     var body: some View {
         @Bindable var settings = model.settings
@@ -16,6 +20,7 @@ struct SettingsSheet: View {
         NavigationStack {
             Form {
                 hostsSection
+                archivedSection
                 notificationsSection
                 appearanceSection
                 diagnosticsSection
@@ -29,6 +34,14 @@ struct SettingsSheet: View {
                 }
             }
             .sheet(isPresented: $showPairing) { PairingSheet() }
+            #if DEBUG
+            .sheet(isPresented: $showArchived) {
+                NavigationStack { ArchivedSessionsView() }
+            }
+            .task {
+                if UserDefaults.standard.bool(forKey: "DSHShowArchived") { showArchived = true }
+            }
+            #endif
             .alert("重命名主机", isPresented: Binding(
                 get: { renamingHost != nil },
                 set: { if !$0 { renamingHost = nil } }
@@ -89,6 +102,33 @@ struct SettingsSheet: View {
             if !model.localEndpointId.isEmpty {
                 Text("这台手机的设备 ID：\(String(model.localEndpointId.prefix(16)))…\n电脑端按这把公钥授权；删掉它需要重新配对。")
             }
+        }
+    }
+
+    // MARK: 已归档
+
+    private var archivedSection: some View {
+        Section {
+            NavigationLink {
+                ArchivedSessionsView()
+            } label: {
+                Label {
+                    HStack {
+                        Text("已归档的会话")
+                        Spacer()
+                        if !model.archivedSessions.isEmpty {
+                            // 纯数字：用 String 而不是插值字面量，
+                            // 否则它会变成一条没有意义的本地化 key（"%lld"）。
+                            Text(String(model.archivedSessions.count))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                } icon: {
+                    Image(systemName: "archivebox")
+                }
+            }
+        } footer: {
+            Text("归档过的会话不会出现在对话列表里，在这里可以恢复或重新打开。")
         }
     }
 

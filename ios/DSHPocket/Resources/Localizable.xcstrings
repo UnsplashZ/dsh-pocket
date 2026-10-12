@@ -101,6 +101,17 @@
         }
       }
     },
+    "1. 确认电脑上的 DSH 开着、插件已加载；\n2. 手机设置里允许本 App 使用「本地网络」；\n3. 关掉手机上的代理/VPN 再连一次（它会接管 UDP，打洞会失败）。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1. Make sure DSH is running on your computer and the plugin is loaded;\n2. Allow Local Network access for this app in iOS Settings;\n3. Turn off any proxy/VPN on the phone and try again (it takes over UDP, so hole-punching fails)."
+          }
+        }
+      }
+    },
     "6 位配对码": {
       "extractionState": "manual",
       "localizations": {
@@ -389,6 +400,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Save"
+          }
+        }
+      }
+    },
+    "停止并归档": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop and archive"
+          }
+        }
+      }
+    },
+    "先试这三件事": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Try these three things"
           }
         }
       }
@@ -878,6 +911,28 @@
         }
       }
     },
+    "左滑会话列表里的行就能把它归档到这里。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Swipe a row in the session list to archive it here."
+          }
+        }
+      }
+    },
+    "左滑可恢复到对话列表": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Swipe to restore it to the session list"
+          }
+        }
+      }
+    },
     "已中断": {
       "extractionState": "manual",
       "localizations": {
@@ -918,6 +973,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Done"
+          }
+        }
+      }
+    },
+    "已归档": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Archived"
+          }
+        }
+      }
+    },
+    "已归档的会话": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Archived sessions"
           }
         }
       }
@@ -983,6 +1060,17 @@
         }
       }
     },
+    "已置顶": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pinned"
+          }
+        }
+      }
+    },
     "已被压缩取代的 %lld 条内容": {
       "extractionState": "manual",
       "localizations": {
@@ -1029,6 +1117,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Connected"
+          }
+        }
+      }
+    },
+    "已连接到电脑": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connected to your computer"
+          }
+        }
+      }
+    },
+    "已连接，正在重连会话流": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connected, reconnecting the session stream"
           }
         }
       }
@@ -1084,6 +1194,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Archive"
+          }
+        }
+      }
+    },
+    "归档会先把这一轮停掉。已经跑出来的内容会保留。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Archiving stops the running turn first. Everything already produced is kept."
+          }
+        }
+      }
+    },
+    "归档过的会话不会出现在对话列表里，在这里可以恢复或重新打开。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Archived sessions don’t appear in the session list. Restore or reopen them here."
           }
         }
       }
@@ -1145,6 +1277,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Reasoning"
+          }
+        }
+      }
+    },
+    "恢复": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restore"
+          }
+        }
+      }
+    },
+    "恢复到对话列表": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restore to session list"
           }
         }
       }
@@ -1353,6 +1507,17 @@
         }
       }
     },
+    "搜索已归档的会话": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search archived sessions"
+          }
+        }
+      }
+    },
     "搜索标题或摘要": {
       "extractionState": "manual",
       "localizations": {
@@ -1371,17 +1536,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "File"
-          }
-        }
-      }
-    },
-    "断开": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Offline"
           }
         }
       }
@@ -1562,6 +1716,17 @@
         }
       }
     },
+    "正在和电脑握手，第一次可能要几秒。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shaking hands with your computer — the first time can take a few seconds."
+          }
+        }
+      }
+    },
     "正在生成": {
       "extractionState": "manual",
       "localizations": {
@@ -1606,6 +1771,28 @@
         }
       }
     },
+    "正在连接…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connecting…"
+          }
+        }
+      }
+    },
+    "正在连接电脑": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connecting to your computer"
+          }
+        }
+      }
+    },
     "正在连接电脑…": {
       "extractionState": "manual",
       "localizations": {
@@ -1613,6 +1800,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Connecting to your computer…"
+          }
+        }
+      }
+    },
+    "没有归档的会话": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No archived sessions"
           }
         }
       }
@@ -2307,6 +2505,17 @@
         }
       }
     },
+    "这个会话正在跑，DSH 不允许直接归档。先停下它再归档。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This session is running, and DSH won’t archive it as-is. Stop it first, then archive."
+          }
+        }
+      }
+    },
     "这个会话还是空的": {
       "extractionState": "manual",
       "localizations": {
@@ -2346,17 +2555,6 @@
         }
       }
     },
-    "这台电脑上暂时不可用": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unavailable on this computer"
-          }
-        }
-      }
-    },
     "这台设备不能扫码": {
       "extractionState": "manual",
       "localizations": {
@@ -2364,17 +2562,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "This device can’t scan codes"
-          }
-        }
-      }
-    },
-    "这是一个子会话": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "This is a subagent session"
           }
         }
       }
@@ -2478,6 +2665,23 @@
         }
       }
     },
+    "连接失败：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection failed: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接失败：%@"
+          }
+        }
+      }
+    },
     "连接断了，正在重连": {
       "extractionState": "manual",
       "localizations": {
@@ -2540,6 +2744,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Notifications"
+          }
+        }
+      }
+    },
+    "配对一次之后，手机会记住这台电脑。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "After pairing once, this phone remembers your computer."
           }
         }
       }
@@ -2628,17 +2843,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Retry"
-          }
-        }
-      }
-    },
-    "重连中": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Reconnecting"
           }
         }
       }

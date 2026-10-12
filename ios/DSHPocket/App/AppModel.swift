@@ -52,7 +52,11 @@ public final class AppModel {
 
     // MARK: 会话列表
 
+    /// 全部会话（含已归档）。列表页只显示未归档的那些。
     private(set) var sessions: [SessionSummary] = []
+    /// 已归档的会话 ID。**只有 `workspace/follow` 会告诉你这个** —— `session/list` 里没有。
+    private(set) var archivedSessionIds: Set<String> = []
+    private(set) var pinnedSessionIds: Set<String> = []
     private(set) var isLoadingSessions = false
     private(set) var sessionListError: String?
     private(set) var lastRefreshedAt: Date?
@@ -75,6 +79,7 @@ public final class AppModel {
 
     private var eventCoordinator: EventStreamCoordinator?
     private var tetherMessagesTask: Task<Void, Never>?
+    private var workspaceTask: Task<Void, Never>?
     private let notifier = NotificationCenterAdapter()
 
     // MARK: 初始化
@@ -139,6 +144,8 @@ public final class AppModel {
         logs.log(.info, "退到后台，断开传输")
         await eventCoordinator?.stop()
         eventCoordinator = nil
+        workspaceTask?.cancel()
+        workspaceTask = nil
         tetherMessagesTask?.cancel()
         tetherMessagesTask = nil
         await client.closeTransport()
@@ -170,6 +177,8 @@ public final class AppModel {
     func disconnect() async {
         await eventCoordinator?.stop()
         eventCoordinator = nil
+        workspaceTask?.cancel()
+        workspaceTask = nil
         tetherMessagesTask?.cancel()
         tetherMessagesTask = nil
         await client.closeTransport()
@@ -178,6 +187,8 @@ public final class AppModel {
         connection = .idle
         diagnostics = nil
         sessions = []
+        archivedSessionIds = []
+        pinnedSessionIds = []
         pendingApprovals.removeAll()
         pendingQuestions.removeAll()
     }
@@ -200,7 +211,52 @@ public final class AppModel {
 
         await observeMuxState()
         await observeTetherMessages()
+        await observeWorkspace()
         await refreshSessions()
+    }
+
+    /// 订阅工作区流：归档/置顶集合只有这一条路能拿到。
+    /// 它掉线不影响聊天（列表页仍然能用），所以失败只记日志、自己重订阅。
+    private func observeWorkspace() async {
+        workspaceTask?.cancel()
+        workspaceTask = Task { [weak self] in
+            var attempt = 0
+            while !Task.isCancelled {
+                guard let self else { return }
+                do {
+                    for try await frame in self.client.workspaceFollow() {
+                        if Task.isCancelled { return }
+                        await self.apply(workspaceFrame: frame)
+                        attempt = 0
+                    }
+                } catch {
+                    if Task.isCancelled { return }
+                    await self.noteWorkspaceStreamFailure(error)
+                }
+                if Task.isCancelled { return }
+                attempt += 1
+                try? await Task.sleep(for: RetryPolicy.default.delay(afterAttempt: attempt))
+            }
+        }
+    }
+
+    private func apply(workspaceFrame frame: WorkspaceFrame) async {
+        switch frame {
+        case .baseline(let archived, let pinned, _):
+            archivedSessionIds = Set(archived)
+            pinnedSessionIds = Set(pinned)
+            logs.log(.info, "工作区基线：\(archived.count) 个已归档、\(pinned.count) 个已置顶")
+        case .archived(let ids):
+            archivedSessionIds = Set(ids)
+        case .pinned(let ids):
+            pinnedSessionIds = Set(ids)
+        case .workspaces, .other:
+            break
+        }
+    }
+
+    private func noteWorkspaceStreamFailure(_ error: any Error) async {
+        logs.log(.warning, "工作区流断开：\(error.localizedDescription)")
     }
 
     private func observeMuxState() async {
@@ -243,10 +299,46 @@ public final class AppModel {
         }
     }
 
-    func archive(_ sessionId: String) async {
+    /// 未归档的会话 —— 列表页只显示这些。
+    var activeSessions: [SessionSummary] {
+        SessionPartition.active(sessions, archived: archivedSessionIds)
+    }
+
+    /// 已归档的会话 —— 统一在设置里管理，不混进对话列表。
+    var archivedSessions: [SessionSummary] {
+        SessionPartition.archived(sessions, archived: archivedSessionIds)
+    }
+
+    /// 归档一个会话。
+    ///
+    /// `stopActivity` 对应宿主的一个硬规则：**有活跃 turn 或 job 的会话会被拒绝归档**
+    /// （错误码 `workspace/session-active`，本机实测）。所以 UI 在会话正在跑时要先问一句，
+    /// 用户同意才带 `stopActivity: true` —— 而不是悄悄把他的任务停掉。
+    func archive(_ sessionId: String, stopActivity: Bool = false) async {
         do {
-            try await client.archiveSession(sessionId: sessionId)
+            // 宿主返回**完整**的已归档集合，直接采纳，不要自己维护增量。
+            archivedSessionIds = Set(try await client.archiveSession(sessionId: sessionId, stopActivity: stopActivity))
             sessions.removeAll { $0.sessionId == sessionId }
+        } catch let error as DSHClientError {
+            sessionListError = archiveFailureMessage(error)
+        } catch {
+            sessionListError = error.localizedDescription
+        }
+    }
+
+    /// 归档失败的文案：`workspace/session-active` 是唯一需要特殊处理的一种 ——
+    /// 它是"可执行的失败"，要告诉用户下一步做什么。
+    private func archiveFailureMessage(_ error: DSHClientError) -> String {
+        if case .remote(let remote) = error, remote.code == "workspace/session-active" {
+            return String(localized: "这个会话正在跑，DSH 不允许直接归档。先停下它再归档。")
+        }
+        return error.displayMessage
+    }
+
+    func unarchive(_ sessionId: String) async {
+        do {
+            archivedSessionIds = Set(try await client.unarchiveSession(sessionId: sessionId))
+            await refreshSessions()
         } catch {
             sessionListError = (error as? DSHClientError)?.displayMessage ?? error.localizedDescription
         }
@@ -441,4 +533,22 @@ actor NotificationCenterAdapter {
 
 extension MuxClient.MuxState {
     var isHealthy: Bool { if case .connected = self { return true }; return false }
+}
+
+
+/// 会话按"归档与否"分流。
+///
+/// 抽成纯函数是为了能单测：归档集合来自 `workspace/follow`，会话列表来自
+/// `session/list`，两条流到达顺序不定 —— 分流规则错了的表现是"归档了还在列表里"
+/// 或者"刚恢复就消失"，都不是能靠肉眼稳定复现的。
+enum SessionPartition {
+    static func active(_ sessions: [SessionSummary], archived: Set<String>) -> [SessionSummary] {
+        sessions.filter { !archived.contains($0.sessionId) }
+    }
+
+    static func archived(_ sessions: [SessionSummary], archived: Set<String>) -> [SessionSummary] {
+        sessions
+            .filter { archived.contains($0.sessionId) }
+            .sorted { $0.updatedAt > $1.updatedAt }
+    }
 }
