@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>zh-Hans</string>
+	<key>CFBundleDisplayName</key>
+	<string>DSH Pocket</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+	</dict>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+
+	<!-- 只放行回环 + .local + 链路本地；绝不用 NSAllowsArbitraryLoads 全关（见 docs/TRANSPORT.md §6）。
+	     我们只连 127.0.0.1 上由 TetherKit 起的本地代理。 -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+
+	<!-- iOS 14 起，同网段私网 IP 的收发受内核层 Local Network Privacy 管控；
+	     iroh 用的原始 UDP socket 同样受限。缺这个键系统既不弹窗也不放行，
+	     表现为 connect timed out 且电脑端完全收不到连接。 -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>用于发现并直连同一局域网内已配对的电脑。打洞成功时数据不经过任何中转，更快也更省流量。</string>
+
+	<!-- 用 PhotosPicker 时系统不强制声明，但声明了才能给出明确的用途说明。 -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>选择照片后作为消息附件发送给你自己的电脑。照片只发给你已配对的电脑，不会上传到任何第三方。</string>
+
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>把电脑端返回的图片保存到你的相册。</string>
+
+	<key>NSCameraUsageDescription</key>
+	<string>用相机扫描电脑上显示的配对二维码，完成与你自己电脑的配对。</string>
+
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+</dict>
+</plist>

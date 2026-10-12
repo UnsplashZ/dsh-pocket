@@ -1,0 +1,2692 @@
+{
+  "sourceLanguage": "zh-Hans",
+  "strings": {
+    "%.1f 秒": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%.1f s"
+          }
+        }
+      }
+    },
+    "%@，%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@, %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(entry.text)，\\(statusLabel(entry.status))"
+          }
+        }
+      }
+    },
+    "%lld 个会话": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld sessions"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(group.sessions.count) 个会话"
+          }
+        }
+      }
+    },
+    "%lld 个待回答": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld to answer"
+          }
+        }
+      }
+    },
+    "%lld 个待批准": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld to approve"
+          }
+        }
+      }
+    },
+    "%lld 个问题": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld questions"
+          }
+        }
+      }
+    },
+    "%lld 分 %lld 秒": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld min %lld s"
+          }
+        }
+      }
+    },
+    "%lld 毫秒": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld ms"
+          }
+        }
+      }
+    },
+    "6 位配对码": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "6-digit pairing code"
+          }
+        }
+      }
+    },
+    "App 内的本地代理只监听 127.0.0.1，但手机上其它 App 可以连上它，而且端口可以由主机 ID 推算出来。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The in-app local proxy listens on 127.0.0.1 only, but other apps on this phone can connect to it, and the port is derivable from the host ID."
+          }
+        }
+      }
+    },
+    "App 内的本地代理只监听 127.0.0.1，但手机上其它 App 可以连上它，而且端口能由主机 ID 推算出来。一期如实告知，后续会加进程内握手令牌。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The in-app local proxy listens on 127.0.0.1 only, but other apps on this phone can connect to it, and the port is derivable from the host ID. We tell you now; an in-process handshake token comes later."
+          }
+        }
+      }
+    },
+    "DSH Pocket": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DSH Pocket"
+          }
+        }
+      }
+    },
+    "DSH Pocket 是独立社区项目，与 DeepSeek 官方无隶属关系。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DSH Pocket is an independent community project, not affiliated with DeepSeek."
+          }
+        }
+      }
+    },
+    "unary · session/list": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "unary · session/list"
+          }
+        }
+      }
+    },
+    "一期如实告知；后续可加一个进程内的随机握手令牌（需要电脑端配合）。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "We say so up front; a random in-process handshake token can be added later (it needs the computer side to cooperate)."
+          }
+        }
+      }
+    },
+    "一轮跑完": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn finished"
+          }
+        }
+      }
+    },
+    "上一层": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Up"
+          }
+        }
+      }
+    },
+    "上一步没成功": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The last step didn’t go through"
+          }
+        }
+      }
+    },
+    "上下文已压缩": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Context compacted"
+          }
+        }
+      }
+    },
+    "不采集分析数据": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No analytics"
+          }
+        }
+      }
+    },
+    "两条如实告知的边界": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Two boundaries we tell you about"
+          }
+        }
+      }
+    },
+    "中转（仅密文）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Relay (ciphertext only)"
+          }
+        }
+      }
+    },
+    "主机": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Computers"
+          }
+        }
+      }
+    },
+    "主题": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Theme"
+          }
+        }
+      }
+    },
+    "产物": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deliverables"
+          }
+        }
+      }
+    },
+    "代码": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Code"
+          }
+        }
+      }
+    },
+    "会话": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sessions"
+          }
+        }
+      }
+    },
+    "会话会在所选工作区里创建。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The session is created in the workspace you pick."
+          }
+        }
+      }
+    },
+    "会话操作": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Session actions"
+          }
+        }
+      }
+    },
+    "会话时间线，流式追加": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Streaming session timeline"
+          }
+        }
+      }
+    },
+    "你的回答": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your answer"
+          }
+        }
+      }
+    },
+    "你的数据只在你的设备之间": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your data stays between your devices"
+          }
+        }
+      }
+    },
+    "你说：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You said: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你说：\\(message.text)"
+          }
+        }
+      }
+    },
+    "保存": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save"
+          }
+        }
+      }
+    },
+    "关于": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "About"
+          }
+        }
+      }
+    },
+    "关闭": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close"
+          }
+        }
+      }
+    },
+    "其它（可选）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Other (optional)"
+          }
+        }
+      }
+    },
+    "再试一次": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Try again"
+          }
+        }
+      }
+    },
+    "凭证与内容都在你的电脑上": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Credentials and content live on your computer"
+          }
+        }
+      }
+    },
+    "出错结束": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ended with an error"
+          }
+        }
+      }
+    },
+    "分享这轮对话": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Share this conversation"
+          }
+        }
+      }
+    },
+    "切换只影响这个会话。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Switching only affects this session."
+          }
+        }
+      }
+    },
+    "切换模型": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Change model"
+          }
+        }
+      }
+    },
+    "刚刚": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Just now"
+          }
+        }
+      }
+    },
+    "刷新": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh"
+          }
+        }
+      }
+    },
+    "动作": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actions"
+          }
+        }
+      }
+    },
+    "助手回复": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Assistant reply"
+          }
+        }
+      }
+    },
+    "协议自检": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Protocol self-check"
+          }
+        }
+      }
+    },
+    "压缩完成": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compaction finished"
+          }
+        }
+      }
+    },
+    "原生 SwiftUI 界面，直接和电脑上的 DSH 说话：看时间线、发消息、批审批、看产物。不经过任何第三方服务器。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A native SwiftUI client that talks straight to DSH on your computer: read the timeline, send messages, approve actions, collect deliverables. No third-party server involved."
+          }
+        }
+      }
+    },
+    "参数": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arguments"
+          }
+        }
+      }
+    },
+    "发送中…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sending…"
+          }
+        }
+      }
+    },
+    "取消": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel"
+          }
+        }
+      }
+    },
+    "只在打开开关时才向系统申请通知权限。App 退到后台会断开与电脑的连接（iOS 不允许常驻），所以通知是本地提醒，不是实时推送。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notification permission is requested only when you turn a switch on. The app disconnects from your computer in the background (iOS doesn’t allow persistent connections), so these are local reminders rather than live push."
+          }
+        }
+      }
+    },
+    "可以手动输入 6 位配对码。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You can type the 6-digit code instead."
+          }
+        }
+      }
+    },
+    "可用模型": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Available models"
+          }
+        }
+      }
+    },
+    "名称": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Name"
+          }
+        }
+      }
+    },
+    "图片": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Image"
+          }
+        }
+      }
+    },
+    "图片附件": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Image attachment"
+          }
+        }
+      }
+    },
+    "在下面输入第一句话。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Type your first message below."
+          }
+        }
+      }
+    },
+    "在左侧选一个会话开始；也可以下拉刷新列表。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pick a session on the left, or pull to refresh."
+          }
+        }
+      }
+    },
+    "在电脑上开一个会话，或者在这里新建一个。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start a session on your computer, or create one here."
+          }
+        }
+      }
+    },
+    "在电脑上打开 DSH 的「连接手机」，它会显示一个二维码和 6 位配对码。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open “Connect phone” in DSH on your computer — it shows a QR code and a 6-digit pairing code."
+          }
+        }
+      }
+    },
+    "复制会话 ID": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy session ID"
+          }
+        }
+      }
+    },
+    "复制路径": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy path"
+          }
+        }
+      }
+    },
+    "外观": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appearance"
+          }
+        }
+      }
+    },
+    "失败": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed"
+          }
+        }
+      }
+    },
+    "安全声明只有在说清边界时才有意义。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A security claim is only worth something when its boundaries are spelled out."
+          }
+        }
+      }
+    },
+    "完成": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Done"
+          }
+        }
+      }
+    },
+    "审批在你的手机上决定": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Approvals decided on your phone"
+          }
+        }
+      }
+    },
+    "审批请求：%@。%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Approval request: %@. %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "审批请求：\\(approval.toolName)。\\(approval.reason)"
+          }
+        }
+      }
+    },
+    "导出日志": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export log"
+          }
+        }
+      }
+    },
+    "展开查看模型的推理过程": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show the model’s reasoning"
+          }
+        }
+      }
+    },
+    "工作区": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Workspace"
+          }
+        }
+      }
+    },
+    "工作区文件": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Workspace files"
+          }
+        }
+      }
+    },
+    "工具 %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tool %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工具 \\(call.name)"
+          }
+        }
+      }
+    },
+    "工具调用折叠成一行，点开看参数与输出": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tool calls collapse to one row — tap for arguments and output"
+          }
+        }
+      }
+    },
+    "已中断": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Interrupted"
+          }
+        }
+      }
+    },
+    "已取消": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancelled"
+          }
+        }
+      }
+    },
+    "已始终允许": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Always allowed"
+          }
+        }
+      }
+    },
+    "已完成": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Done"
+          }
+        }
+      }
+    },
+    "已批准一次": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allowed once"
+          }
+        }
+      }
+    },
+    "已拒绝": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rejected"
+          }
+        }
+      }
+    },
+    "已断开：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disconnected: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已断开：\\(reason)"
+          }
+        }
+      }
+    },
+    "已经能在你电脑上执行代码的人，可以伪造回环 Host 通过栅栏、自签配对码，把自己配成一台「手机」。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anyone who can already run code on your computer can forge the loopback Host to pass the fence and mint their own pairing code, enrolling themselves as a “phone”."
+          }
+        }
+      }
+    },
+    "已经能在你电脑上执行代码的人，可以伪造回环请求、自签配对码，把自己配成一台「手机」。所以不要把本 App 用在你同时跑不可信代码的电脑上。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anyone who can already run code on your computer can forge loopback requests and mint their own pairing code, enrolling themselves as a “phone”. So don’t use this app on a computer where you also run untrusted code."
+          }
+        }
+      }
+    },
+    "已被压缩取代的 %lld 条内容": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld items replaced by compaction"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已被压缩取代的 \\(session.shadowedItems.count) 条内容"
+          }
+        }
+      }
+    },
+    "已裁剪旧工具结果": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trimmed old tool results"
+          }
+        }
+      }
+    },
+    "已进入计划模式": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entered plan mode"
+          }
+        }
+      }
+    },
+    "已连接": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connected"
+          }
+        }
+      }
+    },
+    "已退出计划模式": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Left plan mode"
+          }
+        }
+      }
+    },
+    "已配对过的电脑会自动填上；第一次配对时也可以整串粘贴到这里。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A previously paired computer fills this in. You can also paste the whole pairing string here."
+          }
+        }
+      }
+    },
+    "开发直连": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dev direct"
+          }
+        }
+      }
+    },
+    "开始压缩上下文": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compacting context"
+          }
+        }
+      }
+    },
+    "归档": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Archive"
+          }
+        }
+      }
+    },
+    "待办": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "To-dos"
+          }
+        }
+      }
+    },
+    "待处理": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pending"
+          }
+        }
+      }
+    },
+    "忘记": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Forget"
+          }
+        }
+      }
+    },
+    "快照 %lld 条事件": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Snapshot with %lld events"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "快照 \\(count) 条事件"
+          }
+        }
+      }
+    },
+    "思考过程": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reasoning"
+          }
+        }
+      }
+    },
+    "成功": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Succeeded"
+          }
+        }
+      }
+    },
+    "我们做什么": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "What we do"
+          }
+        }
+      }
+    },
+    "所以：**不要把本 App 用在你同时跑不可信代码的电脑上。**": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "So: **don’t use this app on a computer where you also run untrusted code.**"
+          }
+        }
+      }
+    },
+    "手动输入": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter manually"
+          }
+        }
+      }
+    },
+    "手动输入配对码": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter the pairing code"
+          }
+        }
+      }
+    },
+    "手机和电脑之间走点对点加密（iroh）。打洞成功时数据不经过任何第三方；回退中转时，中转只能看到密文。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Phone and computer talk over encrypted peer-to-peer iroh. When hole-punching succeeds nothing goes through a third party; on relay fallback the relay only sees ciphertext."
+          }
+        }
+      }
+    },
+    "手机端": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "On the phone"
+          }
+        }
+      }
+    },
+    "手机端的已知边界": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Known boundary on the phone"
+          }
+        }
+      }
+    },
+    "打开待处理列表": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open the pending list"
+          }
+        }
+      }
+    },
+    "打开这个会话": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open this session"
+          }
+        }
+      }
+    },
+    "扫描电脑上的二维码": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scan the QR code on your computer"
+          }
+        }
+      }
+    },
+    "批准一次": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow once"
+          }
+        }
+      }
+    },
+    "把电脑上的二维码放进取景框": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Point the camera at the QR code on your computer"
+          }
+        }
+      }
+    },
+    "把电脑上的会话带到手机上": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your computer’s sessions, on your phone"
+          }
+        }
+      }
+    },
+    "拒绝": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reject"
+          }
+        }
+      }
+    },
+    "拿到 %lld 个会话": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Got %lld sessions"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拿到 \\(sessions.count) 个会话"
+          }
+        }
+      }
+    },
+    "推理强度": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reasoning effort"
+          }
+        }
+      }
+    },
+    "提交回答": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Submit answer"
+          }
+        }
+      }
+    },
+    "搜索标题或摘要": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search titles and summaries"
+          }
+        }
+      }
+    },
+    "文件": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "File"
+          }
+        }
+      }
+    },
+    "断开": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Offline"
+          }
+        }
+      }
+    },
+    "新建会话": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New session"
+          }
+        }
+      }
+    },
+    "日志只留在本机内存里，不会外发；要给别人看就手动导出。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The log stays in local memory and is never sent anywhere; export it manually if you need to share it."
+          }
+        }
+      }
+    },
+    "显示全部日志": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show full log"
+          }
+        }
+      }
+    },
+    "显示模型可见的原始事件": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show raw model-facing events"
+          }
+        }
+      }
+    },
+    "最近日志": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recent log"
+          }
+        }
+      }
+    },
+    "最高": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max"
+          }
+        }
+      }
+    },
+    "有一条操作在等你批准": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "An action is waiting for your approval"
+          }
+        }
+      }
+    },
+    "未启动": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not started"
+          }
+        }
+      }
+    },
+    "未开始": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not started"
+          }
+        }
+      }
+    },
+    "未连接": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not connected"
+          }
+        }
+      }
+    },
+    "未选择": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not selected"
+          }
+        }
+      }
+    },
+    "本项目以 MIT 许可发布。以上组件各自保留原许可与版权声明。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This project is released under the MIT license. Each component above keeps its own license and copyright notice."
+          }
+        }
+      }
+    },
+    "查看全部 / 分享": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View all / Share"
+          }
+        }
+      }
+    },
+    "标题": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Title"
+          }
+        }
+      }
+    },
+    "格式是「电脑 ID#配对码」，整串粘进来会自动拆开。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The format is “computer-id#code”; pasting the whole string splits it automatically."
+          }
+        }
+      }
+    },
+    "模型": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Model"
+          }
+        }
+      }
+    },
+    "正在生成": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Generating"
+          }
+        }
+      }
+    },
+    "正在补更早的内容": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading earlier content"
+          }
+        }
+      }
+    },
+    "正在读取会话内容": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading this session"
+          }
+        }
+      }
+    },
+    "正在运行": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Running"
+          }
+        }
+      }
+    },
+    "正在连接电脑…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connecting to your computer…"
+          }
+        }
+      }
+    },
+    "没有待处理的事": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing pending"
+          }
+        }
+      }
+    },
+    "没有收到快照": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No snapshot received"
+          }
+        }
+      }
+    },
+    "没有遥测、没有账号、没有云端": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No telemetry, no account, no cloud"
+          }
+        }
+      }
+    },
+    "流 · session/follow": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "stream · session/follow"
+          }
+        }
+      }
+    },
+    "浏览工作区文件": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Browse workspace files"
+          }
+        }
+      }
+    },
+    "消息": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Message"
+          }
+        }
+      }
+    },
+    "添加电脑": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add computer"
+          }
+        }
+      }
+    },
+    "添加附件": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add attachment"
+          }
+        }
+      }
+    },
+    "点按全屏查看": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tap to view full screen"
+          }
+        }
+      }
+    },
+    "照片": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Photo"
+          }
+        }
+      }
+    },
+    "用系统 QuickLook 预览，不下载到别处": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preview with the system QuickLook — nothing is copied elsewhere"
+          }
+        }
+      }
+    },
+    "电脑 ID": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Computer ID"
+          }
+        }
+      }
+    },
+    "电脑 ID（可选）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Computer ID (optional)"
+          }
+        }
+      }
+    },
+    "电脑上「连接手机」对话框里显示的那 6 个数字。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The six digits shown in the “Connect phone” dialog on your computer."
+          }
+        }
+      }
+    },
+    "电脑上有一个操作在等你批准。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "An action on your computer is waiting for approval."
+          }
+        }
+      }
+    },
+    "电脑上有操作要你批准时会出现在这里。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Approvals from your computer show up here."
+          }
+        }
+      }
+    },
+    "电脑上有操作要你批准时会推到你面前": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When your computer needs approval, it comes to you"
+          }
+        }
+      }
+    },
+    "电脑在等你回答": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your computer is waiting for an answer"
+          }
+        }
+      }
+    },
+    "电脑没有返回模型清单。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your computer returned no model list."
+          }
+        }
+      }
+    },
+    "电脑端": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "On the computer"
+          }
+        }
+      }
+    },
+    "电脑端按这把公钥授权给这台手机；换手机或重置身份后需要重新配对。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your computer authorizes this phone by this public key. A new phone, or a reset identity, needs pairing again."
+          }
+        }
+      }
+    },
+    "电脑端提示：有操作待批准": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "From your computer: an action needs approval"
+          }
+        }
+      }
+    },
+    "电脑端的已知边界": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Known boundary on the computer"
+          }
+        }
+      }
+    },
+    "电脑端结束了这条会话流": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your computer closed this session stream"
+          }
+        }
+      }
+    },
+    "目标已更新": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Goal updated"
+          }
+        }
+      }
+    },
+    "直连（打洞成功）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Direct (hole-punched)"
+          }
+        }
+      }
+    },
+    "知道了": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Got it"
+          }
+        }
+      }
+    },
+    "移除附件 %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove attachment %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除附件 \\(attachment.name)"
+          }
+        }
+      }
+    },
+    "稍后处理": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Later"
+          }
+        }
+      }
+    },
+    "端到端加密": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "End-to-end encryption"
+          }
+        }
+      }
+    },
+    "第 %lld 轮": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn %lld"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "第 \\(turn) 轮"
+          }
+        }
+      }
+    },
+    "第 %lld 轮，%@ 开始": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn %lld, started %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "第 \\(turn) 轮，\\(Format.time(item.time)) 开始"
+          }
+        }
+      }
+    },
+    "第 %lld 轮：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn %lld: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "第 \\(turn) 轮：\\(reasonLabel(reason))"
+          }
+        }
+      }
+    },
+    "第三方组件": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Third-party components"
+          }
+        }
+      }
+    },
+    "第三方组件与许可": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Third-party components and licenses"
+          }
+        }
+      }
+    },
+    "等你回答": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting for your answer"
+          }
+        }
+      }
+    },
+    "等待审批": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting for approval"
+          }
+        }
+      }
+    },
+    "粘贴配对串": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paste the pairing string"
+          }
+        }
+      }
+    },
+    "给电脑说点什么…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Say something to your computer…"
+          }
+        }
+      }
+    },
+    "自检直接打 DSH 的客户端协议（unary + 流），不经过界面。宿主升级后出问题，先看这里。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The self-check calls DSH’s client protocol directly (unary + streams), bypassing the UI. If a host upgrade breaks something, look here first."
+          }
+        }
+      }
+    },
+    "补充说明（可选）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Additional notes (optional)"
+          }
+        }
+      }
+    },
+    "认不出的事件 %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unrecognized event %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "认不出的事件 \\(type)"
+          }
+        }
+      }
+    },
+    "设置": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Settings"
+          }
+        }
+      }
+    },
+    "访问权由这台手机的公钥决定": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Access is granted by this phone’s public key"
+          }
+        }
+      }
+    },
+    "诊断": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnostics"
+          }
+        }
+      }
+    },
+    "读不到会话": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn’t load sessions"
+          }
+        }
+      }
+    },
+    "读不到文件": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn’t read the folder"
+          }
+        }
+      }
+    },
+    "读不到模型清单": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn’t load the model list"
+          }
+        }
+      }
+    },
+    "跑一次协议自检": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Run a protocol self-check"
+          }
+        }
+      }
+    },
+    "跟随默认": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use default"
+          }
+        }
+      }
+    },
+    "跳到最新": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jump to latest"
+          }
+        }
+      }
+    },
+    "跳过": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skip"
+          }
+        }
+      }
+    },
+    "载入更早的内容": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Load earlier content"
+          }
+        }
+      }
+    },
+    "运行中": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Running"
+          }
+        }
+      }
+    },
+    "还没有会话": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No sessions yet"
+          }
+        }
+      }
+    },
+    "还没有日志。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No log entries yet."
+          }
+        }
+      }
+    },
+    "还没有配对过任何电脑。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No computers paired yet."
+          }
+        }
+      }
+    },
+    "这一轮结束": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn finished"
+          }
+        }
+      }
+    },
+    "这个 App 只是一个远程控制端": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This app is only a remote control"
+          }
+        }
+      }
+    },
+    "这个二维码里没有配对信息。请确认扫的是 DSH「连接手机」显示的那一个。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That QR code has no pairing information. Make sure you scanned the one from DSH’s “Connect phone”."
+          }
+        }
+      }
+    },
+    "这个会话还是空的": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This session is empty"
+          }
+        }
+      }
+    },
+    "这个目录是空的": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This folder is empty"
+          }
+        }
+      }
+    },
+    "这台手机的设备 ID：%@…\n电脑端按这把公钥授权；删掉它需要重新配对。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This phone’s device ID: %@…\nYour computer authorizes by this public key; deleting it requires pairing again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台手机的设备 ID：\\(model.localEndpointId.prefix(16))…\n电脑端按这把公钥授权；删掉它需要重新配对。"
+          }
+        }
+      }
+    },
+    "这台电脑上暂时不可用": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unavailable on this computer"
+          }
+        }
+      }
+    },
+    "这台设备不能扫码": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This device can’t scan codes"
+          }
+        }
+      }
+    },
+    "这是一个子会话": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This is a subagent session"
+          }
+        }
+      }
+    },
+    "进行中": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In progress"
+          }
+        }
+      }
+    },
+    "远端连接": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remote"
+          }
+        }
+      }
+    },
+    "连不上时先看电脑端：sidecar 进程在不在、DSH 是否还在 127.0.0.1:19387、系统「本地网络」权限是否放行。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When it won’t connect, check the computer first: is the sidecar running, is DSH still on 127.0.0.1:19387, and has the system granted Local Network access."
+          }
+        }
+      }
+    },
+    "连不上电脑": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Can’t reach your computer"
+          }
+        }
+      }
+    },
+    "连接": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connect"
+          }
+        }
+      }
+    },
+    "连接与协议": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection and protocol"
+          }
+        }
+      }
+    },
+    "连接中": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connecting"
+          }
+        }
+      }
+    },
+    "连接中…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connecting…"
+          }
+        }
+      }
+    },
+    "连接失败": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection failed"
+          }
+        }
+      }
+    },
+    "连接断了，正在重连": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection dropped — reconnecting"
+          }
+        }
+      }
+    },
+    "连接没有完成，请再试一次。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The connection didn’t finish. Please try again."
+          }
+        }
+      }
+    },
+    "连接电脑": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connect to computer"
+          }
+        }
+      }
+    },
+    "选择": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose"
+          }
+        }
+      }
+    },
+    "选择一个会话": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select a session"
+          }
+        }
+      }
+    },
+    "通知": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notifications"
+          }
+        }
+      }
+    },
+    "配对没有成功": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pairing didn’t succeed"
+          }
+        }
+      }
+    },
+    "配对码": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pairing code"
+          }
+        }
+      }
+    },
+    "配对码 6 位、10 分钟、3 次尝试": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "6-digit code, 10 minutes, 3 attempts"
+          }
+        }
+      }
+    },
+    "配对窗口 10 分钟内有效，最多错 3 次。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The pairing window lasts 10 minutes and allows 3 attempts."
+          }
+        }
+      }
+    },
+    "重命名": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rename"
+          }
+        }
+      }
+    },
+    "重新拉会话列表": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reload session list"
+          }
+        }
+      }
+    },
+    "重新连接": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reconnect"
+          }
+        }
+      }
+    },
+    "重试": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry"
+          }
+        }
+      }
+    },
+    "重连中": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reconnecting"
+          }
+        }
+      }
+    },
+    "重连电脑": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reconnect to computer"
+          }
+        }
+      }
+    },
+    "附件": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Attachment"
+          }
+        }
+      }
+    },
+    "隐私与安全边界": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privacy and security boundaries"
+          }
+        }
+      }
+    },
+    "需要你决定": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your decision is needed"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

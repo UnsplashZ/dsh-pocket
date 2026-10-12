@@ -1,0 +1,166 @@
+name: DSHPocket
+options:
+  bundleIdPrefix: cc.zexa
+  deploymentTarget:
+    iOS: "17.5"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+# 依赖策略（见 docs/DECISIONS.md ADR-0010）：
+#   · 库的**真源**是 SwiftPM 包（ios/DSHKit、ios/TetherKit）——`swift test` 与 M0b spike 用它们；
+#   · App 侧把同一份**源码目录**编成工程内的静态框架 target，于是 `xcodebuild`
+#     完全不经过 Xcode 的 SwiftPM 解析（不需要网络、不受其状态影响）。
+#   · IrohLib 来自 ios/vendor/（ios/scripts/fetch-iroh.sh 一次取好，版本由脚本里的常量钉死），
+#     在工程里是 `IrohLib` 静态框架 + `Iroh` 二进制 xcframework。
+# 两边共用同一份源码，不存在"实现分叉"。
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    # 额外 Swift 参数的注入点：受限沙箱里需要 `-disable-sandbox`（见 ios/build.sh 的说明）。
+    # 默认是空的 —— 普通开发环境不需要禁用宏插件沙箱。
+    OTHER_SWIFT_FLAGS: "$(inherited) $(DSH_POCKET_SWIFT_FLAGS)"
+    SWIFT_EMIT_LOC_STRINGS: YES
+    SWIFT_STRICT_CONCURRENCY: minimal
+    IPHONEOS_DEPLOYMENT_TARGET: "17.5"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    DEAD_CODE_STRIPPING: YES
+    CLANG_ENABLE_MODULES: YES
+
+targets:
+  # ── iroh 官方 Swift 绑定（vendor 源码 + vendor xcframework）────────────────
+  IrohLib:
+    type: framework
+    platform: iOS
+    sources:
+      - path: vendor/IrohLib.swift
+    dependencies:
+      - framework: vendor/Iroh.xcframework
+        embed: false
+        link: true
+    settings:
+      base:
+        MACH_O_TYPE: staticlib
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_MODULE_NAME: IrohLib
+        PRODUCT_BUNDLE_IDENTIFIER: cc.zexa.irohlib
+        # iroh 的 netdev 用 Network.framework 枚举接口；netwatch 在 macOS 上还要 CoreWLAN
+        OTHER_LDFLAGS:
+          - "$(inherited)"
+          - "-framework"
+          - "Network"
+          - "-framework"
+          - "SystemConfiguration"
+        SKIP_INSTALL: YES
+        ENABLE_PREVIEWS: NO
+
+  # ── DSH 客户端协议层（无第三方依赖）──────────────────────────────────────
+  DSHKit:
+    type: framework
+    platform: iOS
+    sources:
+      - path: DSHKit/Sources/DSHKit
+    settings:
+      base:
+        MACH_O_TYPE: staticlib
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_MODULE_NAME: DSHKit
+        PRODUCT_BUNDLE_IDENTIFIER: cc.zexa.dshkit
+        SKIP_INSTALL: YES
+        ENABLE_PREVIEWS: NO
+
+  # ── 传输层：iroh + DLP + 本地 TCP 代理 ────────────────────────────────────
+  TetherKit:
+    type: framework
+    platform: iOS
+    sources:
+      - path: TetherKit/Sources/TetherKit
+    dependencies:
+      - target: IrohLib
+      - framework: vendor/Iroh.xcframework
+        embed: false
+        link: true
+      - sdk: Security.framework
+      - sdk: Network.framework
+      - sdk: SystemConfiguration.framework
+    settings:
+      base:
+        MACH_O_TYPE: staticlib
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_MODULE_NAME: TetherKit
+        PRODUCT_BUNDLE_IDENTIFIER: cc.zexa.tetherkit
+        SKIP_INSTALL: YES
+        ENABLE_PREVIEWS: NO
+
+  # ── App ──────────────────────────────────────────────────────────────────
+  DSHPocket:
+    type: application
+    platform: iOS
+    # 只排除 Info.plist（它由 INFOPLIST_FILE 消费，不能再进 Resources 阶段，
+    # 否则会被当普通文件拷进去）。其余资源交给 xcodegen 按文件类型分类：
+    # .xcassets → Assets.car，.xcstrings → 各语言的 .lproj，.xcprivacy → 原样入包。
+    sources:
+      - path: DSHPocket
+        excludes:
+          - "Resources/Info.plist"
+    dependencies:
+      - target: DSHKit
+      - target: TetherKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: cc.zexa.dshpocket
+        PRODUCT_NAME: DSHPocket
+        INFOPLIST_FILE: DSHPocket/Resources/Info.plist
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: "0.2.0"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SUPPORTS_MACCATALYST: NO
+        # iroh 的 netdev 在 Apple 平台上用 Network.framework（接口枚举）与
+        # SystemConfiguration（接口/DNS 属性）。SwiftPM 侧由包的 linkerSettings 声明，
+        # 工程内 target 必须自己加，否则报 `_kSCNetworkProtocolTypeIPv6` 未定义。
+        OTHER_LDFLAGS:
+          - "$(inherited)"
+          - "-framework"
+          - "Network"
+          - "-framework"
+          - "SystemConfiguration"
+        # 关掉 Previews：Xcode 16 与 SwiftPM 同图时的已知问题
+        ENABLE_PREVIEWS: NO
+        SWIFT_UPCOMING_FEATURE_EXISTENTIAL_ANY: NO
+
+  # ── App 层单测（库自己的测试在 ios/DSHKit/Tests、ios/TetherKit/Tests，用 swift test）──
+  DSHPocketTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: DSHPocketTests
+    dependencies:
+      - target: DSHPocket
+      - target: DSHKit
+      - target: TetherKit
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: cc.zexa.dshpocket.tests
+        ENABLE_PREVIEWS: NO
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/DSHPocket.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/DSHPocket"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        # 测试包会被嵌进 App 的 PlugIns/ 再由测试宿主 dlopen。模拟器上必须是
+        # **adhoc 签名**的，否则报 "Trying to load an unsigned library"。
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        DEVELOPMENT_TEAM: ""
+
+schemes:
+  DSHPocket:
+    build:
+      targets:
+        DSHPocket: all
+        DSHPocketTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      gatherCoverageData: false
+      targets:
+        - DSHPocketTests
