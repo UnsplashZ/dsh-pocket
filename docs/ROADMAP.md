@@ -24,8 +24,8 @@
 - [x] `tools/direct-gateway.mjs`：注入 cookie 的本地代理（HTTP + WS 升级都通，DEV-DIRECT 用）
 - [x] **枚举端点并核对**：读 DSH 本机安装的 `dsh-api-remotes` 允许清单（27 条转发事件，
       其中 `approval/request`、`user-questions/request` 是 waterfall）→ 更新本文档与 PROTOCOL-NOTES
-- [x] `session/prompt` 在活服务器上真的发出去过（`testLivePromptIsAccepted`？没有——见下方说明）
-- [x] `session/prompt` / `session/cancel` / `session/selectModel` 三条请求形状核对并实跑通过
+- [x] `session/prompt` 在活服务器上**真的发出去过**（`testLivePromptIsAccepted`：建临时会话 → 发一条 → 断言 accepted → cancel）
+- [x] `session/cancel` / `session/selectModel` 同样实跑通过
       （踩过的坑：`mode` 必填、图片内联 base64、`cancel` 只收 sessionId、`selectModel` 是扁平的）
 - [x] `session/follow` **半实时**验证：另一个写入者追加的事件 0.5 秒内到达（`testFollowDeliversEventsAppendedByAnotherWriter`）
 - [ ] 抓一次真实 `approval/request`（waterfall），并用 `$events/result` 成功应答
