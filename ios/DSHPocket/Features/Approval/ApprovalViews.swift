@@ -9,13 +9,32 @@ import SwiftUI
 struct ApprovalCard: View {
     let approval: TimelineItem.Approval
     let item: TimelineItem
+    /// 这次要执行的东西。工参不在审批请求里，但**时间线里有** ——
+    /// 按 `callId` 找到那条 `tool/call` 就能拿出来。
+    /// 由调用方传进来，因为只有它手里有完整时间线。
+    var pendingArguments: String?
 
     @Environment(AppModel.self) private var model
     @State private var isWorking = false
     @State private var feedback = 0
+    @State private var showFullArguments = false
 
+    /// **权威的**待批来源是挂着的 waterfall，不是时间线。
+    ///
+    /// 时间线里的 `approval/asked` 可能已经过期（连接中断过、宿主重放过），
+    /// 也可能还没被 `approval/decided` 追上。按钮能不能用只看这条。
+    /// 关联靠 **`callId`**：waterfall 带的是 `callId`，而 `approval/asked` 里的 `id`
+    /// 是审批自身的 UUID，两者不是一回事。按 `id` 找永远找不到。
     private var request: WaterfallRequest? {
-        model.pendingApprovals.first { $0.eventId == approval.approvalId }
+        if let callId = approval.callId, !callId.isEmpty {
+            return model.pendingApprovals.first { $0.approvalCallId == callId }
+        }
+        return model.pendingApprovals.first { $0.approvalCallId == approval.approvalId }
+    }
+
+    /// 时间线说还欠着，但 waterfall 已经不在了 —— 这条再也答不了。
+    private var isOrphaned: Bool {
+        approval.isPending && request == nil
     }
 
     var body: some View {
@@ -32,15 +51,30 @@ struct ApprovalCard: View {
                     }
                 }
 
-                Text(approval.reason.isEmpty ? String(localized: "电脑上有一个操作在等你批准。") : approval.reason)
-                    .font(.body)
-                    .fixedSize(horizontal: false, vertical: true)
+                if let arguments = pendingArguments, !arguments.isEmpty, request != nil {
+                    ToolArgumentsPreview(
+                        toolName: approval.toolName,
+                        arguments: arguments,
+                        isExpanded: $showFullArguments
+                    )
+                } else {
+                    Label(approval.toolName, systemImage: "wrench.and.screwdriver")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
 
-                Label(approval.toolName, systemImage: "wrench.and.screwdriver")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                // 有活着的 waterfall 就用它的理由：那份是**给人看的**
+                // （`displayReason`，已按 locale 选好），比时间线里的机器版更像人话。
+                let reason = request?.approvalReason.isEmpty == false
+                    ? request!.approvalReason
+                    : approval.reason
+                if !reason.isEmpty {
+                    Text(reason)
+                        .font(.body)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
-                if approval.isPending {
+                if request != nil {
                     HStack(spacing: Token.Spacing.tight) {
                         Button {
                             decide(.rejected)
@@ -57,11 +91,17 @@ struct ApprovalCard: View {
                         }
                         .buttonStyle(.borderedProminent)
                     }
-                    .disabled(request == nil || isWorking)
+                    .disabled(isWorking)
 
-                    Button("稍后处理") { model.deferApproval(request ?? WaterfallPlaceholder.value) }
+                    Button("稍后处理") { model.deferApproval() }
                         .font(.footnote)
-                        .disabled(request == nil)
+                        .disabled(isWorking)
+                } else if isOrphaned {
+                    // 不摆一对按不动的按钮 —— 那是骗人。
+                    Label("这条已经不能在这里回答了（连接中断过，电脑会按默认方式继续）", systemImage: "wifi.slash")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 } else if let decidedAt = approval.decidedAt {
                     Text(Format.time(decidedAt))
                         .font(.caption2)
@@ -102,15 +142,69 @@ struct ApprovalCard: View {
     }
 }
 
-/// 「稍后处理」的占位：拿不到对应请求时不要假装能操作。
-enum WaterfallPlaceholder {
-    static let value = WaterfallRequest(json: .object([:]))
+/// 这次要执行什么。
+///
+/// 审批的意义全在"看清楚再做决定"上。参数经常很长（一整条 shell 命令、
+/// 一整份文件内容），所以默认折到 6 行、可以展开 —— 既不淹没卡片，
+/// 也不让用户闭着眼睛点批准。
+struct ToolArgumentsPreview: View {
+    let toolName: String
+    let arguments: String
+    @Binding var isExpanded: Bool
+
+    /// 折叠时只留 4 行：审批卡片下面紧跟着"批准/拒绝"，
+    /// 让一堵 JSON 墙把按钮顶到屏幕外是本末倒置。要看全的可以展开。
+    private static let collapsedLines = 4
+
+    private var isLong: Bool { arguments.count > 160 || arguments.contains("\n") }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Token.Spacing.hairline) {
+            HStack {
+                Label(toolName, systemImage: "wrench.and.screwdriver")
+                    .font(.caption.weight(.semibold))
+                Spacer()
+                if isLong {
+                    Button(isExpanded ? "收起" : "展开全部") {
+                        withAnimation(.snappy) { isExpanded.toggle() }
+                    }
+                    .font(.caption2)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.tint)
+                }
+            }
+            Text(verbatim: arguments)
+                .font(.caption.monospaced())
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(isExpanded ? nil : Self.collapsedLines)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(Token.Spacing.tight)
+                .background(
+                    RoundedRectangle(cornerRadius: Token.Radius.chip, style: .continuous)
+                        .fill(Color(.tertiarySystemFill))
+                )
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text(String(localized: "将要执行：\(toolName)")))
+    }
 }
 
 /// 把"等待审批"提升为模态（用户偏好路径）。点通知回到前台时用它。
 struct ApprovalSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
+
+    /// 这一条属于哪个会话。
+    @ViewBuilder
+    private func sessionHeader(for sessionId: String) -> some View {
+        if let title = model.sessionTitle(for: sessionId) {
+            Label(title, systemImage: "bubble.left.and.bubble.right")
+                .lineLimit(1)
+        } else {
+            Text("别的会话")
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -130,9 +224,17 @@ struct ApprovalSheet: View {
                                  ? String(localized: "电脑上有一个操作在等你批准。")
                                  : request.approvalReason)
                                 .font(.body)
+                                .fixedSize(horizontal: false, vertical: true)
                             Label(request.approvalToolName, systemImage: "wrench.and.screwdriver")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                            // 这里拿不到工参（那需要目标会话的时间线）。
+                            // 与其假装，不如指个路 —— 会话里的那张卡片会显示完整参数。
+                            if let title = model.sessionTitle(for: request.agentId) {
+                                Text(String(localized: "完整参数在「\(title)」那张卡片上。"))
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                            }
 
                             HStack(spacing: Token.Spacing.tight) {
                                 Button("拒绝") {
@@ -147,6 +249,8 @@ struct ApprovalSheet: View {
                                 .buttonStyle(.borderedProminent)
                             }
                         }
+                    } header: {
+                        sessionHeader(for: request.agentId)
                     }
                 }
 
@@ -155,6 +259,8 @@ struct ApprovalSheet: View {
                         UserQuestionForm(request: request) {
                             Task { await model.decline(question: request) }
                         }
+                    } header: {
+                        sessionHeader(for: request.agentId)
                     }
                 }
             }

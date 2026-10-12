@@ -36,6 +36,18 @@ public enum Token {
     /// 触摸目标下限。任何可点元素都要 ≥ 这个值（含 `contentShape`）。
     public static let minimumHitTarget: CGFloat = 44
 
+    /// 圆形控件（输入区的附件/发送、行尾的动作按钮）。
+    ///
+    /// 放在这里是为了让**并排的按钮由同一个数字产出** —— 样式手抄两遍必然漂移，
+    /// 实测漂移过一次：一个 20pt 字形配 44pt 圆底，另一个是 30pt 的实心圆符号，
+    /// 并排看就是"图标大小不一致"。
+    public enum Control {
+        /// 圆的直径。
+        public static let diameter: CGFloat = 36
+        /// 圆里字形的字号。
+        public static let glyph: CGFloat = 17
+    }
+
     /// 时间线自动滚动的"贴底"判定容差。
     public static let stickToBottomTolerance: CGFloat = 48
 }

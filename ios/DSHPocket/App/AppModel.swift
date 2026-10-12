@@ -78,6 +78,15 @@ public final class AppModel {
     /// 等用户决定的审批/提问。**App 永不自动决策**（IOS-DESIGN §4 S4）。
     private(set) var pendingApprovals: [WaterfallRequest] = []
     private(set) var pendingQuestions: [WaterfallRequest] = []
+    /// 某条 waterfall 属于哪个会话（用于"来自「某某」"）。
+    ///
+    /// 待处理横幅是**全局**的 —— 你在首页时它也会亮。所以每一条都必须说清
+    /// 自己属于哪个会话，否则用户知道"有人在等"，但不知道该去哪儿。
+    func sessionTitle(for sessionId: String) -> String? {
+        guard !sessionId.isEmpty else { return nil }
+        return sessions.first { $0.sessionId == sessionId }?.title
+    }
+
     /// 连接换代导致待处理作废时给用户的一句说明。
     var waterfallAbandonedMessage: String?
 
@@ -765,7 +774,11 @@ public final class AppModel {
     }
 
     /// 把一条 waterfall 收起来"稍后处理"（UI 层只是把它从当前聚焦移开，仍然欠着应答）。
-    func deferApproval(_ request: WaterfallRequest) {
+    /// 把审批卡片收起来"稍后处理"。
+    ///
+    /// **不动 waterfall** —— 它仍然挂着，等用户回来。以前这里收一个 `WaterfallRequest`
+    /// 参数却什么都没做（调用方还得编一个 `WaterfallPlaceholder` 来凑），现在直接说清语义。
+    func deferApproval() {
         focusedApprovalId = nil
     }
 

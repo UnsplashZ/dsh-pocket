@@ -51,7 +51,38 @@ public struct WaterfallRequest: Sendable, Identifiable {
     // MARK: 审批
 
     public var approvalToolName: String { request.string("toolName") ?? "工具" }
-    public var approvalReason: String { request.string("reason") ?? "" }
+
+    /// 审批理由。
+    ///
+    /// 优先 `displayReason`（宿主已经写好的**给人看**的那份，按 locale 给），
+    /// 它才是拿来做决策依据的文案；`reason` 是给模型/日志的机器版本。
+    /// 之前只读 `reason`，等于把最好的一句扔了、留下一句生硬的。
+    public var approvalReason: String {
+        if let display = request["displayReason"] {
+            for key in Self.preferredLocales {
+                if let text = display.string(key), !text.isEmpty { return text }
+            }
+            // locale 键认不出时，拿第一个非空值也比丢掉强
+            if let object = display.objectValue {
+                for value in object.values {
+                    if let text = value.stringValue, !text.isEmpty { return text }
+                }
+            }
+        }
+        return request.string("reason") ?? ""
+    }
+
+    /// 语言偏好顺序：跟随系统，再兜到 `en`（`displayReason` 保证有 `en`）。
+    private static var preferredLocales: [String] {
+        var keys = Locale.preferredLanguages.map { language -> String in
+            // `zh-Hans-CN` → `zh-Hans` → `zh`
+            let parts = language.split(separator: "-")
+            return parts.count > 1 ? "\(parts[0])-\(parts[1])" : String(parts[0])
+        }
+        keys.append(contentsOf: Locale.preferredLanguages)
+        keys.append("en")
+        return keys
+    }
     public var approvalCallId: String? { request.string("callId") }
 
     // MARK: 提问

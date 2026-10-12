@@ -79,7 +79,7 @@ public struct TimelineBuilder: Sendable {
     /// `tool/result` 就会合并不到对应的 `tool/call`。
     public struct State: Sendable, Codable {
         /// 版本号。形状变了就 +1，读不认识的版本一律丢弃重拉。
-        public static let currentSchemaVersion = 1
+        public static let currentSchemaVersion = 2
 
         public var schemaVersion: Int = State.currentSchemaVersion
         public var header: SessionHeader?
@@ -925,6 +925,7 @@ public struct TimelineBuilder: Sendable {
                 id: itemId, seq: event.seq, time: event.time,
                 kind: .approval(.init(
                     approvalId: approvalId,
+                    callId: event.string("data.callId"),
                     toolName: event.string("data.toolName") ?? "工具",
                     reason: event.string("data.reason") ?? "",
                     options: options

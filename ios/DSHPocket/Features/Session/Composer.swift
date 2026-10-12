@@ -7,6 +7,52 @@ import UniformTypeIdentifiers
 ///
 /// 布局：`.safeAreaInset(edge: .bottom)`；1–6 行自适应；圆角容器 + `.thinMaterial`。
 /// 主按钮**同一位置的形态切换**：空闲=发送，运行中=停止（不要并排两个按钮）。
+/// 输入区左右两端的圆形按钮。
+///
+/// **两个都由这一个构造产出**。之前是各写各的：`+` 是 20pt 字形配 44pt 圆底，
+/// 发送是 30pt 的 `arrow.up.circle.fill`（符号自带圆）—— 圆的直径和字形占比都不一样，
+/// 并排看就是"图标大小不一致"。
+struct CircleGlyph: View {
+    enum Style {
+        /// 次要动作（附件）：浅底 + 次级前景。
+        case quiet
+        /// 主操作（发送）：实心强调色 + 白字形。
+        case prominent
+        /// 危险动作（停止）：实心红 + 白字形。
+        case destructive
+    }
+
+    let systemImage: String
+    var style: Style = .quiet
+
+    var body: some View {
+        Image(systemName: systemImage)
+            .font(.system(size: Token.Control.glyph, weight: .semibold))
+            .foregroundStyle(foreground)
+            .frame(width: Token.Control.diameter, height: Token.Control.diameter)
+            .background(Circle().fill(background))
+            // 圆是 36pt，但点击区要够 44pt（HIG）。用透明的外框补齐，
+            // 而不是把圆本身放大 —— 视觉尺寸和点击尺寸是两件事。
+            .frame(width: Token.minimumHitTarget, height: Token.minimumHitTarget)
+            .contentShape(Circle())
+    }
+
+    private var foreground: Color {
+        switch style {
+        case .quiet: return Color.secondary
+        case .prominent, .destructive: return .white
+        }
+    }
+
+    private var background: Color {
+        switch style {
+        case .quiet: return Color(.tertiarySystemFill)
+        case .prominent: return .accentColor
+        case .destructive: return .red
+        }
+    }
+}
+
 struct Composer: View {
     @Bindable var session: SessionModel
 
@@ -41,10 +87,7 @@ struct Composer: View {
                         Label("文件", systemImage: "doc")
                     }
                 } label: {
-                    Image(systemName: "plus")
-                        .font(.title3)
-                        .frame(width: Token.minimumHitTarget, height: Token.minimumHitTarget)
-                        .background(Circle().fill(Color(.tertiarySystemFill)))
+                    CircleGlyph(systemImage: "plus", style: .quiet)
                 }
                 .accessibilityLabel(Text("添加附件"))
 
@@ -64,11 +107,10 @@ struct Composer: View {
 
                 // 同一位置：空闲=发送，运行中=停止
                 Button(action: isRunning ? stop : send) {
-                    Image(systemName: isRunning ? "stop.circle.fill" : "arrow.up.circle.fill")
-                        .font(.system(size: 30))
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(isRunning ? Color.red : Color.accentColor)
-                        .frame(width: Token.minimumHitTarget, height: Token.minimumHitTarget)
+                    CircleGlyph(
+                        systemImage: isRunning ? "stop.fill" : "arrow.up",
+                        style: isRunning ? .destructive : .prominent
+                    )
                 }
                 .disabled(!isRunning && !canSend)
                 .accessibilityLabel(Text(isRunning ? "停止" : "发送"))

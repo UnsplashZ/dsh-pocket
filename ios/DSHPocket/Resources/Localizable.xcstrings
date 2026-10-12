@@ -591,6 +591,17 @@
         }
       }
     },
+    "别的会话": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Another session"
+          }
+        }
+      }
+    },
     "刷新": {
       "extractionState": "manual",
       "localizations": {
@@ -916,6 +927,23 @@
         }
       }
     },
+    "完整参数在「%@」那张卡片上。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The full arguments are on the card in “%@”."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完整参数在「%@」那张卡片上。"
+          }
+        }
+      }
+    },
     "审批在你的手机上决定": {
       "extractionState": "manual",
       "localizations": {
@@ -951,6 +979,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Export log"
+          }
+        }
+      }
+    },
+    "将要执行：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "About to run: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将要执行：%@"
           }
         }
       }
@@ -3053,6 +3098,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "This device can’t scan codes"
+          }
+        }
+      }
+    },
+    "这条已经不能在这里回答了（连接中断过，电脑会按默认方式继续）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This one can no longer be answered here (the connection dropped; your computer will use its default)."
           }
         }
       }

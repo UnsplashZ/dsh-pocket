@@ -12,6 +12,25 @@ struct TimelineRow: View {
     let item: TimelineItem
     let session: SessionModel
 
+    /// 找到这条审批对应工具调用的参数。
+    ///
+    /// 审批请求本身只带工具名与理由（`ApprovalRequestEvent`），**不带参数** ——
+    /// 参数在时间线的那条 `tool/call` 上，按 `callId` 关联。
+    /// 不把它拿出来，用户就是在"不知道要执行什么"的情况下点批准。
+    private func pendingArguments(for approval: TimelineItem.Approval) -> String? {
+        // 用审批挂着的**工具调用 id** 去关联，不是审批自己的 id。
+        guard let callId = approval.callId ?? (approval.approvalId.isEmpty ? nil : approval.approvalId) else {
+            return nil
+        }
+        for candidate in session.items.reversed() {
+            if case .toolCall(let call) = candidate.kind, call.callId == callId {
+                let trimmed = call.arguments.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : trimmed
+            }
+        }
+        return nil
+    }
+
     var body: some View {
         switch item.kind {
         case .turnStart(let turn):
@@ -33,7 +52,7 @@ struct TimelineRow: View {
             TodoCard(list: list)
 
         case .approval(let approval):
-            ApprovalCard(approval: approval, item: item)
+            ApprovalCard(approval: approval, item: item, pendingArguments: pendingArguments(for: approval))
 
         case .compaction(let compaction):
             compactionRow(compaction)

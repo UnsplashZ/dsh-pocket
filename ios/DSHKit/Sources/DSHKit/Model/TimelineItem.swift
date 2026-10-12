@@ -265,7 +265,14 @@ extension TimelineItem {
     }
 
     public struct Approval: Sendable, Hashable, Codable {
+        /// 审批自身的 id（`approval/asked` 的 `data.id`，一个 UUID）。
         public var approvalId: String
+        /// 被审批的**工具调用** id（`data.callId`）。
+        ///
+        /// 两个 id 不是一回事：`approval/asked` 同时给了 `id` 与 `callId`。
+        /// 当初把 `id` 当成 callId 用过，后果是①拿不到要被审批的工具参数、
+        /// ②跟 waterfall 里的 `callId` 对不上，卡片会误判成"谁也答不了"。
+        public var callId: String?
         public var toolName: String
         public var reason: String
         /// 宿主给的结构化选项（`options`），认不出就退回"批准一次 / 拒绝"。
@@ -273,8 +280,17 @@ extension TimelineItem {
         public var decision: Decision?
         public var decidedAt: Date?
 
-        public init(approvalId: String, toolName: String, reason: String, options: [Option] = [], decision: Decision? = nil, decidedAt: Date? = nil) {
+        public init(
+            approvalId: String,
+            callId: String? = nil,
+            toolName: String,
+            reason: String,
+            options: [Option] = [],
+            decision: Decision? = nil,
+            decidedAt: Date? = nil
+        ) {
             self.approvalId = approvalId
+            self.callId = callId
             self.toolName = toolName
             self.reason = reason
             self.options = options

@@ -540,6 +540,14 @@ EN: dict[str, str] = {
     "连接中断过，%lld 条待处理已经作废 —— 电脑端会按默认方式继续。":
         "The connection dropped, so %lld pending item(s) expired — your computer will continue using its defaults.",
     "都不回答（结束这次提问）": "Answer none (end this question)",
+    # 审批
+    "展开全部": "Show all",
+    "收起": "Collapse",
+    "将要执行：%@": "About to run: %@",
+    "完整参数在「%@」那张卡片上。": "The full arguments are on the card in “%@”.",
+    "这条已经不能在这里回答了（连接中断过，电脑会按默认方式继续）":
+        "This one can no longer be answered here (the connection dropped; your computer will use its default).",
+    "别的会话": "Another session",
 }
 
 # 哪些插值表达式是整数。判错的后果是英文界面上显示成 `%lld` 字面量，

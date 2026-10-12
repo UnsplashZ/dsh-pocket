@@ -344,6 +344,30 @@ final class TimelineBuilderTests: XCTestCase {
         XCTAssertEqual(type, "request/header")
     }
 
+    // MARK: 审批
+
+    /// `approval/asked` 里有两个 id：`id`（审批自身的 UUID）与 `callId`（被审批的工具调用）。
+    ///
+    /// 当初把 `id` 当成 callId 用过，两个后果都实测到了：
+    /// ① 拿不到"要被审批的工具参数"（参数挂在 `tool/call` 上，按 callId 关联）；
+    /// ② 跟 waterfall 里的 `callId` 对不上，卡片会误判成"这条已经不能回答了"。
+    func testApprovalKeepsBothItsOwnIdAndTheToolCallId() throws {
+        var builder = TimelineBuilder()
+        let asked = """
+        {"type":"approval/asked","seq":5,"time":1791777000000,"data":{"id":"81e8b850-f040-4349-a916-2af93eb3c974","toolName":"bash","callId":"call_00_T7rDK9OjMLkUZ2O9p3CG1129","reason":"escalate sandbox"},"surfaceOp":"append"}
+        """
+        _ = builder.apply(try Fixture.event(asked))
+
+        let approval = try XCTUnwrap(builder.items.compactMap { item -> TimelineItem.Approval? in
+            if case .approval(let value) = item.kind { return value }
+            return nil
+        }.first)
+
+        XCTAssertEqual(approval.approvalId, "81e8b850-f040-4349-a916-2af93eb3c974")
+        XCTAssertEqual(approval.callId, "call_00_T7rDK9OjMLkUZ2O9p3CG1129", "两个 id 都要留着")
+        XCTAssertNotEqual(approval.approvalId, approval.callId, "它们确实不是一回事")
+    }
+
     // MARK: 落盘 / 续拉
 
     /// 折叠状态必须能**原样**往返 —— 恢复之后还能继续增量折叠，而不是只能画。
@@ -382,6 +406,11 @@ final class TimelineBuilderTests: XCTestCase {
     func testStateRejectsUnknownSchemaVersion() throws {
         let stale = TimelineBuilder.State(schemaVersion: 999)
         XCTAssertNil(TimelineBuilder(state: stale), "版本对不上要丢弃，不能猜着读")
+
+        // 加字段（审批的 callId）时把版本从 1 提到 2 —— 旧缓存必须被丢掉，
+        // 否则 `Approval.callId` 会是 nil，审批卡片又会认不出自己能答。
+        XCTAssertEqual(TimelineBuilder.State.currentSchemaVersion, 2)
+        XCTAssertNil(TimelineBuilder(state: TimelineBuilder.State(schemaVersion: 1)))
     }
 
     /// `resume` 是**合并**：老的条目留着，新的按 seq 补上。
