@@ -113,18 +113,35 @@ echo "==> 装机"
 xcrun devicectl device install app --device "${DEVICE}" "${APP}"
 
 echo "==> 启动"
-xcrun devicectl device process launch --device "${DEVICE}" "${BUNDLE_ID}" || {
-  cat <<'EOF'
+# 装完启动失败有两种**完全不同**的原因，别把它们混成一句话让用户猜：
+#   · 手机锁屏 → 解锁后自己点开就行，重跑脚本没必要；
+#   · 证书没信任 → 必须去设置里信任，否则点了也打不开。
+LAUNCH_LOG="$(mktemp)"
+if xcrun devicectl device process launch --device "${DEVICE}" "${BUNDLE_ID}" > "${LAUNCH_LOG}" 2>&1; then
+  rm -f "${LAUNCH_LOG}"
+else
+  if grep -qiE "not, or could not, be unlocked|Locked|FBSOpenApplicationErrorDomain error 7" "${LAUNCH_LOG}"; then
+    cat <<'EOF'
 
-启动失败通常是还没信任开发者证书：
+已经装好了，只是**手机锁着**所以没能自动启动。
+解锁后直接在手机上点开 DSH Pocket 就行 —— 不用重跑本脚本。
+EOF
+  else
+    cat <<'EOF'
+
+启动失败，最常见的原因是还没信任开发者证书：
   手机 → 设置 → 通用 → VPN 与设备管理 → 开发者 App → 信任你的 Apple ID
 信任之后再跑一次本脚本，或直接在手机上点开 DSH Pocket。
+EOF
+  fi
+  rm -f "${LAUNCH_LOG}"
+fi
 
-另外：第一次在同一 Wi-Fi 下连接电脑时，系统会问「本地网络」权限，必须允许，
+cat <<'EOF'
+
+第一次在同一 Wi-Fi 下连接电脑时，系统会问「本地网络」权限 —— 必须允许，
 否则 iroh 的 UDP 打洞会被内核静默拦掉（表现为连接超时、电脑端完全收不到连接）。
 EOF
-  exit 0
-}
 
 cat <<EOF
 
