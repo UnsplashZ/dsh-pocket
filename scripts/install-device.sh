@@ -3,6 +3,7 @@
 #
 #   bash scripts/install-device.sh                      # 自动挑唯一一台连着线的设备
 #   bash scripts/install-device.sh --device <UDID>
+#   bash scripts/install-device.sh --team <TEAMID>      # 手动指定开发团队
 #   bash scripts/install-device.sh --list               # 列出可用设备
 #
 # 免费个人团队的两条现实约束，脚本里都处理了：
@@ -11,8 +12,9 @@
 #   2. **首次要信任开发者证书**：装完在手机上「设置 → 通用 → VPN 与设备管理」里
 #      信任你的 Apple ID，然后才能启动。脚本会把这一步打出来。
 #
-# 前提：Xcode 里已登录一个 Apple ID（Xcode → Settings → Accounts），
-#       且工程的 Signing Team 已选好（`xcodebuild -showBuildSettings | grep TEAM`）。
+# 前提：Xcode 里已登录一个 Apple ID（Xcode → Settings → Accounts）。
+# 开发团队会自动从 Xcode 的偏好里探测（`IDEProvisioningTeamByIdentifier`），
+# 探测不到就用 `--team <TEAMID>` 显式给一个。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -21,6 +23,14 @@ cd "${ROOT}"
 DERIVED="${ROOT}/.derived-device"
 BUNDLE_ID="cc.zexa.dshpocket"
 DEVICE=""
+TEAM=""
+
+# 从 Xcode 的偏好里探测开发团队：取第一个 teamID。
+# 免费个人团队也在里面（isFreeProvisioningTeam = 1），所以免费账号同样能装机。
+detect_team() {
+  defaults read com.apple.dt.Xcode IDEProvisioningTeamByIdentifier 2>/dev/null \
+    | grep -oE 'teamID = [A-Z0-9]+;' | head -1 | awk '{print $3}' | tr -d ';'
+}
 
 for arg in "$@"; do
   case "${arg}" in
@@ -33,9 +43,25 @@ done
 while [ $# -gt 0 ]; do
   case "$1" in
     --device) DEVICE="$2"; shift 2 ;;
+    --team) TEAM="$2"; shift 2 ;;
     *) shift ;;
   esac
 done
+
+if [ -z "${TEAM}" ]; then
+  TEAM="$(detect_team)"
+fi
+
+if [ -z "${TEAM}" ]; then
+  cat >&2 <<'EOF'
+探测不到开发团队。两种办法：
+  1. 打开 Xcode → Settings → Accounts，登录一个 Apple ID（免费个人团队即可）；
+  2. 或者显式指定：bash scripts/install-device.sh --team <10 位 TEAMID>
+EOF
+  exit 1
+fi
+
+echo "==> 开发团队：${TEAM}"
 
 if [ -z "${DEVICE}" ]; then
   # devicectl 的输出里状态列是 "connected"/"available"；取第一台连着的真机
@@ -73,6 +99,7 @@ mkdir -p "${CLANG_MODULE_CACHE_PATH}"
   -destination "id=${DEVICE}" \
   -derivedDataPath "${DERIVED}" \
   -allowProvisioningUpdates \
+  "DEVELOPMENT_TEAM=${TEAM}" \
   "DSH_POCKET_SWIFT_FLAGS=${DSH_POCKET_SWIFT_FLAGS:-}" \
   build)
 
