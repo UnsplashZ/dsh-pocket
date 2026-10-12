@@ -6,6 +6,21 @@ target/
 .DS_Store
 *.log
 
+# Xcode
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+
+# SwiftPM
+.build/
+.swiftpm/
+Package.resolved
+
 # 现场生成的抓包/样例（含私人会话内容，绝不入库）
 docs/artifacts/samples/*.json
 docs/artifacts/samples/*.txt

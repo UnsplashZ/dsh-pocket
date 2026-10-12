@@ -18,7 +18,7 @@
 | 8 | Node 24 的全局 `WebSocket` **支持自定义 `headers`**（用于带 cookie），无需任何依赖 | spike 代码 |
 | 9 | `session/list` 的 `value.items[].projections` 是 `{kind:'sequenced', asOfSeq, values:{…}}`，含 `title`、`turnOutline`、`tokenUsage`、`contextPressure`、`contextBreakdown`、`inbox`、`sessionStats`、`agentPreset`、`userQuestions`、`subagent*`、`agentTeam`、`permissions` | 实测 JSON |
 
-**意义**：移动端最核心的两条路径（列会话、订阅会话流）在 `0.2.0-rc.2` 上确认可用，且用一段零依赖 Node 脚本就能验证 —— 说明协议层完全可以按 [DESIGN.md](DESIGN.md) §4 的方式在 TS 里实现。
+**意义**：移动端最核心的两条路径（列会话、订阅会话流）在 `0.2.0-rc.2` 上确认可用，且用一段零依赖 Node 脚本就能验证 —— 说明协议层完全可以按 [DESIGN.md](DESIGN.md) §4 的方式在 **Swift** 里实现（探针只是"先证明契约成立"，结论与语言无关）。
 
 ## 2. 观察到的响应形状（结构，非原文）
 

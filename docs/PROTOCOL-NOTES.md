@@ -2,9 +2,11 @@
 
 > 本文分两类内容，**请务必分清**：
 > - 🔵 **本机核实**：在 `DSH 0.2.0-rc.2`（本机在跑的那份）上直接读过源码或发过请求验证的；
-> - 🟡 **文档基线**：来自 [jayantTang/DSH_Mobile `docs/dsh-protocol.md`](https://github.com/jayantTang/DSH_Mobile/blob/main/docs/DSH-PROTOCOL.md)（3 383 行，对 DSH `0.1.5-rc.1` 活服务器逐条核对过），**尚未在 0.2.0-rc.2 上重新验证**。
+> - 🟡 **文档基线**：来自 [jayantTang/DSH_Mobile `docs/DSH-PROTOCOL.md`](https://github.com/jayantTang/DSH_Mobile/blob/main/docs/DSH-PROTOCOL.md)（3 383 行，对 DSH `0.1.5-rc.1` 活服务器逐条核对过），**尚未在 0.2.0-rc.2 上重新验证**。
 >
 > M0 的任务就是把 🟡 全部升级为 🔵，产出 `PROTOCOL-0.2.0-rc.2.md`。
+>
+> **实现语言**：客户端是 Swift（见 [DESIGN.md](DESIGN.md)）。本文描述的是**线上契约**，与语言无关；Swift 侧的模块划分见 DESIGN §4.1，传输与隧道见 [TRANSPORT.md](TRANSPORT.md)。
 
 ---
 
