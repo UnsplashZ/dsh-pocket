@@ -1,0 +1,17 @@
+# 忽略
+node_modules/
+dist/
+build/
+target/
+.DS_Store
+*.log
+
+# 现场生成的抓包/样例（含私人会话内容，绝不入库）
+docs/artifacts/samples/*.json
+docs/artifacts/samples/*.txt
+spikes/out/
+
+# 本机真值
+.env
+.env.local
+*.local.json
