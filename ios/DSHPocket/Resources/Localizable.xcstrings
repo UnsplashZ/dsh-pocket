@@ -354,17 +354,6 @@
         }
       }
     },
-    "会话会在所选工作区里创建。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The session is created in the workspace you pick."
-          }
-        }
-      }
-    },
     "会话操作": {
       "extractionState": "manual",
       "localizations": {
@@ -444,6 +433,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Stop and archive"
+          }
+        }
+      }
+    },
+    "先在电脑上的 DSH 里添加一个工作区，然后再来这里新建会话。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add a workspace in DSH on your computer first, then come back here."
           }
         }
       }
@@ -1700,6 +1700,17 @@
         }
       }
     },
+    "搜索工作区": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search workspaces"
+          }
+        }
+      }
+    },
     "搜索已归档的会话": {
       "extractionState": "manual",
       "localizations": {
@@ -1740,6 +1751,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "New session"
+          }
+        }
+      }
+    },
+    "新建的会话会挂在这个工作区下面；选了工作区之后直接进会话页。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The new session belongs to the workspace you pick; you go straight into it."
           }
         }
       }
@@ -2322,6 +2344,17 @@
         }
       }
     },
+    "电脑没有返回新建的会话。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your computer didn’t return the new session."
+          }
+        }
+      }
+    },
     "电脑端": {
       "extractionState": "manual",
       "localizations": {
@@ -2816,6 +2849,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "No sessions yet"
+          }
+        }
+      }
+    },
+    "还没有工作区": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No workspaces yet"
           }
         }
       }

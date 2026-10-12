@@ -56,6 +56,9 @@ public struct WorkspaceSummary: Sendable, Hashable, Identifiable {
     public let title: String
     public let path: String
     public let sessionIds: [String]
+    /// 最后更新时间。`WorkspaceView` 里是 **ISO-8601 字符串**（不是纪元毫秒 ——
+    /// 全协议里只有它和时间相关的字段是这样的）。
+    public let updatedAt: Date?
 
     public init(json: JSONValue) {
         let id = json.string("workspaceId") ?? json.string("id") ?? ""
@@ -65,5 +68,10 @@ public struct WorkspaceSummary: Sendable, Hashable, Identifiable {
         self.title = json.string("title")
             ?? (path.isEmpty ? id : (path as NSString).lastPathComponent)
         self.sessionIds = json.array("sessionIds")?.compactMap(\.stringValue) ?? []
+        if let raw = json.string("updatedAt") {
+            self.updatedAt = ISO8601DateFormatter().date(from: raw)
+        } else {
+            self.updatedAt = nil
+        }
     }
 }

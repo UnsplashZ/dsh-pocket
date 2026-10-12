@@ -509,6 +509,16 @@ EN: dict[str, str] = {
     # Markdown 表格与图片
     "表格，%lld 列 %lld 行": "Table, %lld columns by %lld rows",
     "图片 %@，未加载：只从你的电脑取数据": "Image %@, not loaded: data comes only from your computer",
+    # 新建会话
+    "新建会话": "New session",
+    "搜索工作区": "Search workspaces",
+    "还没有工作区": "No workspaces yet",
+    "先在电脑上的 DSH 里添加一个工作区，然后再来这里新建会话。":
+        "Add a workspace in DSH on your computer first, then come back here.",
+    "新建的会话会挂在这个工作区下面；选了工作区之后直接进会话页。":
+        "The new session belongs to the workspace you pick; you go straight into it.",
+    "电脑没有返回新建的会话。": "Your computer didn’t return the new session.",
+    "建不了会话": "Couldn’t create the session",
 }
 
 # 哪些插值表达式是整数。判错的后果是英文界面上显示成 `%lld` 字面量，

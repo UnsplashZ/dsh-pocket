@@ -118,25 +118,17 @@ struct SessionListView: View {
         } message: {
             Text("归档会先把这一轮停掉。已经跑出来的内容会保留。")
         }
-        .confirmationDialog("新建会话", isPresented: $showNewSession, titleVisibility: .visible) {
-            // 传**完整路径**：`session/create` 的 cwd 必须是绝对路径，
-            // 传列表里显示的 basename 会被拒（`cwd must be an absolute path`）。
-            ForEach(model.workspaceTargets) { target in
-                Button(target.name) { createSession(in: target) }
-            }
-            Button("取消", role: .cancel) {}
-        } message: {
-            Text("会话会在所选工作区里创建。")
+        .task {
+            #if DEBUG
+            if UserDefaults.standard.bool(forKey: "DSHShowNewSession") { showNewSession = true }
+            #endif
         }
-    }
-
-    private func createSession(in target: AppModel.WorkspaceTarget) {
-        Task {
-            // 传 workspaceId：会话才会落进这个工作区，而不是电脑端的「未分组」。
-            guard let id = await model.createSession(workspaceId: target.workspaceId, cwd: target.cwd) else { return }
-            // 列表可能还没刷到这个新会话，用占位保证"选完立刻进去"。
-            if let summary = model.sessionSummary(for: id, cwd: target.cwd) {
-                onSelect(summary)
+        .sheet(isPresented: $showNewSession) {
+            NewSessionSheet { sessionId, cwd in
+                // 列表可能还没刷到这个新会话，用占位保证"选完立刻进去"。
+                if let summary = model.sessionSummary(for: sessionId, cwd: cwd) {
+                    onSelect(summary)
+                }
             }
         }
     }

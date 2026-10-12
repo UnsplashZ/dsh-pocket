@@ -31,6 +31,7 @@
 		4BA0021D775CDA4309770840 /* ApprovalViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A61720A16CF30E3539C3DDD3 /* ApprovalViews.swift */; };
 		4EA4892D2B11DD8F23D650AE /* DSHKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = F714C252B15543051C29E9C2 /* DSHKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		4EC3DA4835F8C27CAD3D8FCB /* SessionListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8088DA54E74F0EC85BF1FB4 /* SessionListView.swift */; };
+		56F0FA7E876F80733D4CD5AF /* NewSessionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE27129706630B034A013169 /* NewSessionSheet.swift */; };
 		5A8B17FDF4B38B446DD30163 /* TetherIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3FFD174FD60E9DC57F54FF3 /* TetherIdentity.swift */; };
 		5BA98D3D35912124CBD15736 /* Projections.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6607BBF3D413D89A4B537871 /* Projections.swift */; };
 		5E9D06012AD7777CCDDAFC04 /* MuxClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C78763CE3BDD07B0CCD4293E /* MuxClient.swift */; };
@@ -200,6 +201,7 @@
 		C4F4775F445DDBB99CD6F0AC /* TimelineRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineRow.swift; sourceTree = "<group>"; };
 		C78763CE3BDD07B0CCD4293E /* MuxClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MuxClient.swift; sourceTree = "<group>"; };
 		C8088DA54E74F0EC85BF1FB4 /* SessionListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListView.swift; sourceTree = "<group>"; };
+		CE27129706630B034A013169 /* NewSessionSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewSessionSheet.swift; sourceTree = "<group>"; };
 		D3FFD174FD60E9DC57F54FF3 /* TetherIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TetherIdentity.swift; sourceTree = "<group>"; };
 		D4B82B84D34748F34AB480E7 /* ArchivedSessionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchivedSessionsView.swift; sourceTree = "<group>"; };
 		D5363D3D5D59ADA73D62643C /* MarkdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownView.swift; sourceTree = "<group>"; };
@@ -312,6 +314,7 @@
 		25CE105FE3311677D8FA5400 /* Sessions */ = {
 			isa = PBXGroup;
 			children = (
+				CE27129706630B034A013169 /* NewSessionSheet.swift */,
 				C8088DA54E74F0EC85BF1FB4 /* SessionListView.swift */,
 				96B6F17E1CE1FA88D208E4B8 /* SessionRow.swift */,
 			);
@@ -766,6 +769,7 @@
 				6695A409C898AAA1A1ABD408 /* MarkdownBlock.swift in Sources */,
 				175ACEDFC12D7C260D7A9529 /* MarkdownView.swift in Sources */,
 				9D2E673286B4A73F0CB72B69 /* ModelPickerSheet.swift in Sources */,
+				56F0FA7E876F80733D4CD5AF /* NewSessionSheet.swift in Sources */,
 				B4AD5FE8791A38577D7AE2C8 /* PairingSheet.swift in Sources */,
 				A6BE9190F5019A8A430646C2 /* PermissionPickerSheet.swift in Sources */,
 				95FCBC192362291AFC893D40 /* RootView.swift in Sources */,

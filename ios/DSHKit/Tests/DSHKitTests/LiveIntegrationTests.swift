@@ -164,34 +164,44 @@ final class LiveIntegrationTests: XCTestCase {
     }
 
     /// 归档 → 恢复 的往返。用一个真实存在的会话，最后恢复原状。
+    ///
+    /// **只断言自己那条会话的归属，不要断言"整个归档集合相等"** ——
+    /// 那是一个外部共享状态：别的测试、用户自己的操作都会动它，
+    /// 全集相等天然是竞态的（实测被同一次运行里的另一条测试搅红过）。
     func testArchiveRoundTripRestoresOriginalSet() async throws {
         try requireLive()
         let client = makeClient()
-        let sessions = try await client.listSessions()
-        // 必须挑**没在跑**的：DSH 会以 `workspace/session-active` 拒绝归档
-        // 有活跃 turn/job 的会话（本机实测踩到过，当时挑中的正是当前会话）。
-        let target = try XCTUnwrap(
-            sessions.first { !$0.sessionId.hasPrefix("im:") && !$0.isRunning },
-            "需要一个空闲的真实会话来验证归档往返"
-        )
 
-        var before: [String] = []
-        try await withTimeout(10) {
-            for try await frame in client.workspaceFollow() {
-                if case .baseline(let archivedIds, _, _) = frame {
-                    before = archivedIds
-                    break
+        func archivedNow() async throws -> Set<String> {
+            var ids: [String] = []
+            try await withTimeout(10) {
+                for try await frame in client.workspaceFollow() {
+                    if case .baseline(let archived, _, _) = frame {
+                        ids = archived
+                        break
+                    }
                 }
             }
+            return Set(ids)
         }
-        XCTAssertFalse(before.contains(target.sessionId), "挑的会话不该已经在归档里")
 
-        let afterArchive = try await client.archiveSession(sessionId: target.sessionId)
+        let before = try await archivedNow()
+        let sessions = try await client.listSessions()
+        // 挑一个既没在跑、也还没被归档的 —— 否则"归档它"这一步本身就是错的前提。
+        let target = try XCTUnwrap(
+            sessions.first { !$0.sessionId.hasPrefix("im:") && !$0.isRunning && !before.contains($0.sessionId) },
+            "需要一个空闲且未归档的会话来验证归档往返"
+        )
+
+        let afterArchive = Set(try await client.archiveSession(sessionId: target.sessionId))
         XCTAssertTrue(afterArchive.contains(target.sessionId), "归档后集合里应该有它")
 
-        let afterUnarchive = try await client.unarchiveSession(sessionId: target.sessionId)
+        let afterUnarchive = Set(try await client.unarchiveSession(sessionId: target.sessionId))
         XCTAssertFalse(afterUnarchive.contains(target.sessionId), "恢复后集合里不该有它")
-        XCTAssertEqual(Set(afterUnarchive), Set(before), "往返之后应该回到原来的集合")
+        XCTAssertEqual(
+            afterUnarchive.contains(target.sessionId), before.contains(target.sessionId),
+            "往返之后这条会话的归属应当回到原状"
+        )
     }
 
     /// 归档一个正在跑的会话必须被拒绝，且错误码可分类 ——
@@ -372,6 +382,53 @@ final class LiveIntegrationTests: XCTestCase {
         XCTAssertTrue(execution.isSuccess, "不带参数的 /permission 应当成功")
         XCTAssertTrue(execution.text.contains("preset") || execution.text.contains("current"),
                       "应当回报当前档位，实际：\(execution.text)")
+    }
+
+    /// 在指定工作区里建会话，并确认它**真的落在那个工作区下**。
+    ///
+    /// 这条是"选完工作区不生效、会话跑到「未分组」"的回归：只传 `cwd` 建出来的会话
+    /// 不会挂到工作区上，必须传 `workspaceId`。实测过一次，确认会话会出现在
+    /// 该工作区的 `sessionIds` 里。
+    func testCreateSessionLandsInTheChosenWorkspace() async throws {
+        try requireLive()
+        let client = makeClient()
+
+        var workspaces: [WorkspaceSummary] = []
+        try await withTimeout(15) {
+            for try await frame in client.workspaceFollow() {
+                if case .baseline(_, _, let items) = frame {
+                    workspaces = items
+                    break
+                }
+            }
+        }
+        let target = try XCTUnwrap(workspaces.first, "至少需要一个工作区")
+
+        let sessionId = try await client.createSession(workspaceId: target.id)
+        XCTAssertFalse(sessionId.isEmpty)
+
+        // 等宿主的 workspace 视图更新
+        var landed = false
+        for _ in 0..<10 {
+            try await Task.sleep(for: .milliseconds(300))
+            var current: [WorkspaceSummary] = []
+            try await withTimeout(10) {
+                for try await frame in client.workspaceFollow() {
+                    if case .baseline(_, _, let items) = frame {
+                        current = items
+                        break
+                    }
+                }
+            }
+            if current.first(where: { $0.id == target.id })?.sessionIds.contains(sessionId) == true {
+                landed = true
+                break
+            }
+        }
+        XCTAssertTrue(landed, "新建的会话应该出现在工作区 \(target.title) 的 sessionIds 里（否则电脑端会显示「未分组」）")
+
+        // 收尾：归档掉这个测试会话，别留在用户列表里
+        _ = try? await client.archiveSession(sessionId: sessionId)
     }
 
     func testModelCatalogAndUnaryErrorShape() async throws {
