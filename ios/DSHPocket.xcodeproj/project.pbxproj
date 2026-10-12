@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		07D4AFEDDD493F17EDB21685 /* DSHPocketApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 924598A2E62CF91E30377D87 /* DSHPocketApp.swift */; };
+		1124AFA07CF308417A5A1867 /* SessionCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD212F40CEBB2E882DB37AE2 /* SessionCacheTests.swift */; };
 		122EA2D82CF1FAF439A5C61E /* TimelineItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 332E9727DA5B522FCF725E72 /* TimelineItem.swift */; };
 		175ACEDFC12D7C260D7A9529 /* MarkdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5363D3D5D59ADA73D62643C /* MarkdownView.swift */; };
 		180EF74A2CCF87F7403C8622 /* PermissionPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26456AC49423F3B6A1F97ACE /* PermissionPreset.swift */; };
@@ -19,6 +20,7 @@
 		3379AE831FF66E5DA0E09FB1 /* Retry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31CE6B371F32508FBC3EA5B7 /* Retry.swift */; };
 		3A03754D58D00923BFE2F2E7 /* DSHKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = F714C252B15543051C29E9C2 /* DSHKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		3A77B6E2FAAF72732395F060 /* ArchivedSessionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4B82B84D34748F34AB480E7 /* ArchivedSessionsView.swift */; };
+		3B8301CD794E29F85334619F /* SessionCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A7C174641C1E1F8CA69CAC6 /* SessionCache.swift */; };
 		3DDFBE4A5A035056DA874763 /* ModelCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33BA4D73DF3106AB6973C28A /* ModelCatalog.swift */; };
 		401AD194FBC1A5CFE9895B4A /* SessionModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42AD7FF2C0BB55901583FD66 /* SessionModel.swift */; };
 		40605810D9F3726B5807B249 /* SessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97BB8F4E3F13184B4BCA31B0 /* SessionView.swift */; };
@@ -161,6 +163,7 @@
 		31CE6B371F32508FBC3EA5B7 /* Retry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Retry.swift; sourceTree = "<group>"; };
 		332E9727DA5B522FCF725E72 /* TimelineItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineItem.swift; sourceTree = "<group>"; };
 		33BA4D73DF3106AB6973C28A /* ModelCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelCatalog.swift; sourceTree = "<group>"; };
+		3A7C174641C1E1F8CA69CAC6 /* SessionCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCache.swift; sourceTree = "<group>"; };
 		40F731E69C3E40534DA3287A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		42AD7FF2C0BB55901583FD66 /* SessionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionModel.swift; sourceTree = "<group>"; };
 		4EB168BF3F2BD1743521E92A /* MarkdownBlock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownBlock.swift; sourceTree = "<group>"; };
@@ -201,6 +204,7 @@
 		C4F4775F445DDBB99CD6F0AC /* TimelineRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineRow.swift; sourceTree = "<group>"; };
 		C78763CE3BDD07B0CCD4293E /* MuxClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MuxClient.swift; sourceTree = "<group>"; };
 		C8088DA54E74F0EC85BF1FB4 /* SessionListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListView.swift; sourceTree = "<group>"; };
+		CD212F40CEBB2E882DB37AE2 /* SessionCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCacheTests.swift; sourceTree = "<group>"; };
 		CE27129706630B034A013169 /* NewSessionSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewSessionSheet.swift; sourceTree = "<group>"; };
 		D3FFD174FD60E9DC57F54FF3 /* TetherIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TetherIdentity.swift; sourceTree = "<group>"; };
 		D4B82B84D34748F34AB480E7 /* ArchivedSessionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchivedSessionsView.swift; sourceTree = "<group>"; };
@@ -469,6 +473,7 @@
 			isa = PBXGroup;
 			children = (
 				E9FA0B78A3547368B545428A /* AppLogicTests.swift */,
+				CD212F40CEBB2E882DB37AE2 /* SessionCacheTests.swift */,
 			);
 			path = DSHPocketTests;
 			sourceTree = "<group>";
@@ -495,6 +500,7 @@
 				924598A2E62CF91E30377D87 /* DSHPocketApp.swift */,
 				7C5A7DC6BEFF48AE77F6319B /* HostCoordinator.swift */,
 				7D76E6059B978ABEE1B99C48 /* RootView.swift */,
+				3A7C174641C1E1F8CA69CAC6 /* SessionCache.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -728,6 +734,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AD46495FBEDBD188501813BC /* AppLogicTests.swift in Sources */,
+				1124AFA07CF308417A5A1867 /* SessionCacheTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -773,6 +780,7 @@
 				B4AD5FE8791A38577D7AE2C8 /* PairingSheet.swift in Sources */,
 				A6BE9190F5019A8A430646C2 /* PermissionPickerSheet.swift in Sources */,
 				95FCBC192362291AFC893D40 /* RootView.swift in Sources */,
+				3B8301CD794E29F85334619F /* SessionCache.swift in Sources */,
 				4EC3DA4835F8C27CAD3D8FCB /* SessionListView.swift in Sources */,
 				401AD194FBC1A5CFE9895B4A /* SessionModel.swift in Sources */,
 				FDA4A32E1052C7CBC2BB6EFA /* SessionRow.swift in Sources */,

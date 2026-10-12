@@ -354,6 +354,17 @@
         }
       }
     },
+    "会话内容会缓存在本机，切回之前的会话时不用再等一次远程加载。缓存放在系统可回收的位置，随时可以清空 —— 清空只影响速度，不会丢任何东西。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sessions are cached on this device, so switching back doesn’t wait for a remote reload. The cache lives in a system-reclaimable location and you can clear it anytime — clearing only costs speed, nothing is lost."
+          }
+        }
+      }
+    },
     "会话操作": {
       "extractionState": "manual",
       "localizations": {
@@ -2201,6 +2212,17 @@
         }
       }
     },
+    "清空缓存": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear cache"
+          }
+        }
+      }
+    },
     "清除": {
       "extractionState": "manual",
       "localizations": {
@@ -2628,6 +2650,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Say something to your computer…"
+          }
+        }
+      }
+    },
+    "缓存": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cache"
           }
         }
       }

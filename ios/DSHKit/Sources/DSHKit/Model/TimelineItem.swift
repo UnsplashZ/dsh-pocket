@@ -9,7 +9,7 @@ import Foundation
 ///   · 队列中的消息 → `"inbox-<rpcId>"`
 ///
 /// 流式转持久时我们**沿用实时项的 id**，所以 SwiftUI 不会闪一下重建视图。
-public struct TimelineItem: Sendable, Identifiable, Hashable {
+public struct TimelineItem: Sendable, Identifiable, Hashable, Codable {
     public internal(set) var id: String
     /// 排序键。持久事件是自己的 seq；实时块用 `durableCursor + 1 - 1/(n+1)` 挤在末尾。
     public internal(set) var seq: Double
@@ -63,7 +63,7 @@ public struct TimelineItem: Sendable, Identifiable, Hashable {
 // MARK: - 各种 Kind
 
 extension TimelineItem {
-    public enum Kind: Sendable, Hashable {
+    public enum Kind: Sendable, Hashable, Codable {
         /// `turn/start`：一轮对话开始。
         case turnStart(turn: Int)
         /// `turn/end`：一轮结束 + 结束原因。
@@ -103,7 +103,7 @@ extension TimelineItem {
         }
     }
 
-    public struct UserMessage: Sendable, Hashable {
+    public struct UserMessage: Sendable, Hashable, Codable {
         public var text: String
         public var images: [ImageRef]
         public var files: [FileRef]
@@ -120,7 +120,7 @@ extension TimelineItem {
         }
     }
 
-    public struct AssistantMessage: Sendable, Hashable {
+    public struct AssistantMessage: Sendable, Hashable, Codable {
         public var blocks: [AssistantBlock]
         public var isStreaming: Bool
         public var interrupted: Bool
@@ -161,7 +161,7 @@ extension TimelineItem {
         }
     }
 
-    public enum AssistantBlock: Sendable, Hashable {
+    public enum AssistantBlock: Sendable, Hashable, Codable {
         case text(String)
         case reasoning(String)
         case image(ImageRef)
@@ -177,7 +177,7 @@ extension TimelineItem {
         }
     }
 
-    public struct ToolCall: Sendable, Hashable {
+    public struct ToolCall: Sendable, Hashable, Codable {
         public var callId: String
         public var name: String
         public var arguments: String
@@ -211,7 +211,7 @@ extension TimelineItem {
             self.rawResult = rawResult
         }
 
-        public enum Status: Sendable, Hashable {
+        public enum Status: Sendable, Hashable, Codable {
             case running
             case success
             case failed
@@ -233,13 +233,13 @@ extension TimelineItem {
         }
     }
 
-    public struct TodoList: Sendable, Hashable {
+    public struct TodoList: Sendable, Hashable, Codable {
         public var items: [TodoEntry]
 
         public init(items: [TodoEntry]) { self.items = items }
     }
 
-    public struct TodoEntry: Sendable, Hashable, Identifiable {
+    public struct TodoEntry: Sendable, Hashable, Identifiable, Codable {
         public var id: String { text + String(describing: status) }
         public var text: String
         public var status: Status
@@ -249,7 +249,7 @@ extension TimelineItem {
             self.status = status
         }
 
-        public enum Status: Sendable, Hashable {
+        public enum Status: Sendable, Hashable, Codable {
             case pending
             case inProgress
             case completed
@@ -264,7 +264,7 @@ extension TimelineItem {
         }
     }
 
-    public struct Approval: Sendable, Hashable {
+    public struct Approval: Sendable, Hashable, Codable {
         public var approvalId: String
         public var toolName: String
         public var reason: String
@@ -282,14 +282,14 @@ extension TimelineItem {
             self.decidedAt = decidedAt
         }
 
-        public struct Option: Sendable, Hashable, Identifiable {
+        public struct Option: Sendable, Hashable, Identifiable, Codable {
             public var id: String { kind }
             public var kind: String
             public var label: String
             public var isPrimary: Bool
         }
 
-        public enum Decision: Sendable, Hashable {
+        public enum Decision: Sendable, Hashable, Codable {
             case approvedOnce
             case approvedAlways
             case denied
@@ -311,7 +311,7 @@ extension TimelineItem {
         public var isPending: Bool { decision == nil }
     }
 
-    public struct Compaction: Sendable, Hashable {
+    public struct Compaction: Sendable, Hashable, Codable {
         public var phase: Phase
         public var summary: String
 
@@ -320,10 +320,10 @@ extension TimelineItem {
             self.summary = summary
         }
 
-        public enum Phase: Sendable, Hashable { case start, summary, end, prune }
+        public enum Phase: Sendable, Hashable, Codable { case start, summary, end, prune }
     }
 
-    public struct Goal: Sendable, Hashable {
+    public struct Goal: Sendable, Hashable, Codable {
         public var objective: String?
         public var status: String?
 
@@ -333,7 +333,7 @@ extension TimelineItem {
         }
     }
 
-    public struct PlanMode: Sendable, Hashable {
+    public struct PlanMode: Sendable, Hashable, Codable {
         public var isActive: Bool
         public var isPending: Bool
 
@@ -343,7 +343,7 @@ extension TimelineItem {
         }
     }
 
-    public struct Deliverable: Sendable, Hashable, Identifiable {
+    public struct Deliverable: Sendable, Hashable, Identifiable, Codable {
         public var id: String { path ?? title }
         public var title: String
         public var path: String?
@@ -357,7 +357,7 @@ extension TimelineItem {
     }
 
     /// 说明行。`tone` 决定符号与颜色语义（不靠色相单独传达）。
-    public struct Note: Sendable, Hashable {
+    public struct Note: Sendable, Hashable, Codable {
         public var text: String
         public var symbolName: String
         public var tone: Tone
@@ -373,10 +373,10 @@ extension TimelineItem {
             self.isProminent = isProminent
         }
 
-        public enum Tone: Sendable, Hashable { case neutral, info, success, warning, failure }
+        public enum Tone: Sendable, Hashable, Codable { case neutral, info, success, warning, failure }
     }
 
-    public struct ImageRef: Sendable, Hashable, Identifiable {
+    public struct ImageRef: Sendable, Hashable, Identifiable, Codable {
         public var id: String { attachmentId }
         public var attachmentId: String
         public var name: String?
@@ -396,7 +396,7 @@ extension TimelineItem {
         }
     }
 
-    public struct FileRef: Sendable, Hashable, Identifiable {
+    public struct FileRef: Sendable, Hashable, Identifiable, Codable {
         public var id: String { attachmentId }
         public var attachmentId: String
         public var name: String?
@@ -410,7 +410,7 @@ extension TimelineItem {
     }
 
     /// `turn/end` 的 reason。
-    public enum TurnEndReason: Sendable, Hashable {
+    public enum TurnEndReason: Sendable, Hashable, Codable {
         case completed
         case interrupted
         case failed(String)

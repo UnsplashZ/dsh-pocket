@@ -42,9 +42,20 @@ public actor DSHClient {
 
     // MARK: - 会话列表
 
+    /// `session/list` 的**原始返回**。
+    ///
+    /// 缓存要存它、界面要解它 —— 用同一个值，避免为了缓存再打一次同样的 RPC。
+    public func listSessionsValue() async throws -> JSONValue {
+        try await rpc.call(method: "session/list", payload: ["args": .object(["_request": .object([:])])])
+    }
+
     /// `session/list`。注意参数家法：DSH 的浏览器客户端发的是 `{"_request":{}}`。
     public func listSessions() async throws -> [SessionSummary] {
-        let value = try await rpc.call(method: "session/list", payload: ["args": .object(["_request": .object([:])])])
+        Self.decodeSessionList(try await listSessionsValue())
+    }
+
+    /// 把 `session/list` 的原始返回解成会话摘要。
+    public static func decodeSessionList(_ value: JSONValue) -> [SessionSummary] {
         let items = value.array("items") ?? value.array("sessions") ?? []
         return items.compactMap(SessionSummary.decode)
     }

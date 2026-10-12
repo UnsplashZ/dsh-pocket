@@ -18,6 +18,8 @@ public final class AppModel {
     let logs: MemoryLogSink
 
     private let tether: TetherSession
+    /// 会话内容的磁盘缓存。切换会话时先用它铺内容，再跟 `session/follow` 对齐。
+    let sessionCache: SessionCache
     private let coordinator: HostCoordinator
     private(set) var client: DSHClient
 
@@ -107,6 +109,7 @@ public final class AppModel {
     init(settings: AppSettings) {
         self.settings = settings
         self.logs = MemoryLogSink(capacity: 2_000, minimumLevel: .debug)
+        self.sessionCache = SessionCache()
 
         let tether = TetherSession(
             store: Self.makeSecretStore(),
@@ -134,6 +137,11 @@ public final class AppModel {
         localEndpointId = (try? await tether.localEndpointId()) ?? ""
         hosts = await tether.hosts()
         await notifier.configure()
+        // 冷启动第一屏：先用缓存里的列表，再等 `session/list` 校准。
+        if sessions.isEmpty, let cached = await sessionCache.sessionList() {
+            sessions = DSHClient.decodeSessionList(cached)
+            if !sessions.isEmpty { logs.log(.info, "会话列表来自缓存（\(sessions.count) 条）") }
+        }
         startTransportSupervisor()
 
         if settings.transportMode != .remote {
@@ -478,7 +486,9 @@ public final class AppModel {
         isLoadingSessions = true
         defer { isLoadingSessions = false }
         do {
-            sessions = try await client.listSessions()
+            let value = try await client.listSessionsValue()
+            sessions = DSHClient.decodeSessionList(value)
+            await sessionCache.store(sessionList: value)
             sessionListError = nil
             lastRefreshedAt = Date()
         } catch {
@@ -605,6 +615,16 @@ public final class AppModel {
     func sessionSummary(for id: String, cwd: String?) -> SessionSummary? {
         if let existing = sessions.first(where: { $0.sessionId == id }) { return existing }
         return SessionSummary.placeholder(sessionId: id, cwd: cwd)
+    }
+
+    /// 缓存现状（诊断页显示）。
+    func cacheStatistics() async -> (sessions: Int, bytes: Int) {
+        await sessionCache.statistics()
+    }
+
+    func clearSessionCache() async {
+        await sessionCache.clear()
+        logs.log(.info, "已清空会话缓存")
     }
 
     // MARK: 主机管理

@@ -32,7 +32,20 @@ public struct TimelineBuilder: Sendable {
     /// DSH 的"表面"：模型可见的节点顺序。
     private var surfaceNodes: [Double] = []
     /// 表面替换历史（诊断页与测试用）。
-    public private(set) var replacements: [(seq: Double, start: Int, end: Int)] = []
+    public private(set) var replacements: [SurfaceReplacement] = []
+
+    /// 一次表面替换的记录。用结构体而不是元组 —— 元组不是 `Codable`，落盘要用。
+    public struct SurfaceReplacement: Sendable, Hashable, Codable {
+        public var seq: Double
+        public var start: Int
+        public var end: Int
+
+        public init(seq: Double, start: Int, end: Int) {
+            self.seq = seq
+            self.start = start
+            self.end = end
+        }
+    }
 
     private var liveAttempt: LiveAttempt?
     /// 助手消息里已声明、但还没等到 `tool/call` 事件的工具调用。
@@ -56,6 +69,116 @@ public struct TimelineBuilder: Sendable {
     }
 
     public init() {}
+
+    // MARK: - 落盘 / 恢复
+
+    /// 折叠结果的**完整**可序列化快照。
+    ///
+    /// 为什么连 `surfaceNodes` / `toolCalls` 这些索引都要存：恢复之后必须能**继续增量折叠**，
+    /// 而不只是把条目画出来。少一个索引，后续 `surfaceOp.replace` 就会算错区间、
+    /// `tool/result` 就会合并不到对应的 `tool/call`。
+    public struct State: Sendable, Codable {
+        /// 版本号。形状变了就 +1，读不认识的版本一律丢弃重拉。
+        public static let currentSchemaVersion = 1
+
+        public var schemaVersion: Int = State.currentSchemaVersion
+        public var header: SessionHeader?
+        public var cursor: Int
+        public var lastSeq: Double
+        public var hasMoreHistory: Bool
+        public var items: [TimelineItem]
+        public var surfaceNodes: [Double]
+        public var replacements: [SurfaceReplacement]
+        public var toolCalls: [String: String]
+        public var approvals: [String: String]
+        public var inboxItems: [String: String]
+        public var optimisticItems: [String: String]
+        public var transientCounter: Int
+
+        // 显式公开 memberwise init：`State` 要跨模块构造（App 侧的缓存）。
+        public init(
+            schemaVersion: Int = State.currentSchemaVersion,
+            header: SessionHeader? = nil,
+            cursor: Int = -1,
+            lastSeq: Double = -1,
+            hasMoreHistory: Bool = false,
+            items: [TimelineItem] = [],
+            surfaceNodes: [Double] = [],
+            replacements: [SurfaceReplacement] = [],
+            toolCalls: [String: String] = [:],
+            approvals: [String: String] = [:],
+            inboxItems: [String: String] = [:],
+            optimisticItems: [String: String] = [:],
+            transientCounter: Int = 0
+        ) {
+            self.schemaVersion = schemaVersion
+            self.header = header
+            self.cursor = cursor
+            self.lastSeq = lastSeq
+            self.hasMoreHistory = hasMoreHistory
+            self.items = items
+            self.surfaceNodes = surfaceNodes
+            self.replacements = replacements
+            self.toolCalls = toolCalls
+            self.approvals = approvals
+            self.inboxItems = inboxItems
+            self.optimisticItems = optimisticItems
+            self.transientCounter = transientCounter
+        }
+    }
+
+    public var state: State {
+        State(
+            header: header,
+            cursor: cursor,
+            lastSeq: lastSeq,
+            hasMoreHistory: hasMoreHistory,
+            items: items,
+            surfaceNodes: surfaceNodes,
+            replacements: replacements,
+            toolCalls: toolCalls,
+            approvals: approvals,
+            inboxItems: inboxItems,
+            optimisticItems: optimisticItems,
+            transientCounter: transientCounter
+        )
+    }
+
+    /// 从落盘状态恢复。版本对不上就返回 `nil`（调用方退回重拉）。
+    public init?(state: State) {
+        guard state.schemaVersion == State.currentSchemaVersion else { return nil }
+        header = state.header
+        cursor = state.cursor
+        lastSeq = state.lastSeq
+        hasMoreHistory = state.hasMoreHistory
+        items = state.items
+        surfaceNodes = state.surfaceNodes
+        replacements = state.replacements
+        toolCalls = state.toolCalls
+        approvals = state.approvals
+        inboxItems = state.inboxItems
+        optimisticItems = state.optimisticItems
+        transientCounter = state.transientCounter
+        rebuildIndex()
+    }
+
+    /// **续拉**：把一份快照合并进来，而不是把它当成全部。
+    ///
+    /// 与 `apply(snapshot:)` 的区别是这里的语义是"我手里已经有东西了，补齐就好"：
+    ///   · 按 `seq` 去重（`upsert` 天然幂等），老条目原样留着；
+    ///   · 如果宿主的 cursor **落后于**我们的 lastSeq（日志被换过 / 缓存过旧），
+    ///     说明缓存不可信 —— 返回 `false`，调用方退回 `apply(snapshot:)` 整体重建。
+    public mutating func resume(with snapshot: SessionSnapshot) -> Bool {
+        if snapshot.cursor < Int(lastSeq) { return false }
+        header = snapshot.header
+        hasMoreHistory = snapshot.hasMore
+        for event in snapshot.events where event.seq > lastSeq {
+            _ = apply(event)
+        }
+        cursor = snapshot.cursor
+        lastSeq = max(lastSeq, Double(snapshot.cursor))
+        return true
+    }
 
     public var isEmpty: Bool { items.isEmpty }
 
@@ -529,7 +652,7 @@ public struct TimelineBuilder: Sendable {
                     .map(\.id)
                 surfaceNodes.append(event.seq)
             }
-            replacements.append((seq: event.seq, start: start, end: end))
+            replacements.append(SurfaceReplacement(seq: event.seq, start: start, end: end))
             return shadowed
         }
     }

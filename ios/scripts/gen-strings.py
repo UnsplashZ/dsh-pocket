@@ -524,6 +524,13 @@ EN: dict[str, str] = {
     "开发者模式：": "Developer mode: ",
     "改回 iroh": "Switch back to iroh",
     "正常使用请改回「远端连接（iroh）」": "For normal use, switch back to “Remote (iroh)”.",
+    # 会话缓存
+    "缓存": "Cache",
+    "已缓存会话": "Cached sessions",
+    "占用空间": "Space used",
+    "清空缓存": "Clear cache",
+    "会话内容会缓存在本机，切回之前的会话时不用再等一次远程加载。缓存放在系统可回收的位置，随时可以清空 —— 清空只影响速度，不会丢任何东西。":
+        "Sessions are cached on this device, so switching back doesn’t wait for a remote reload. The cache lives in a system-reclaimable location and you can clear it anytime — clearing only costs speed, nothing is lost.",
 }
 
 # 哪些插值表达式是整数。判错的后果是英文界面上显示成 `%lld` 字面量，

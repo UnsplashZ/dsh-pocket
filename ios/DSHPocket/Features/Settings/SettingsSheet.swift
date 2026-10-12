@@ -12,6 +12,7 @@ struct SettingsSheet: View {
     #if DEBUG
     /// 调试用：`defaults write cc.zexa.dshpocket DSHShowArchived -bool YES` 直接打开归档页。
     @State private var showArchived = false
+    @State private var cacheStats: (sessions: Int, bytes: Int) = (0, 0)
     #endif
 
     var body: some View {
@@ -23,6 +24,7 @@ struct SettingsSheet: View {
                 developerModeSection
                 #endif
                 hostsSection
+                cacheSection
                 archivedSection
                 notificationsSection
                 appearanceSection
@@ -163,6 +165,29 @@ struct SettingsSheet: View {
             }
         } footer: {
             Text("归档过的会话不会出现在对话列表里，在这里可以恢复或重新打开。")
+        }
+    }
+
+    // MARK: 缓存
+
+    @ViewBuilder
+    private var cacheSection: some View {
+        Section {
+            LabeledContent("已缓存会话", value: "\(cacheStats.sessions)")
+            LabeledContent("占用空间", value: ByteCountFormatter.string(fromByteCount: Int64(cacheStats.bytes), countStyle: .file))
+            Button("清空缓存", role: .destructive) {
+                Task {
+                    await model.clearSessionCache()
+                    cacheStats = await model.cacheStatistics()
+                }
+            }
+        } header: {
+            Text("缓存")
+        } footer: {
+            Text("会话内容会缓存在本机，切回之前的会话时不用再等一次远程加载。缓存放在系统可回收的位置，随时可以清空 —— 清空只影响速度，不会丢任何东西。")
+        }
+        .task {
+            cacheStats = await model.cacheStatistics()
         }
     }
 

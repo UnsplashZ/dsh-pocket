@@ -80,6 +80,9 @@ public final class SessionModel {
 
     private var followTask: Task<Void, Never>?
     private var generationTask: Task<Void, Never>?
+    /// 本次打开是不是先用缓存铺出来的。决定快照到达时走"续拉"还是"整体重建"。
+    private var restoredFromCache = false
+    private var backgroundObserver: (any NSObjectProtocol)?
     private var reconnectAttempt = 0
     private var pendingPromptRpcId: String?
 
@@ -96,6 +99,22 @@ public final class SessionModel {
     func open() async {
         guard followTask == nil else { return }
         phase = .loading
+
+        // 先用缓存把内容铺出来 —— 这一步是"切换会话不用等"的全部意义。
+        if let cached = await appModel.sessionCache.session(for: sessionId),
+           let restored = TimelineBuilder(state: cached.timeline) {
+            builder = restored
+            if !cached.title.isEmpty { title = cached.title }
+            currentPermission = cached.permission
+            lastSeq = cached.timeline.lastSeq
+            restoredFromCache = true
+            publish()
+            // 内容已经在屏幕上了，就别再显示加载骨架。
+            phase = .live
+            logs.log(.debug, "会话 \(sessionId.prefix(12))… 命中缓存（\(builder.items.count) 条，seq \(Int(lastSeq))）")
+        }
+
+        observeBackgroundSave()
         observeTransportGeneration()
         await subscribe()
     }
@@ -105,6 +124,37 @@ public final class SessionModel {
         followTask = nil
         generationTask?.cancel()
         generationTask = nil
+        if let backgroundObserver {
+            NotificationCenter.default.removeObserver(backgroundObserver)
+            self.backgroundObserver = nil
+        }
+        // 切走时落盘 —— 这正是"下次切回来要等远程加载"的那一次。
+        saveToCache()
+    }
+
+    /// 退到后台也落盘：App 可能在后台被系统回收，回来时不该白等一次远程快照。
+    private func observeBackgroundSave() {
+        guard backgroundObserver == nil else { return }
+        backgroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.saveToCache() }
+        }
+    }
+
+    private func saveToCache() {
+        guard builder.lastSeq >= 0 else { return }
+        let cached = SessionCache.CachedSession(
+            timeline: builder.state,
+            title: title,
+            permission: currentPermission
+        )
+        let sessionId = sessionId
+        Task { [appModel] in
+            await appModel.sessionCache.store(cached, for: sessionId)
+        }
     }
 
     /// 传输重连后 AppModel 会换一个 `DSHClient`（端口可能变、旧 WS 全死）。
@@ -163,6 +213,19 @@ public final class SessionModel {
     }
 
     private func applySnapshot(_ snapshot: SessionSnapshot) async {
+        // 命中缓存时走**增量续拉**：快照只带最近 N 条消息，而我们手里有更早的。
+        // 整体重建会把用户已经翻过的历史丢掉，也会白等一次全量折叠。
+        if restoredFromCache, builder.resume(with: snapshot) {
+            restoredFromCache = false
+            applyProjections(snapshot.projections)
+            hasMoreHistory = snapshot.hasMore
+            lastSeq = max(lastSeq, Double(snapshot.cursor))
+            phase = .live
+            publish()
+            saveToCache()
+            return
+        }
+        restoredFromCache = false
         builder = TimelineBuilder()
         items = []
         shadowedItems = []
@@ -192,6 +255,7 @@ public final class SessionModel {
         publish()
         // 快照分完了：这时候布局才稳定，明确要求滚到底一次。
         requestScrollToBottom()
+        saveToCache()
     }
 
     private func apply(_ event: SessionEvent) {

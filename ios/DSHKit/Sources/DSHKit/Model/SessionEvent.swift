@@ -128,7 +128,7 @@ public struct SessionSnapshot: Sendable {
 }
 
 /// 会话头（`session-<uuid>`、cwd、agentPreset…）。
-public struct SessionHeader: Sendable, Hashable {
+public struct SessionHeader: Sendable, Hashable, Codable {
     public let id: String
     public let createdAt: Date
     public let cwd: String?

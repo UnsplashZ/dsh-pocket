@@ -344,6 +344,76 @@ final class TimelineBuilderTests: XCTestCase {
         XCTAssertEqual(type, "request/header")
     }
 
+    // MARK: 落盘 / 续拉
+
+    /// 折叠状态必须能**原样**往返 —— 恢复之后还能继续增量折叠，而不是只能画。
+    func testStateRoundTripsAndKeepsFoldingIdentically() throws {
+        let events = [
+            Fixture.turnStart(1, seq: 1),
+            Fixture.userMessage("第一句", seq: 2),
+            Fixture.assistantMessage(text: "回答一", toolCall: ("call_a", "bash", "{}"), seq: 3),
+            Fixture.toolCall("call_a", seq: 4),
+        ]
+        var original = TimelineBuilder()
+        _ = original.apply(snapshot: try Fixture.snapshot(events))
+
+        let encoded = try JSONEncoder.cacheForTests.encode(original.state)
+        let decoded = try JSONDecoder.cacheForTests.decode(TimelineBuilder.State.self, from: encoded)
+        var restored = try XCTUnwrap(TimelineBuilder(state: decoded))
+        XCTAssertEqual(restored.items.count, original.items.count)
+
+        // 关键：恢复之后 `tool/result` 还要能合并到那条 `tool/call` 上
+        _ = restored.apply(try Fixture.event(Fixture.toolResult("call_a", output: "done", seq: 5)))
+        _ = original.apply(try Fixture.event(Fixture.toolResult("call_a", output: "done", seq: 5)))
+
+        let restoredTool = restored.items.compactMap { item -> TimelineItem.ToolCall? in
+            if case .toolCall(let call) = item.kind { return call }
+            return nil
+        }.first
+        let originalTool = original.items.compactMap { item -> TimelineItem.ToolCall? in
+            if case .toolCall(let call) = item.kind { return call }
+            return nil
+        }.first
+        XCTAssertEqual(restoredTool?.status, .success, "恢复后 tool/result 仍要合并到 tool/call")
+        XCTAssertEqual(restoredTool?.output, originalTool?.output)
+        XCTAssertEqual(restored.items.map(\.id), original.items.map(\.id), "两边折叠出的条目应当完全一致")
+    }
+
+    func testStateRejectsUnknownSchemaVersion() throws {
+        let stale = TimelineBuilder.State(schemaVersion: 999)
+        XCTAssertNil(TimelineBuilder(state: stale), "版本对不上要丢弃，不能猜着读")
+    }
+
+    /// `resume` 是**合并**：老的条目留着，新的按 seq 补上。
+    func testResumeMergesInsteadOfResetting() throws {
+        var builder = TimelineBuilder()
+        _ = builder.apply(snapshot: try Fixture.snapshot([
+            Fixture.turnStart(1, seq: 1),
+            Fixture.userMessage("很早的一句", seq: 2),
+        ], cursor: 2))
+
+        // 宿主的快照只带最近的消息 —— 更早的那条不在里面
+        let fresh = try Fixture.snapshot([
+            Fixture.userMessage("刚说的一句", seq: 9),
+        ], cursor: 9)
+
+        XCTAssertTrue(builder.resume(with: fresh))
+        let texts = builder.items.compactMap { item -> String? in
+            guard case .userMessage(let message) = item.kind else { return nil }
+            return message.text
+        }
+        XCTAssertEqual(texts, ["很早的一句", "刚说的一句"], "续拉不能丢掉更早的历史")
+        XCTAssertEqual(builder.cursor, 9)
+    }
+
+    func testResumeRefusesWhenHostIsBehindTheCache() throws {
+        var builder = TimelineBuilder()
+        _ = builder.apply(snapshot: try Fixture.snapshot([Fixture.turnStart(1, seq: 40)], cursor: 40))
+        // 宿主给的 cursor 比我们手里的还小 —— 说明日志被换过 / 缓存过旧
+        let stale = try Fixture.snapshot([Fixture.turnStart(1, seq: 1)], cursor: 1)
+        XCTAssertFalse(builder.resume(with: stale), "这种情况必须让调用方整体重建")
+    }
+
     // MARK: 历史补页
 
     func testPrependPageKeepsOrderAndDedupes() throws {

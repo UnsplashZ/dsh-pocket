@@ -228,3 +228,22 @@ enum Fixture {
         """)
     }
 }
+
+
+extension JSONEncoder {
+    /// 与 App 侧 `SessionCache` 用同一套日期策略 —— 测的是"落盘能不能原样读回"，
+    /// 两边策略不一致的话这条测试就没有意义了。
+    static let cacheForTests: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }()
+}
+
+extension JSONDecoder {
+    static let cacheForTests: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }()
+}
