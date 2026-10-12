@@ -30,3 +30,6 @@ spikes/out/
 .env
 .env.local
 *.local.json
+
+# codegraph 本地索引
+.codegraph/
