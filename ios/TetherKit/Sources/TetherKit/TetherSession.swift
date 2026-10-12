@@ -187,6 +187,15 @@ public actor TetherSession {
         setState(.connecting(hostId: hostId))
 
         do {
+            // 重连前先把上一代的本地代理收掉。
+            // 不收的话新监听会撞上旧监听占着的那个派生端口 ——
+            // 真机上就是这个报错：`NWError 48 - Address already in use`。
+            await proxy?.stop()
+            proxy = nil
+            proxyPort = nil
+            await link?.disconnect()
+            link = nil
+
             let identity = try ensureIdentity()
             let link = TetherLink(identity: identity, name: deviceName, logger: logger)
             self.link = link

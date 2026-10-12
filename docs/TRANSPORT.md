@@ -141,6 +141,18 @@ func proxyPort(for peerHex: String) -> UInt16 {
 
 - 端口**按主机派生且稳定**（不同主机不同端口）。tether 这么做是为了让 DSH 网页的 `localStorage` 源保持稳定；对我们仍有价值：URLSession 的连接复用/凭据上下文一致、调试可复现、多主机互不串。
 - 端口被占用时**回退 OS 分配**（电脑端如此）；但注意 authority 会随之变化 —— 因为 cookie 由电脑端按 `Host` 头注入并绑定 authority，回退端口也能工作（电脑端用的是它自己授权过的 authority）。**客户端不要缓存 authority**。
+
+  ⚠️ **实现这个回退时踩到的坑**（真机上表现为
+  `本地代理启动失败：Network.NWError 错误 48 - Address already in use`）：
+  `NWListener(using:on:)` 在端口冲突时**不会同步抛错** —— 绑定失败是异步地通过
+  `stateUpdateHandler` 的 `.failed` 送来的。只 `catch` 同步抛错等于没处理，
+  而且监听对象还留着继续占端口，下一次重连必然再撞一次。正确做法是：
+  把 `.failed` 也当成"这个端口不可用"，**先 `cancel()` 收掉再回退**，
+  并用一把锁保证 continuation 只被 resume 一次（`.ready` 与 `.failed` 都可能到达）。
+
+  还有一个实测事实：`NWListener.cancel()` 是**异步**的，端口不会立刻释放 ——
+  重启监听时很容易撞上自己刚放掉的那个端口。所以"能起来"才是要求，
+  "拿到同一个端口"不是（再次印证：**不要缓存 authority**）。
 - 范围 20000–31999 避开了 iOS 临时端口区（49152 起）。
 
 ### 4.4 代理循环（骨架）

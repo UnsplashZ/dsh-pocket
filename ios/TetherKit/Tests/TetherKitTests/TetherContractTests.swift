@@ -1,7 +1,15 @@
 import Foundation
+import Network
 import XCTest
 
 @testable import TetherKit
+
+/// 本地代理永远不会真的开流（这些测试只验端口绑定）。
+private struct NeverUsedFactory: TetherStreamFactory {
+    func openProxyStream() async throws -> TetherProxyStream {
+        throw TetherError.transport("测试不会真的开代理流")
+    }
+}
 
 /// 传输层里"照抄契约"的那几处：端口公式、线协议文本、配对串解析、原因码。
 /// 这些一旦写错，表现是"连不上"或"端口漂移"，很难现场排查 —— 所以在单测里钉死。
@@ -243,6 +251,75 @@ final class TetherContractTests: XCTestCase {
     func testHostRecordShortId() {
         let record = TetherHostRecord(id: String(repeating: "a", count: 32) + String(repeating: "b", count: 32), label: "x")
         XCTAssertEqual(record.shortId.count, 12)
+    }
+
+    // MARK: 本地代理端口
+
+    /// 首选端口被占用时必须**回退到系统分配**，而不是报错。
+    ///
+    /// 这个 bug 在真机上长这样：`本地代理启动失败：Network.NWError 错误 48 - Address
+    /// already in use`。根因是 `NWListener(using:on:)` 在端口冲突时**不会同步抛错** ——
+    /// 绑定失败是异步地从 stateUpdateHandler 送来的，所以只 catch 同步错误是没用的。
+    func testLocalProxyFallsBackWhenPreferredPortIsTaken() async throws {
+        let occupied = try occupyEphemeralPort()
+        defer { occupied.cancel() }
+
+        let server = LocalProxyServer(
+            factory: NeverUsedFactory(),
+            preferredPort: occupied.port!.rawValue
+        )
+        let url = try await server.start()
+        defer { Task { await server.stop() } }
+
+        let bound = UInt16(url.port ?? 0)
+        XCTAssertNotEqual(bound, occupied.port!.rawValue, "被占用的端口不该被抢到")
+        XCTAssertGreaterThan(bound, 0, "应该回退到系统分配并拿到真实端口")
+    }
+
+    /// 连续起两个同端口偏好的代理：第二个必须自己让路，而不是把第一个顶掉。
+    func testTwoProxiesWithSamePreferredPortCoexist() async throws {
+        let first = LocalProxyServer(factory: NeverUsedFactory(), preferredPort: 28_123)
+        let firstURL = try await first.start()
+        defer { Task { await first.stop() } }
+
+        let second = LocalProxyServer(factory: NeverUsedFactory(), preferredPort: 28_123)
+        let secondURL = try await second.start()
+        defer { Task { await second.stop() } }
+
+        XCTAssertEqual(firstURL.port, 28_123, "第一个应该拿到首选端口")
+        XCTAssertNotEqual(secondURL.port, firstURL.port, "第二个必须回退，不能撞在一起")
+    }
+
+    /// 停掉之后端口**不会立刻**释放 —— `NWListener.cancel()` 是异步的。
+    ///
+    /// 这条测试记录的是一个实测事实，而不是一个理想：重启监听时很容易撞上
+    /// 自己刚刚放掉的那个端口。所以"能起来"才是要求，"拿到同一个端口"不是 ——
+    /// 上层因此**不要缓存 authority**（端口可能变）。
+    func testRestartAfterStopStillBindsEvenIfPortIsNotYetFree() async throws {
+        let server = LocalProxyServer(factory: NeverUsedFactory(), preferredPort: 28_124)
+        let first = try await server.start()
+        XCTAssertEqual(first.port, 28_124, "第一次应该拿到首选端口")
+        await server.stop()
+
+        // 同一个端口偏好再起一个：不管拿到首选端口还是回退端口，**都必须能起来**。
+        let again = LocalProxyServer(factory: NeverUsedFactory(), preferredPort: 28_124)
+        let second = try await again.start()
+        defer { Task { await again.stop() } }
+        XCTAssertGreaterThan(second.port ?? 0, 0, "停掉后重起必须成功（可以回退到别的端口）")
+    }
+
+    /// 占一个临时端口，用来模拟"端口已被占用"。
+    private func occupyEphemeralPort() throws -> NWListener {
+        let parameters = NWParameters.tcp
+        parameters.allowLocalEndpointReuse = false
+        let listener = try NWListener(using: parameters)
+        let ready = DispatchSemaphore(value: 0)
+        listener.stateUpdateHandler = { state in
+            if case .ready = state { ready.signal() }
+        }
+        listener.start(queue: .global())
+        _ = ready.wait(timeout: .now() + 5)
+        return listener
     }
 
     // MARK: 错误文案

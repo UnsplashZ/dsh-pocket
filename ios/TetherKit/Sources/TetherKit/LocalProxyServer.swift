@@ -40,72 +40,88 @@ actor LocalProxyServer {
     }
 
     /// 启动监听，返回真实的 `http://127.0.0.1:<port>` 基址。
+    ///
+    /// 两道保险：
+    ///   1. 先试**派生端口**（同一主机的代理 origin 稳定，URLSession 的连接复用才一致）；
+    ///   2. 失败就回退**系统分配**。回退之后 authority 会变，所以上层**不要缓存**它。
+    ///
+    /// ⚠️ `NWListener(using:on:)` **不会**在端口被占用时同步抛错 —— 绑定失败是异步地
+    /// 通过 `stateUpdateHandler` 的 `.failed` 送来的。之前只 catch 了同步抛错，
+    /// 于是端口冲突直接变成"本地代理启动失败"，而监听对象还留着继续占端口，
+    /// 下一次重连必然再撞一次（真机上表现为 `NWError 48 - Address already in use`）。
     @discardableResult
     func start() async throws -> URL {
         if let boundPort, listener != nil {
             return URL(string: "http://127.0.0.1:\(boundPort)")!
         }
 
+        do {
+            return try await bind(preferredPort: preferredPort)
+        } catch {
+            logger?.log("首选端口 \(preferredPort) 不可用（\(error.localizedDescription)），回退系统分配")
+            return try await bind(preferredPort: nil)
+        }
+    }
+
+    /// 真正绑一次。失败时**一定**把监听收掉，绝不把端口留在占用状态。
+    private func bind(preferredPort: UInt16?) async throws -> URL {
         let parameters = NWParameters.tcp
         parameters.allowLocalEndpointReuse = true
         parameters.requiredInterfaceType = .loopback
 
         let listener: NWListener
-        var port = preferredPort
         do {
-            guard let candidate = NWEndpoint.Port(rawValue: preferredPort) else {
-                throw TetherError.proxyUnavailable("端口 \(preferredPort) 不在合法范围")
-            }
-            listener = try NWListener(using: parameters, on: candidate)
-        } catch {
-            // 端口被占用 → 回退 OS 分配（与电脑端行为一致）。
-            logger?.log("首选端口 \(preferredPort) 不可用（\(error.localizedDescription)），回退系统分配")
-            do {
+            if let preferredPort {
+                guard let candidate = NWEndpoint.Port(rawValue: preferredPort) else {
+                    throw TetherError.proxyUnavailable("端口 \(preferredPort) 不在合法范围")
+                }
+                listener = try NWListener(using: parameters, on: candidate)
+            } else {
                 listener = try NWListener(using: parameters)
-            } catch {
-                throw TetherError.proxyUnavailable(error.localizedDescription)
             }
-            port = 0
+        } catch {
+            throw TetherError.proxyUnavailable(error.localizedDescription)
         }
 
         listener.newConnectionHandler = { [weak self] connection in
             Task { await self?.accept(connection) }
         }
-        listener.stateUpdateHandler = { [weak self] state in
-            Task { await self?.handleListenerState(state) }
-        }
 
-        return try await withCheckedThrowingContinuation { continuation in
-            var resumed = false
-            listener.stateUpdateHandler = { [weak self] state in
-                Task { await self?.handleListenerState(state) }
-                guard !resumed else { return }
-                switch state {
-                case .ready:
-                    resumed = true
-                    let actual = listener.port?.rawValue ?? port
-                    Task { await self?.markReady(port: actual) }
-                    continuation.resume(returning: URL(string: "http://127.0.0.1:\(actual)")!)
-                case .failed(let error):
-                    resumed = true
-                    continuation.resume(throwing: TetherError.proxyUnavailable(error.localizedDescription))
-                default:
-                    break
+        let gate = ContinuationGate()
+        do {
+            let port = try await withCheckedThrowingContinuation { continuation in
+                listener.stateUpdateHandler = { state in
+                    switch state {
+                    case .ready:
+                        gate.resumeOnce { continuation.resume(returning: listener.port?.rawValue ?? 0) }
+                    case .failed(let error):
+                        gate.resumeOnce { continuation.resume(throwing: error) }
+                    case .cancelled:
+                        gate.resumeOnce {
+                            continuation.resume(throwing: TetherError.proxyUnavailable("监听被取消"))
+                        }
+                    default:
+                        break
+                    }
                 }
+                listener.start(queue: .global(qos: .userInitiated))
             }
-            listener.start(queue: .global(qos: .userInitiated))
+
+            self.listener = listener
+            markReady(port: port)
+            return URL(string: "http://127.0.0.1:\(port)")!
+        } catch {
+            // 关键：失败也要收掉，否则这个端口会被一直占着。
+            listener.stateUpdateHandler = nil
+            listener.newConnectionHandler = nil
+            listener.cancel()
+            throw TetherError.proxyUnavailable(error.localizedDescription)
         }
     }
 
     private func markReady(port: UInt16) {
         boundPort = port
         logger?.log("本地代理已就绪 127.0.0.1:\(port)")
-    }
-
-    private func handleListenerState(_ state: NWListener.State) {
-        if case .failed(let error) = state {
-            logger?.log("本地监听失败：\(error.localizedDescription)")
-        }
     }
 
     func stop() {
@@ -131,6 +147,26 @@ actor LocalProxyServer {
 
     private func retire(_ identifier: ObjectIdentifier) {
         connections[identifier] = nil
+    }
+}
+
+/// 保证 continuation **只被 resume 一次**。
+///
+/// `NWListener` 的状态回调可能先 `.ready` 再 `.failed`（或者反过来），
+/// 而 `CheckedContinuation` 二次 resume 会直接崩。用一把锁把它钉住。
+private final class ContinuationGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var used = false
+
+    func resumeOnce(_ body: () -> Void) {
+        lock.lock()
+        if used {
+            lock.unlock()
+            return
+        }
+        used = true
+        lock.unlock()
+        body()
     }
 }
 
