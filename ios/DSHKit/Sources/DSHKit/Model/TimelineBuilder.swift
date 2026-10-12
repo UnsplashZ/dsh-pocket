@@ -537,6 +537,28 @@ public struct TimelineBuilder: Sendable {
     // MARK: - 各事件的具体折叠
 
     private mutating func applyUserMessage(_ event: SessionEvent, into delta: inout TimelineDelta) {
+        // **只有 `source.kind == "user"` 才是人打的字。**
+        //
+        // 别的一律是机器注入的上下文，它们同样以 `user/message` 事件落到日志里：
+        // 实测见过的 kind 有 `runtime-context`、`skill-catalog`、`time-context`、
+        // `memory-manager-catalog`、`mcp-manager-catalog`、`system-prompt`、
+        // `tool-registry`、`user-approval`、`model-selection`…
+        //
+        // 把它们当用户消息渲染的后果很难看：一整个 `<system-reminder>…</available_skills>`
+        // 会被画成右侧的蓝色气泡，看起来像用户自己粘贴了一段提示词。
+        // 正确做法是收进 raw（默认隐藏，打开"显示模型可见的原始事件"才看得到）。
+        let sourceKind = event.string("data.source.kind") ?? ""
+        guard sourceKind == "user" else {
+            upsert(
+                TimelineItem(
+                    id: Self.durableId(event.seq), seq: event.seq, time: event.time,
+                    kind: .raw(type: "user/message · \(sourceKind.isEmpty ? "?" : sourceKind)", data: event.data)
+                ),
+                into: &delta
+            )
+            return
+        }
+
         let content = event.data.array("content") ?? []
         let text = content.compactMap { block -> String? in
             guard block.string("type") == "text" else { return nil }

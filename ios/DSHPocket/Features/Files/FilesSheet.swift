@@ -98,7 +98,15 @@ struct FilesSheet: View {
                     }
                 }
             }
-            .overlay { if isLoading { ProgressView() } }
+            .overlay {
+                if isLoading {
+                    ZStack {
+                        Color(.systemBackground).opacity(0.5)
+                        ProgressView().controlSize(.large)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
             .refreshable { await load() }
             .task { await load() }
             .sheet(isPresented: $showPreview) {

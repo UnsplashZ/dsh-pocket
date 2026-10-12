@@ -336,9 +336,9 @@ public actor DSHClient {
 
     // MARK: - 模型
 
-    /// `session/modelCatalog`：可用模型清单。
-    public func modelCatalog() async throws -> JSONValue {
-        try await rpc.call("session/modelCatalog")
+    /// `session/modelCatalog`：可用模型清单（按 provider 分组，每个模型带自己的推理强度选项）。
+    public func modelCatalog() async throws -> ModelCatalog {
+        ModelCatalog.decode(try await rpc.call("session/modelCatalog"))
     }
 
     /// `session/selectModel`。请求是 `SessionSelectModelRequest extends ModelSelection`，

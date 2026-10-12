@@ -536,17 +536,6 @@
         }
       }
     },
-    "切换只影响这个会话。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Switching only affects this session."
-          }
-        }
-      }
-    },
     "切换模型": {
       "extractionState": "manual",
       "localizations": {
@@ -668,6 +657,17 @@
         }
       }
     },
+    "只列出当前模型支持的档位 —— 不同模型的可选项不一样。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only the levels this model supports are listed — they differ per model."
+          }
+        }
+      }
+    },
     "只在打开开关时才向系统申请通知权限。App 退到后台会断开与电脑的连接（iOS 不允许常驻），所以通知是本地提醒，不是实时推送。": {
       "extractionState": "manual",
       "localizations": {
@@ -686,17 +686,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "You can type the 6-digit code instead."
-          }
-        }
-      }
-    },
-    "可用模型": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Available models"
           }
         }
       }
@@ -1264,6 +1253,17 @@
         }
       }
     },
+    "当前模型": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current model"
+          }
+        }
+      }
+    },
     "待办": {
       "extractionState": "manual",
       "localizations": {
@@ -1683,17 +1683,6 @@
         }
       }
     },
-    "最高": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Max"
-          }
-        }
-      }
-    },
     "有一条操作在等你批准": {
       "extractionState": "manual",
       "localizations": {
@@ -2002,13 +1991,24 @@
         }
       }
     },
-    "清除工作区筛选": {
+    "清除": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Clear the workspace filter"
+            "value": "Clear"
+          }
+        }
+      }
+    },
+    "清除筛选": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear the filter"
           }
         }
       }
@@ -2130,17 +2130,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Your computer is waiting for an answer"
-          }
-        }
-      }
-    },
-    "电脑没有返回模型清单。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Your computer returned no model list."
           }
         }
       }
@@ -2560,17 +2549,6 @@
         }
       }
     },
-    "跟随默认": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Use default"
-          }
-        }
-      }
-    },
     "跳到最新": {
       "extractionState": "manual",
       "localizations": {
@@ -2738,6 +2716,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "这台手机的设备 ID：%@…\n电脑端按这把公钥授权；删掉它需要重新配对。"
+          }
+        }
+      }
+    },
+    "这台电脑上没有可用模型": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No models available on this computer"
           }
         }
       }
@@ -3096,6 +3085,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "External chats wired into DSH — Feishu, WeChat and the like — show up here."
+          }
+        }
+      }
+    },
+    "默认展开思考过程": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Expand reasoning by default"
           }
         }
       }

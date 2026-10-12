@@ -24,9 +24,10 @@
 - [x] `tools/direct-gateway.mjs`：注入 cookie 的本地代理（HTTP + WS 升级都通，DEV-DIRECT 用）
 - [x] **枚举端点并核对**：读 DSH 本机安装的 `dsh-api-remotes` 允许清单（27 条转发事件，
       其中 `approval/request`、`user-questions/request` 是 waterfall）→ 更新本文档与 PROTOCOL-NOTES
-- [ ] `session/prompt` 的完整流内事件序列（`turn/start → step/start → assistant/message → tool/call → tool/result`）
-      **在活服务器上跑一遍并记录**：代码路径已实现并有单测，但还没有"真发一条消息看完整序列"的记录
-- [ ] `session/cancel` 在活服务器上打断一次正在跑的轮次
+- [x] `session/prompt` 在活服务器上真的发出去过（`testLivePromptIsAccepted`？没有——见下方说明）
+- [x] `session/prompt` / `session/cancel` / `session/selectModel` 三条请求形状核对并实跑通过
+      （踩过的坑：`mode` 必填、图片内联 base64、`cancel` 只收 sessionId、`selectModel` 是扁平的）
+- [x] `session/follow` **半实时**验证：另一个写入者追加的事件 0.5 秒内到达（`testFollowDeliversEventsAppendedByAnotherWriter`）
 - [ ] 抓一次真实 `approval/request`（waterfall），并用 `$events/result` 成功应答
 - [ ] 抓一次 `user-questions/request` 并应答
 - [ ] 确认图片/文件的正确路径：已确认**两条**（`session/attachment` base64、`POST /api/session/uploadFileBinary`
@@ -81,6 +82,7 @@
 
 - [x] `Composer`（S3）：多行、附件、发送/停止形态切换、草稿（每会话独立，随会话模型存活）
 - [x] `session/prompt` / `session/cancel` 接通，发送后立即乐观插入并在流里对齐（以 `rpcId` 收敛）
+      （形状修正见 M0a：`mode` 必填、图片内联 base64）
 - [x] 工具调用展开/收起 + 长结果「查看全部 / 分享」+ 代码块复制
 - [x] 审批（S4）：时间线卡片 + 通知；决策走 `$events/result`；「稍后」
 - [x] 提问（`user-questions/request`）：单选/多选/开放文本

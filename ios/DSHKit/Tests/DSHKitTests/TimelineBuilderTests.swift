@@ -124,6 +124,50 @@ final class TimelineBuilderTests: XCTestCase {
         XCTAssertFalse(builder.items.first { $0.id == "e4" }?.isShadowed ?? true)
     }
 
+    // MARK: 注入上下文 vs 真人消息
+
+    /// `user/message` 事件里**只有** `source.kind == "user"` 是人打的字。
+    ///
+    /// 别的是机器注入的上下文（实测见过的 kind：runtime-context、skill-catalog、
+    /// time-context、memory-manager-catalog、mcp-manager-catalog…）。把它们画成
+    /// 蓝色用户气泡的后果是：一整个 `<system-reminder>…</available_skills>` 看起来
+    /// 像用户自己粘贴的提示词。
+    func testInjectedContextIsNotRenderedAsAUserBubble() throws {
+        var builder = TimelineBuilder()
+        _ = builder.apply(try Fixture.event(Fixture.injectedContext("Time sampled while preparing turn 1", kind: "time-context", seq: 1)))
+        _ = builder.apply(try Fixture.event(Fixture.injectedContext("<system-reminder>A skill is…", kind: "skill-catalog", seq: 2)))
+        _ = builder.apply(try Fixture.event(Fixture.injectedContext("Current runtime context.", kind: "runtime-context", seq: 3)))
+        _ = builder.apply(try Fixture.event(Fixture.userMessage("你能接入 codegraph 吗？", seq: 4)))
+
+        let bubbles = builder.items.compactMap { item -> String? in
+            guard case .userMessage(let message) = item.kind else { return nil }
+            return message.text
+        }
+        XCTAssertEqual(bubbles, ["你能接入 codegraph 吗？"], "只有真人消息能变成用户气泡")
+
+        // 注入的上下文不能丢，但要落到 raw（默认隐藏）
+        let rawKinds = builder.items.compactMap { item -> String? in
+            guard case .raw(let type, _) = item.kind else { return nil }
+            return type
+        }
+        XCTAssertEqual(rawKinds.count, 3)
+        XCTAssertTrue(rawKinds.contains("user/message · skill-catalog"))
+        XCTAssertFalse(builder.conversationalItems.contains { item in
+            if case .raw = item.kind { return true }
+            return false
+        }, "raw 不进默认视图")
+    }
+
+    func testUserMessageWithRpcSourceIsStillAUserBubble() throws {
+        // 官方客户端发出来的真人消息 source 是 `{kind:'user', rpcId:…}` —— 一样要画成气泡。
+        var builder = TimelineBuilder()
+        _ = builder.apply(try Fixture.event(Fixture.userMessage("你好", seq: 1, rpcId: "rpc-9")))
+        XCTAssertEqual(builder.conversationalItems.count, 1)
+        guard case .userMessage(let message) = builder.conversationalItems[0].kind else { return XCTFail() }
+        XCTAssertEqual(message.text, "你好")
+        XCTAssertEqual(message.rpcId, "rpc-9")
+    }
+
     // MARK: 实时流
 
     func testAssistantStreamGrowsTextThenDurableTakesOverSameId() throws {

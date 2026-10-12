@@ -87,6 +87,7 @@ public final class AppSettings {
         static let notifyQuestions = "settings.notify.questions"
         static let notifyCompletions = "settings.notify.completions"
         static let showRawEvents = "settings.showRawEvents"
+        static let expandReasoning = "settings.expandReasoning"
         static let devDirect = "settings.devDirect"
         static let transportMode = "settings.transportMode"
         static let gatewayURL = "settings.gatewayURL"
@@ -118,6 +119,14 @@ public final class AppSettings {
     /// 会话菜单里的"显示模型可见的原始事件"（系统提示、request/header…）。
     public var showRawEvents: Bool {
         didSet { defaults.set(showRawEvents, forKey: Key.showRawEvents) }
+    }
+
+    /// 思考过程默认展开。
+    ///
+    /// 默认**关**：推理过程通常很长，默认摊开会把对话本身挤下去。
+    /// 想看细节的人可以在设置里打开，或者单条点开。
+    public var expandReasoningByDefault: Bool {
+        didSet { defaults.set(expandReasoningByDefault, forKey: Key.expandReasoning) }
     }
 
     /// DEV-DIRECT：跳过 iroh，直接打 Mac 上的注入 cookie 的 dev 代理（ADR-0009）。
@@ -163,6 +172,7 @@ public final class AppSettings {
         prefs.completions = defaults.bool(forKey: Key.notifyCompletions)
         self.notifications = prefs
         self.showRawEvents = defaults.bool(forKey: Key.showRawEvents)
+        self.expandReasoningByDefault = defaults.bool(forKey: Key.expandReasoning)
         self.devDirectEnabled = defaults.bool(forKey: Key.devDirect)
         // 迁移：老版本只有 devDirectEnabled 这个开关。
         if let raw = defaults.string(forKey: Key.transportMode), let mode = TransportMode(rawValue: raw) {

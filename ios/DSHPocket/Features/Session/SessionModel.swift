@@ -49,6 +49,9 @@ public final class SessionModel {
     private(set) var lastSeq: Double = -1
     private(set) var title: String = ""
     private(set) var modelLabel: String = ""
+    /// 这个会话当前用的模型（`projections.modelSelection` 的 `next`/`lastUsed`）。
+    /// 模型页拿它做初始选中项。
+    private(set) var modelSelection: ModelSelection?
     private(set) var contextPressure: ContextPressure?
     private(set) var todos: [TimelineItem.TodoEntry] = []
 
@@ -74,6 +77,7 @@ public final class SessionModel {
     // MARK: 内部
 
     private var followTask: Task<Void, Never>?
+    private var generationTask: Task<Void, Never>?
     private var reconnectAttempt = 0
     private var pendingPromptRpcId: String?
 
@@ -90,12 +94,33 @@ public final class SessionModel {
     func open() async {
         guard followTask == nil else { return }
         phase = .loading
+        observeTransportGeneration()
         await subscribe()
     }
 
     func close() {
         followTask?.cancel()
         followTask = nil
+        generationTask?.cancel()
+        generationTask = nil
+    }
+
+    /// 传输重连后 AppModel 会换一个 `DSHClient`（端口可能变、旧 WS 全死）。
+    /// 这里盯着它的世代计数器，一变就**立刻**重订阅 —— 不等自己那套退避慢慢转过来，
+    /// 否则用户会看到"电脑上刚发的消息，手机上要等好几秒才出现"。
+    private func observeTransportGeneration() {
+        generationTask?.cancel()
+        generationTask = Task { [weak self] in
+            guard let self else { return }
+            var last = -1
+            for await generation in await self.appModel.generationUpdates() {
+                if Task.isCancelled { return }
+                defer { last = generation }
+                guard last >= 0, generation != last else { continue }
+                // 重连后按已有的 lastSeq 续拉：宿主的快照会重放，用 seq 去重。
+                await self.subscribe()
+            }
+        }
     }
 
     private func subscribe() async {
@@ -199,11 +224,14 @@ public final class SessionModel {
         if let pressure = values["contextPressure"] {
             contextPressure = ContextPressure(json: pressure)
         }
-        if let selection = values["modelSelection"] {
-            let next = selection["next"] ?? selection["lastUsed"] ?? .null
-            let provider = next.string("provider") ?? ""
-            let model = next.string("model") ?? ""
-            modelLabel = model.isEmpty ? provider : model
+        if let raw = values["modelSelection"] {
+            // 嵌套形状：`{lastUsed: {...}, next: {...}}`。当扁平读会永远拿到空值。
+            let chosen = raw["next"] ?? raw["lastUsed"] ?? raw
+            let selection = ModelSelection(json: chosen)
+            if !selection.provider.isEmpty || !selection.model.isEmpty {
+                modelSelection = selection
+                modelLabel = selection.model.isEmpty ? selection.provider : selection.model
+            }
         }
         todos = (values.array("todos") ?? []).map {
             TimelineItem.TodoEntry(text: $0.string("content") ?? "", status: .init(raw: $0.string("status")))
@@ -392,22 +420,22 @@ public final class SessionModel {
         }
     }
 
-    func selectModel(provider: String, model: String, reasoningEffort: String?) async {
-        do {
-            try await client.selectModel(
-                sessionId: sessionId,
-                provider: provider,
-                model: model,
-                reasoningEffort: reasoningEffort
-            )
-            modelLabel = model
-        } catch {
-            failureMessage = (error as? DSHClientError)?.displayMessage ?? error.localizedDescription
-        }
+    /// 切换模型。失败会抛出去 —— 模型页要在原地给出"切换失败"，而不是悄悄什么都不做。
+    func selectModel(provider: String, model: String, reasoningEffort: String?) async throws {
+        try await client.selectModel(
+            sessionId: sessionId,
+            provider: provider,
+            model: model,
+            reasoningEffort: reasoningEffort
+        )
+        modelLabel = model
+        modelSelection = ModelSelection(provider: provider, model: model, reasoningEffort: reasoningEffort)
     }
 
-    func loadModelCatalog() async -> JSONValue? {
-        try? await client.modelCatalog()
+    /// 模型清单。**失败要抛出去**，让模型页能显示"读不到 + 重试"，
+    /// 而不是永远转圈（之前返回可选值、失败了就当空数组，UI 分不清"没读到"和"还没读到"）。
+    func loadModelCatalog() async throws -> ModelCatalog {
+        try await client.modelCatalog()
     }
 
     /// 给"诊断"用的：把当前时间线导出为纯文本。

@@ -81,6 +81,11 @@ public final class AppModel {
     private var tetherMessagesTask: Task<Void, Never>?
     private var workspaceTask: Task<Void, Never>?
     private var transportSupervisor: Task<Void, Never>?
+    private var listRefreshLoop: Task<Void, Never>?
+    /// 传输世代：每次重建 client 自增。打开着的会话页据此**立刻**重订阅，
+    /// 而不是等自己那套退避重试慢慢转过来。
+    private(set) var transportGeneration = 0
+    private var generationContinuations: [UUID: AsyncStream<Int>.Continuation] = [:]
     private var reconnectAttempt = 0
     private var isBackgrounded = false
     /// 连续几次传输失败。用来把"电脑端已经不认这台手机了"这种需要人工介入的
@@ -154,6 +159,8 @@ public final class AppModel {
     func handleBackground() async {
         isBackgrounded = true
         logs.log(.info, "退到后台，断开传输")
+        listRefreshLoop?.cancel()
+        listRefreshLoop = nil
         await eventCoordinator?.stop()
         eventCoordinator = nil
         workspaceTask?.cancel()
@@ -202,6 +209,41 @@ public final class AppModel {
     }
 
     private var isConnecting = false
+
+    /// 传输世代变化流。会话页订阅它，重连后立刻重订阅会话流。
+    func generationUpdates() -> AsyncStream<Int> {
+        let id = UUID()
+        return AsyncStream { continuation in
+            continuation.yield(transportGeneration)
+            generationContinuations[id] = continuation
+            continuation.onTermination = { _ in
+                Task { await self.dropGenerationContinuation(id) }
+            }
+        }
+    }
+
+    private func dropGenerationContinuation(_ id: UUID) { generationContinuations[id] = nil }
+
+    /// 前台期间**轻量定时刷新**会话列表。
+    ///
+    /// 为什么不只靠 `$events`：实测 `$events` 在 30 秒里只发了 `ready`，
+    /// 一条 `api-session/*` 都没有 —— 会话在电脑上被更新时列表并不会因此刷新。
+    /// `session/list` 只读投影、很便宜，20 秒一次足够"半实时"，
+    /// 又不会像开流那样耗电。
+    private func startListRefreshLoop() {
+        listRefreshLoop?.cancel()
+        listRefreshLoop = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(20))
+                guard !Task.isCancelled, let self else { return }
+                let shouldRefresh = await MainActor.run {
+                    !self.isBackgrounded && self.connection.isConnected
+                }
+                guard shouldRefresh else { continue }
+                await self.refreshSessions()
+            }
+        }
+    }
 
     /// 用户在设置里改了连接方式/地址之后，按当前配置重建一次。
     func activateConfiguredTransport() async {
@@ -290,6 +332,8 @@ public final class AppModel {
     func disconnect() async {
         transportSupervisor?.cancel()
         transportSupervisor = nil
+        listRefreshLoop?.cancel()
+        listRefreshLoop = nil
         reconnectAttempt = 0
         await eventCoordinator?.stop()
         eventCoordinator = nil
@@ -331,10 +375,14 @@ public final class AppModel {
         await coordinator.start()
         eventCoordinator = coordinator
 
+        transportGeneration &+= 1
+        for continuation in generationContinuations.values { continuation.yield(transportGeneration) }
+
         await observeMuxState()
         await observeTetherMessages()
         await observeWorkspace()
         await refreshSessions()
+        startListRefreshLoop()
     }
 
     /// 订阅工作区流：归档/置顶集合只有这一条路能拿到。
@@ -437,6 +485,25 @@ public final class AppModel {
         return names.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
 
+    /// 一个可新建会话的工作区目标。
+    struct WorkspaceTarget: Identifiable, Hashable, Sendable {
+        /// 同一个 basename 可能对应不同目录（`/a/Github` 与 `/b/Github`），
+        /// 所以 id 用**完整路径**，不是显示名。
+        public var id: String { cwd }
+        public var name: String
+        public var cwd: String
+        public var sessionCount: Int
+    }
+
+    /// 新建会话的可选工作区。
+    ///
+    /// `session/create` 的 `cwd` **必须是绝对路径** —— 传显示用的 basename 会被拒：
+    /// `session header cwd must be an absolute path, got "dsh-pocket"`。
+    /// 之前这里就是传 basename，所以"选完工作区没反应"。
+    var workspaceTargets: [WorkspaceTarget] {
+        SessionPartition.workspaceTargets(activeSessions, archived: archivedSessionIds)
+    }
+
     /// 已归档的会话 —— 统一在设置里管理，不混进对话列表。
     var archivedSessions: [SessionSummary] {
         SessionPartition.archived(sessions, archived: archivedSessionIds)
@@ -490,11 +557,25 @@ public final class AppModel {
         do {
             let id = try await client.createSession(cwd: cwd)
             await refreshSessions()
+            // 新会话在 `session/list` 里可能晚一拍才出现。等一小会儿再找，
+            // 找不到就直接把 id 交给调用方（它能自己合成一个占位会话去打开）。
+            for _ in 0..<6 {
+                if sessions.contains(where: { $0.sessionId == id }) { return id }
+                try? await Task.sleep(for: .milliseconds(250))
+                await refreshSessions()
+            }
+            logs.log(.info, "新会话 \(id.prefix(12))… 还没出现在列表里，直接用 id 打开")
             return id
         } catch {
             sessionListError = (error as? DSHClientError)?.displayMessage ?? error.localizedDescription
             return nil
         }
+    }
+
+    /// 按 id 找一个会话；列表里还没有就合成一个最小可用的，保证"新建后立刻能进去"。
+    func sessionSummary(for id: String, cwd: String?) -> SessionSummary? {
+        if let existing = sessions.first(where: { $0.sessionId == id }) { return existing }
+        return SessionSummary.placeholder(sessionId: id, cwd: cwd)
     }
 
     // MARK: 主机管理
@@ -691,6 +772,23 @@ enum SessionPartition {
     /// 子代理会话**永远不进列表** —— 官方工作区 UI 也是这么做的
     /// （`if (session.origin === "subagent") return false`）。它们由父会话
     /// 时间线里的那张卡承载，混进主列表只会把真正在用的会话淹掉。
+    /// 新建会话的可选工作区。**id 与 cwd 都用完整路径** ——
+    /// 同名不同目录（`/a/Github` 与 `/b/Github`）不能被合并，
+    /// 而且 `session/create` 只接受绝对路径。
+    static func workspaceTargets(
+        _ sessions: [SessionSummary],
+        archived: Set<String>
+    ) -> [AppModel.WorkspaceTarget] {
+        var counts: [String: Int] = [:]
+        for summary in active(sessions, archived: archived) where !summary.category.isChannel {
+            guard let cwd = summary.cwd, !cwd.isEmpty, cwd.hasPrefix("/") else { continue }
+            counts[cwd, default: 0] += 1
+        }
+        return counts
+            .map { AppModel.WorkspaceTarget(name: ($0.key as NSString).lastPathComponent, cwd: $0.key, sessionCount: $0.value) }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
     static func inScope(
         _ sessions: [SessionSummary],
         scope: SessionScope,

@@ -55,7 +55,12 @@ struct ArchivedSessionsView: View {
         .refreshable { await model.refreshSessions() }
         .overlay {
             if isWorking {
-                ProgressView().controlSize(.large)
+                // 阻塞式加载态要有底衬，否则转圈浮在列表上像是渲染错位。
+                ZStack {
+                    Color(.systemBackground).opacity(0.5).ignoresSafeArea()
+                    ProgressView().controlSize(.large)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .confirmationDialog(

@@ -249,6 +249,10 @@ struct SettingsSheet: View {
             Toggle(isOn: $settings.showRawEvents) {
                 Label("显示模型可见的原始事件", systemImage: "curlybraces")
             }
+
+            Toggle(isOn: $settings.expandReasoningByDefault) {
+                Label("默认展开思考过程", systemImage: "brain")
+            }
         }
     }
 

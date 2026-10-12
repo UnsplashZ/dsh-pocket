@@ -159,6 +159,13 @@ enum Fixture {
         """
     }
 
+    /// 机器注入的上下文 —— 它同样是 `user/message` 事件，但 `source.kind` 不是 `user`。
+    static func injectedContext(_ text: String, kind: String, seq: Int) -> String {
+        """
+        {"type":"user/message","seq":\(seq),"time":1791777000000,"data":{"content":[{"type":"text","text":"\(esc(text))"}],"source":{"kind":"\(kind)"},"role":"user","id":"ctx-\(seq)"},"surfaceOp":"append"}
+        """
+    }
+
     static func unknownEvent(type: String, seq: Int, ignorable: Bool = false) -> String {
         let marker = ignorable ? ",\"ignorable\":true" : ""
         return """

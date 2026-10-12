@@ -467,6 +467,18 @@ EN: dict[str, str] = {
     "上一次连接还在进行中": "A connection attempt is already in progress",
     "%@\n连续失败 %lld 次。如果电脑端重装过插件或清过配对数据，请在「设置 → 主机」里删掉这台电脑，然后重新配对。":
         "%@\nFailed %lld times in a row. If the plugin was reinstalled or its pairing data was cleared on your computer, delete this computer under Settings → Computers and pair again.",
+    # 模型页 / 筛选 / 思考过程
+    "正在读取模型清单…": "Loading the model list…",
+    "这台电脑上没有可用模型": "No models available on this computer",
+    "先在你电脑上的 DSH 里登录一个模型服务。": "Sign in to a model service in DSH on your computer first.",
+    "当前模型": "Current model",
+    "只列出当前模型支持的档位 —— 不同模型的可选项不一样。":
+        "Only the levels this model supports are listed — they differ per model.",
+    "切换失败": "Couldn’t switch",
+    "清除": "Clear",
+    "清除筛选": "Clear the filter",
+    "默认展开思考过程": "Expand reasoning by default",
+    "按名字或路径找会话": "Search by name or path",
 }
 
 # 哪些插值表达式是整数。判错的后果是英文界面上显示成 `%lld` 字面量，

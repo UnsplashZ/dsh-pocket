@@ -287,11 +287,74 @@ final class LiveIntegrationTests: XCTestCase {
         )
     }
 
+    /// **半实时**：别人（比如电脑上的 DSH 桌面端）往一个会话里发消息时，
+    /// 已经打开着 `session/follow` 的客户端应当立刻看到它。
+    ///
+    /// 这条直接对应"我在 dsh desktop 上发了一条新消息，但手机上没有显示"。
+    /// 会真的起一轮 agent（然后立刻 cancel），默认跳过。
+    func testFollowDeliversEventsAppendedByAnotherWriter() async throws {
+        try requireLive()
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["DSH_LIVE_PROMPT"] == "1",
+            "会真的起一轮 agent。设 DSH_LIVE_PROMPT=1 才跑。"
+        )
+        let client = makeClient()
+        let sessionId = try await client.createSession(cwd: NSHomeDirectory())
+
+        // 先订阅，再写 —— 这样才能证明"实时"而不是"重放"。
+        let ready = expectation(description: "follow 收到快照")
+        let sawUserMessage = expectation(description: "follow 收到新写入的 user/message")
+        let writer = Task {
+            // 等订阅建立
+            try await Task.sleep(for: .milliseconds(400))
+            _ = try await client.prompt(
+                sessionId: sessionId,
+                requestId: RpcId.make(),
+                text: "Reply with exactly: pong",
+                mode: .queue
+            )
+        }
+
+        let reader = Task {
+            var sawSnapshot = false
+            for try await frame in client.follow(sessionId: sessionId, assistantStream: false) {
+                switch frame {
+                case .snapshot:
+                    if !sawSnapshot {
+                        sawSnapshot = true
+                        ready.fulfill()
+                    }
+                case .event(let event):
+                    if event.type == "user/message", event.string("data.source.kind") == "user" {
+                        sawUserMessage.fulfill()
+                        return
+                    }
+                case .assistantStream:
+                    break
+                }
+            }
+        }
+
+        await fulfillment(of: [ready], timeout: 20)
+        await fulfillment(of: [sawUserMessage], timeout: 25)
+        reader.cancel()
+        _ = try? await writer.value
+        _ = try await client.cancel(sessionId: sessionId)
+    }
+
     func testModelCatalogAndUnaryErrorShape() async throws {
         try requireLive()
         let client = makeClient()
         let catalog = try await client.modelCatalog()
-        XCTAssertNotNil(catalog.objectValue ?? catalog.arrayValue, "modelCatalog 应该返回结构化数据")
+        XCTAssertFalse(catalog.isEmpty, "modelCatalog 应该解出至少一个分组（形状是 groups[].models[]）")
+        XCTAssertFalse(catalog.allModels.isEmpty)
+        for group in catalog.groups {
+            XCTAssertFalse(group.name.isEmpty, "每个分组都该有名字")
+            for model in group.models {
+                XCTAssertFalse(model.id.isEmpty)
+                XCTAssertFalse(model.name.isEmpty)
+            }
+        }
 
         // 未知方法 → 业务错误（HTTP 200 + result.ok=false）或 404，两种都要能被识别成错误。
         do {

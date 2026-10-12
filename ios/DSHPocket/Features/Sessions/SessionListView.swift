@@ -25,6 +25,10 @@ struct SessionListView: View {
 
     var body: some View {
         List {
+            if hasActiveFilter {
+                filterChipSection
+            }
+
             if !model.connection.isConnected {
                 disconnectedSection
             }
@@ -80,40 +84,6 @@ struct SessionListView: View {
         }
         .listStyle(.insetGrouped)
         .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: Text("搜索标题或摘要"))
-        // 范围分段控件钉在搜索框下面。放在 List 里会跟着滚走，
-        // 而"我现在看的是会话还是频道"必须一直可见。
-        .safeAreaInset(edge: .top, spacing: 0) {
-            VStack(spacing: 0) {
-                Picker("范围", selection: $scope) {
-                    ForEach(SessionScope.allCases) { option in
-                        Text(option.label).tag(option)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, Token.Spacing.gutter)
-                .padding(.vertical, Token.Spacing.tight)
-
-                if let workspace {
-                    HStack(spacing: Token.Spacing.hairline) {
-                        Image(systemName: "folder")
-                        Text(workspace)
-                        Button {
-                            self.workspace = nil
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .symbolRenderingMode(.hierarchical)
-                        }
-                        .accessibilityLabel(Text("清除工作区筛选"))
-                        Spacer()
-                    }
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, Token.Spacing.gutter)
-                    .padding(.bottom, Token.Spacing.tight)
-                }
-            }
-            .background(.bar)
-        }
         .refreshable { await model.refreshSessions() }
         .navigationTitle("会话")
         .toolbar { toolbar }
@@ -149,21 +119,53 @@ struct SessionListView: View {
             Text("归档会先把这一轮停掉。已经跑出来的内容会保留。")
         }
         .confirmationDialog("新建会话", isPresented: $showNewSession, titleVisibility: .visible) {
-            ForEach(workspaces, id: \.self) { workspace in
-                Button(workspace) {
-                    Task {
-                        if let id = await model.createSession(cwd: workspace) {
-                            await model.refreshSessions()
-                            if let summary = model.sessions.first(where: { $0.sessionId == id }) {
-                                onSelect(summary)
-                            }
-                        }
-                    }
-                }
+            // 传**完整路径**：`session/create` 的 cwd 必须是绝对路径，
+            // 传列表里显示的 basename 会被拒（`cwd must be an absolute path`）。
+            ForEach(model.workspaceTargets) { target in
+                Button(target.name) { createSession(in: target) }
             }
             Button("取消", role: .cancel) {}
         } message: {
             Text("会话会在所选工作区里创建。")
+        }
+    }
+
+    private func createSession(in target: AppModel.WorkspaceTarget) {
+        Task {
+            guard let id = await model.createSession(cwd: target.cwd) else { return }
+            // 列表可能还没刷到这个新会话，用占位保证"选完立刻进去"。
+            if let summary = model.sessionSummary(for: id, cwd: target.cwd) {
+                onSelect(summary)
+            }
+        }
+    }
+
+    private var hasActiveFilter: Bool {
+        scope != .sessions || workspace != nil
+    }
+
+    private var filterChipSection: some View {
+        Section {
+            HStack(spacing: Token.Spacing.tight) {
+                Label(scope.label, systemImage: scope == .channels ? "antenna.radiowaves.left.and.right" : "bubble.left.and.bubble.right")
+                    .font(.footnote)
+                if let workspace {
+                    Text("·").foregroundStyle(.tertiary)
+                    Label(workspace, systemImage: "folder")
+                        .font(.footnote)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: Token.Spacing.tight)
+                Button {
+                    scope = .sessions
+                    workspace = nil
+                } label: {
+                    Text("清除")
+                        .font(.footnote)
+                }
+                .accessibilityLabel(Text("清除筛选"))
+            }
+            .foregroundStyle(.secondary)
         }
     }
 
@@ -318,6 +320,7 @@ struct SessionListView: View {
     private var emptyOverlay: some View {
         if model.isLoadingSessions, model.sessions.isEmpty {
             ProgressView("正在读取会话…")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let error = model.sessionListError, model.sessions.isEmpty {
             ContentUnavailableView {
                 Label("读不到会话", systemImage: "exclamationmark.triangle")
@@ -373,6 +376,13 @@ struct SessionListView: View {
         }
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
+                // 范围放在菜单里而不是分段控件：分段控件钉在搜索框下方会把
+                // 搜索框挤掉一行（实测截图里"会话/频道"压在"搜索标题或摘要"上）。
+                Picker("范围", selection: $scope) {
+                    ForEach(SessionScope.allCases) { option in
+                        Text(option.label).tag(option)
+                    }
+                }
                 Section("工作区") {
                     Button {
                         workspace = nil
@@ -388,9 +398,9 @@ struct SessionListView: View {
                     }
                 }
             } label: {
-                Label("筛选", systemImage: workspace == nil
-                      ? "line.3.horizontal.decrease.circle"
-                      : "line.3.horizontal.decrease.circle.fill")
+                Label("筛选", systemImage: hasActiveFilter
+                      ? "line.3.horizontal.decrease.circle.fill"
+                      : "line.3.horizontal.decrease.circle")
             }
         }
         ToolbarItem(placement: .topBarTrailing) {

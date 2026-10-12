@@ -216,8 +216,11 @@ struct AssistantCard: View {
     let message: TimelineItem.AssistantMessage
     let time: Date
 
+    @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    // 默认隐藏（长推理会把对话挤下去）；设置里可以改成默认展开。
     @State private var reasoningExpanded = false
+    @State private var hasAppliedDefault = false
 
     var body: some View {
         HStack {
@@ -278,6 +281,12 @@ struct AssistantCard: View {
                 .foregroundStyle(.secondary)
         }
         .accessibilityHint(Text("展开查看模型的推理过程"))
+        .onAppear {
+            // 只在第一次出现时套用设置，之后尊重用户手动展开/收起。
+            guard !hasAppliedDefault else { return }
+            hasAppliedDefault = true
+            reasoningExpanded = model.settings.expandReasoningByDefault
+        }
     }
 }
 

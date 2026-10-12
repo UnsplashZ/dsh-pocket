@@ -221,6 +221,48 @@ final class ProtocolContractTests: XCTestCase {
         }
     }
 
+    // MARK: 模型清单
+
+    /// 实测返回里模型在 `groups[].models[]`，不在 `models[]` / `providers[]`。
+    /// 按后两者找会得到空数组 —— 表现就是模型页永远转圈。
+    func testModelCatalogParsesGroupsAndReasoningEfforts() throws {
+        let value = Fixture.json(#"""
+        {"default":{"provider":"wb","model":"deepseek-v4.1-flash","reasoningEffort":"high"},
+         "routableProviders":["wb","deepseek-account"],
+         "groups":[
+           {"id":"wb","name":"WB","models":[
+             {"id":"hy4-preview-f","name":"Hy4 preview","reasoning":{"efforts":[{"id":"high","name":"High"}]}},
+             {"id":"deepseek-v4.1-flash","name":"Deepseek-V4.1-Flash","reasoning":{"efforts":[{"id":"low","name":"Low"},{"id":"high","name":"High"},{"id":"max","name":"Max"}]}}
+           ]}
+         ],
+         "failures":[]}
+        """#)
+        let catalog = ModelCatalog.decode(value)
+        XCTAssertFalse(catalog.isEmpty)
+        XCTAssertEqual(catalog.groups.count, 1)
+        XCTAssertEqual(catalog.groups[0].name, "WB")
+        XCTAssertEqual(catalog.groups[0].models.count, 2)
+        XCTAssertEqual(catalog.allModels.map(\.id), ["hy4-preview-f", "deepseek-v4.1-flash"])
+        XCTAssertEqual(catalog.defaultSelection?.model, "deepseek-v4.1-flash")
+
+        // 不同模型的推理强度选项不一样 —— 选取器必须按模型取，不能写死
+        XCTAssertEqual(catalog.reasoningEfforts(provider: "wb", model: "hy4-preview-f").map(\.id), ["high"])
+        XCTAssertEqual(
+            catalog.reasoningEfforts(provider: "wb", model: "deepseek-v4.1-flash").map(\.name),
+            ["Low", "High", "Max"]
+        )
+        XCTAssertTrue(catalog.reasoningEfforts(provider: "nope", model: "nope").isEmpty)
+    }
+
+    func testModelCatalogReportsFailuresInsteadOfSwallowingThem() {
+        let catalog = ModelCatalog.decode(Fixture.json(#"""
+        {"default":{"provider":"","model":""},"routableProviders":[],"groups":[],
+         "failures":[{"provider":"foo","code":"auth","message":"需要登录"}]}
+        """#))
+        XCTAssertTrue(catalog.isEmpty)
+        XCTAssertEqual(catalog.failures, ["需要登录"])
+    }
+
     // MARK: 会话列表投影
 
     func testSessionSummaryDecodingFromRealShape() throws {

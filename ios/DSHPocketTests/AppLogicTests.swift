@@ -189,6 +189,38 @@ final class AppLogicTests: XCTestCase {
         XCTAssertFalse(ready)
     }
 
+    // MARK: 新建会话的工作区
+
+    /// `session/create` 的 `cwd` **必须是绝对路径**。列表里显示的是 basename，
+    /// 直接拿它当路径传会被宿主拒：
+    /// `session header cwd must be an absolute path, got "dsh-pocket"`。
+    /// 这就是"选完工作区没反应"的根因。
+    @MainActor
+    func testWorkspaceTargetsCarryAbsolutePathsNotDisplayNames() {
+        let sessions = [
+            makeSummary(id: "a", title: "A", updatedAt: 100, cwd: "/Users/example/dev/Github/dsh-pocket"),
+            makeSummary(id: "b", title: "B", updatedAt: 200, cwd: "/Users/example/dev/Github/dsh-pocket"),
+            makeSummary(id: "c", title: "C", updatedAt: 300, cwd: "/Users/example/dev/Github/analytics"),
+        ]
+        let targets = SessionPartition.workspaceTargets(sessions, archived: [])
+        XCTAssertEqual(targets.map(\.cwd).sorted(), ["/Users/example/dev/Github/analytics", "/Users/example/dev/Github/dsh-pocket"])
+        XCTAssertTrue(targets.allSatisfy { $0.cwd.hasPrefix("/") }, "传给 session/create 的必须是绝对路径")
+        XCTAssertEqual(targets.first { $0.cwd.hasSuffix("dsh-pocket") }?.sessionCount, 2)
+        XCTAssertEqual(targets.first { $0.cwd.hasSuffix("dsh-pocket") }?.name, "dsh-pocket", "显示名仍用 basename")
+    }
+
+    /// 同名不同目录的工作区不能被合并成一个 —— id 用完整路径。
+    @MainActor
+    func testWorkspaceTargetsDoNotMergeSameNamedDirectories() {
+        let sessions = [
+            makeSummary(id: "a", title: "A", updatedAt: 100, cwd: "/work/one/Github"),
+            makeSummary(id: "b", title: "B", updatedAt: 200, cwd: "/work/two/Github"),
+        ]
+        let targets = SessionPartition.workspaceTargets(sessions, archived: [])
+        XCTAssertEqual(targets.count, 2, "同名不同目录必须分开")
+        XCTAssertEqual(Set(targets.map(\.id)).count, 2)
+    }
+
     // MARK: 连接方式
 
     @MainActor

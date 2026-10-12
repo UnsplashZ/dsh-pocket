@@ -31,13 +31,19 @@ struct SessionView: View {
             if let session {
                 content(session)
             } else {
-                ProgressView().controlSize(.large)
+                ProgressView()
+                    .controlSize(.large)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .navigationTitle(session?.title ?? summary.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
         .task {
+            #if DEBUG
+            // 调试用：`defaults write cc.zexa.dshpocket DSHShowModelPicker -bool YES`
+            if UserDefaults.standard.bool(forKey: "DSHShowModelPicker") { showModelPicker = true }
+            #endif
             if session == nil {
                 let created = SessionModel(
                     sessionId: summary.sessionId,
@@ -254,7 +260,8 @@ struct SessionView: View {
                     Text(detail)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                        // 换行而不是截断：状态条的高度跟着文字长，按钮不会被挤出去。
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             Spacer(minLength: Token.Spacing.tight)
@@ -262,6 +269,7 @@ struct SessionView: View {
                 Button(action.0, action: action.1)
                     .font(.footnote)
                     .buttonStyle(.bordered)
+                    .fixedSize()
             }
         }
         .padding(.horizontal, Token.Spacing.gutter)

@@ -17,6 +17,7 @@
 		3379AE831FF66E5DA0E09FB1 /* Retry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31CE6B371F32508FBC3EA5B7 /* Retry.swift */; };
 		3A03754D58D00923BFE2F2E7 /* DSHKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = F714C252B15543051C29E9C2 /* DSHKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		3A77B6E2FAAF72732395F060 /* ArchivedSessionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4B82B84D34748F34AB480E7 /* ArchivedSessionsView.swift */; };
+		3DDFBE4A5A035056DA874763 /* ModelCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33BA4D73DF3106AB6973C28A /* ModelCatalog.swift */; };
 		401AD194FBC1A5CFE9895B4A /* SessionModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42AD7FF2C0BB55901583FD66 /* SessionModel.swift */; };
 		40605810D9F3726B5807B249 /* SessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97BB8F4E3F13184B4BCA31B0 /* SessionView.swift */; };
 		410C4DDB28BB404E39511F64 /* Network.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 08306E6C972F98DCB1348670 /* Network.framework */; };
@@ -153,6 +154,7 @@
 		30AC58D8B9981CB968F5B72C /* Composer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Composer.swift; sourceTree = "<group>"; };
 		31CE6B371F32508FBC3EA5B7 /* Retry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Retry.swift; sourceTree = "<group>"; };
 		332E9727DA5B522FCF725E72 /* TimelineItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineItem.swift; sourceTree = "<group>"; };
+		33BA4D73DF3106AB6973C28A /* ModelCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelCatalog.swift; sourceTree = "<group>"; };
 		40F731E69C3E40534DA3287A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		42AD7FF2C0BB55901583FD66 /* SessionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionModel.swift; sourceTree = "<group>"; };
 		54FBBD8E05AA668CEF81EF66 /* DSHClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSHClient.swift; sourceTree = "<group>"; };
@@ -272,6 +274,7 @@
 		1AFAB05C8488909ABC1473FA /* Model */ = {
 			isa = PBXGroup;
 			children = (
+				33BA4D73DF3106AB6973C28A /* ModelCatalog.swift */,
 				6607BBF3D413D89A4B537871 /* Projections.swift */,
 				F345924C6640FF3AAB53E779 /* PromptMode.swift */,
 				B225F0688C4A99917EBDD4AE /* SessionCategory.swift */,
@@ -682,6 +685,7 @@
 				2F2037A1772AE4F088992348 /* HostEvent.swift in Sources */,
 				9841EB1AD4F981BAEAC319B4 /* HostProvider.swift in Sources */,
 				4B2610E3E5F08B31B0D6B327 /* JSONValue.swift in Sources */,
+				3DDFBE4A5A035056DA874763 /* ModelCatalog.swift in Sources */,
 				5E9D06012AD7777CCDDAFC04 /* MuxClient.swift in Sources */,
 				5BA98D3D35912124CBD15736 /* Projections.swift in Sources */,
 				EA0E68CC7F6507DDFA6DE538 /* PromptMode.swift in Sources */,

@@ -65,6 +65,26 @@ public struct SessionSummary: Sendable, Identifiable, Hashable {
         return channel.isEmpty ? "im" : channel
     }
 
+    /// 造一个"刚建出来、列表还没刷到"的占位。
+    ///
+    /// 用途：新建会话之后用户期望**立刻**进去。宿主的 `session/list` 有传播延迟，
+    /// 干等或者静默失败都不好 —— 不如用一个标题待定的占位先把会话页打开，
+    /// 等真正的投影到了自然会替换掉标题。
+    public static func placeholder(sessionId: String, cwd: String?) -> SessionSummary {
+        SessionSummary(
+            sessionId: sessionId,
+            updatedAt: Date(),
+            cwd: cwd,
+            isRunning: false,
+            agentAvailable: true,
+            isBlank: true,
+            parentSessionId: nil,
+            origin: nil,
+            asOfSeq: -1,
+            projections: .empty
+        )
+    }
+
     public static func decode(_ value: JSONValue) -> SessionSummary? {
         guard let sessionId = value.string("sessionId") else { return nil }
         return SessionSummary(
@@ -194,6 +214,12 @@ public struct ModelSelection: Sendable, Hashable {
     public var provider: String
     public var model: String
     public var reasoningEffort: String?
+
+    public init(provider: String, model: String, reasoningEffort: String? = nil) {
+        self.provider = provider
+        self.model = model
+        self.reasoningEffort = reasoningEffort
+    }
 
     public init(json: JSONValue) {
         provider = json.string("provider") ?? ""
