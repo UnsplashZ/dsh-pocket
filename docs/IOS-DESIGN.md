@@ -2,7 +2,9 @@
 
 > 需求来源：**"iOS 客户端需严格遵循 Apple design 风格"**。
 > 本文是可执行的规范，不是理念总结：逐屏规格 + 设计令牌 + 无障碍要求 + **M3 验收用自检清单**。
-> 目标平台：**iOS 17+**（用到 `@Observable`、`.sensoryFeedback`、`ContentUnavailableView`、`ShareLink`、`.symbolEffect`）。
+> 目标平台：**iOS 17.5+**（用到 `@Observable`、`.sensoryFeedback`、`ContentUnavailableView`、`ShareLink`、`.symbolEffect`）。
+> 为什么是 17.5 而不是 17.0：iroh 官方 Swift 包声明 `.iOS("17.5")`，跟着它走就不用自建 xcframework
+> （见 [DECISIONS.md](DECISIONS.md) ADR-0011）。
 
 ---
 
@@ -22,7 +24,7 @@
 
 | 项 | 决定 |
 |---|---|
-| 最低版本 | iOS 17.0（Apple 当前主流覆盖；换来 `@Observable` / `sensoryFeedback` / SwiftUI 新导航） |
+| 最低版本 | **iOS 17.5**（换来 `@Observable` / `sensoryFeedback` / SwiftUI 新导航，以及直接用官方 iroh 预编译部件） |
 | UI 框架 | **SwiftUI 优先**。仅在 SwiftUI 无对应能力时桥接 UIKit（如条码扫描用 `DataScannerViewController`、文本输入高级行为） |
 | 架构 | 单向数据流：`Store`（`@Observable`）持有状态 → View 只读渲染 → 事件回到 Store；协议层（DSHKit）不认识 SwiftUI |
 | 并发 | Swift Concurrency（`async/await`、`Task`、`AsyncStream`）；协议层的流用 `AsyncThrowingStream` 暴露 |

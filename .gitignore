@@ -16,13 +16,34 @@ xcuserdata/
 *.ipa
 *.dSYM.zip
 
+# 构建产物（ios/build.sh 与 xcodebuild 都写在这里，保持仓库根干净）
+ios/.derived/
+ios/.derived-device/
+ios/.module-cache/
+ios/.spm-cache/
+ios/.spm-config/
+ios/.spm-security/
+ios/.spm-xcode/
+# SwiftPM 的缓存/配置/安全目录（`swift test --cache-path …` 指到这里，保持仓库根干净）
+.spm-cache/
+.spm-config/
+.spm-security/
+
 # SwiftPM
 .build/
 .swiftpm/
 Package.resolved
 
+# iroh 的预编译部件：133 MB，不入库。用 `bash ios/scripts/fetch-iroh.sh` 取
+# （版本与 sha256 钉在脚本里，XCFramework 与 Swift 绑定一次取好）。
+ios/vendor/Iroh.xcframework/
+ios/vendor/IrohLib.swift
+ios/vendor/VERSION
+ios/vendor/.unzip/
+
 # 现场生成的抓包/样例（含私人会话内容，绝不入库）
 docs/artifacts/samples/*.json
+docs/artifacts/samples/*.jsonl
 docs/artifacts/samples/*.txt
 spikes/out/
 

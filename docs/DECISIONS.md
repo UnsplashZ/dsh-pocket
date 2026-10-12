@@ -77,3 +77,44 @@
 **背景**：正常链路需要真机 + 配对 + iroh 全通，UI 与协议开发的迭代成本高。
 **决定**：DEBUG 构建支持直连 `http://127.0.0.1:8788`（`tools/dev-proxy.mjs` 转发到 `127.0.0.1:19387` 并注入 cookie）。
 **后果**：95% 的界面与协议工作可在模拟器完成，不依赖传输层；但**每个里程碑仍必须真机验收**（尤其 M0b/M1 的流畅度与滚动问题只有当设备能看见）。
+
+## ADR-0010 · App 侧把库源码编成工程内静态框架，而不是让 Xcode 走 SwiftPM 解析
+
+**日期**：2026-10-12
+**背景**：设计上 `DSHKit` / `TetherKit` 是 SwiftPM 包（`swift test` 与 M0b spike 都用它们）。
+但 `xcodegen` 生成的 `XCLocalSwiftPackageReference` 在 Xcode 27 上解析不出 product
+（报 `Missing package product 'DSHKit'`），而远程包又会把构建绑死在"必须有网 + Xcode 的
+SwiftPM 状态"上。
+**决定**：
+- **库的真源仍是 SwiftPM 包**（`ios/DSHKit/Package.swift`、`ios/TetherKit/Package.swift`）；
+- App 侧在 `ios/project.yml` 里把**同一份源码目录**编成三个工程内静态框架 target
+  （`IrohLib` / `DSHKit` / `TetherKit`），`xcodebuild` 完全不经过 SwiftPM；
+- IrohLib 的部件（`Iroh.xcframework` + 官方 Swift 绑定源码）由 `ios/scripts/fetch-iroh.sh`
+  取到 `ios/vendor/`（版本与 sha256 钉在脚本里，不入库）。
+**后果**：
+- 构建确定、离线可用、不受 Xcode 的 SwiftPM 缓存/网络影响；
+- 代价是"同一份源码两套 target 定义"—— 但两边**共用源码目录**，不存在实现分叉；
+  改 `project.yml` 与改 `Package.swift` 是两件要一起做的事（已在两处写注释互相指路）；
+- `TetherKit` 的公开面因此收紧：`TetherLink` / `LocalProxyServer` / `TetherProxyStream`
+  都改成 internal，App 只看到 `TetherSession` 这一层 —— 顺带避免了 App 被迫 `import IrohLib`。
+
+## ADR-0011 · 最低版本从 iOS 17.0 提到 **17.5**
+
+**日期**：2026-10-12
+**背景**：`iroh-ffi` 官方 Swift 包的 `Package.swift` 声明 `.iOS("17.5")`。
+**决定**：App 与两个包的 deployment target 都是 **iOS 17.5**。
+**后果**：覆盖范围少了一档（17.0–17.4），换来直接用官方预编译部件、不自建 xcframework；
+设计文档里写 17.0 的地方按本条为准。
+
+## ADR-0012 · `$events` 上只答**原生** waterfall；tether 的 `approval` 消息只触发通知
+
+**日期**：2026-10-12（落地 ADR-0007 的实现细节）
+**背景**：有两条审批路径并存（ADR-0007 已决定只走原生），但落地时有个具体问题：
+用户没来得及决定就断线时，那条 waterfall 该回什么？
+**决定**：`EventStreamCoordinator` 在**世代失效**时给未决 waterfall 回一个安全结论 ——
+审批回 `{kind:'result', value:'unavailable'}`（宿主侧 fail closed），提问回 `{kind:'next'}`。
+**后果**：
+- 宿主不会因为"没人应答"而永远阻塞；
+- **App 永不自动决策**这条规则不被破坏：`unavailable` 不是批准；
+- 代价：用户离线期间的审批会被判为"没人答得上"，回来后在时间线上看到的是
+  `approval/decided { outcome: 'unavailable' }` —— 这是事实，不做美化。
