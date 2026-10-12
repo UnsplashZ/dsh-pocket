@@ -24,6 +24,20 @@ public struct TetherDiagnostics: Sendable, Equatable {
     public var controlAlive: Bool
 }
 
+/// 一条 iroh 连接的生命周期。
+///
+/// 为什么需要把它暴露出来：控制流断掉之后**不会自己回来** —— 上层必须知道
+/// "这条连接死了"，才能重建。之前没有这个信号，表现就是"连上一会儿就断，
+/// 界面一直显示正在重连但永远连不上"。
+public enum TetherLinkState: Sendable, Equatable {
+    case idle
+    case connecting(hostId: String)
+    case ready(hostId: String)
+    case closed(reason: String)
+
+    public var isReady: Bool { if case .ready = self { return true }; return false }
+}
+
 /// 与一台电脑的 iroh 连接：控制流 + 代理流工厂。
 ///
 /// 生命周期（docs/TRANSPORT.md §5）：
@@ -48,6 +62,10 @@ actor TetherLink: TetherStreamFactory {
     private var establishedAt: Date?
 
     private var messageContinuations: [UUID: AsyncStream<TetherHostMessage>.Continuation] = [:]
+    private var stateContinuations: [UUID: AsyncStream<TetherLinkState>.Continuation] = [:]
+    private var linkState: TetherLinkState = .idle
+    /// 是不是我们自己主动断的（主动断不该触发上层重连）。
+    private var isTearingDown = false
 
     init(identity: TetherIdentity, name: String, logger: (any TetherLogSink)? = nil) {
         self.identity = identity
@@ -56,6 +74,30 @@ actor TetherLink: TetherStreamFactory {
     }
 
     nonisolated var localEndpointId: String { identity.endpointId }
+
+    // MARK: - 状态
+
+    public func currentState() -> TetherLinkState { linkState }
+
+    /// 连接状态流。订阅时会立刻收到当前状态。
+    public func states() -> AsyncStream<TetherLinkState> {
+        let id = UUID()
+        return AsyncStream { continuation in
+            continuation.yield(linkState)
+            stateContinuations[id] = continuation
+            continuation.onTermination = { _ in
+                Task { await self.dropStateContinuation(id) }
+            }
+        }
+    }
+
+    private func dropStateContinuation(_ id: UUID) { stateContinuations[id] = nil }
+
+    private func setState(_ next: TetherLinkState) {
+        guard linkState != next else { return }
+        linkState = next
+        for continuation in stateContinuations.values { continuation.yield(next) }
+    }
 
     // MARK: - 连接
 
@@ -71,7 +113,10 @@ actor TetherLink: TetherStreamFactory {
         connecting = true
         defer { connecting = false }
 
+        isTearingDown = true
         await teardownConnection()
+        isTearingDown = false
+        setState(.connecting(hostId: hostEndpointId))
 
         do {
             let endpoint = try await bindEndpoint()
@@ -112,6 +157,7 @@ actor TetherLink: TetherStreamFactory {
             hostId = hostEndpointId
             establishedAt = Date()
             startControlLoop(recv)
+            setState(.ready(hostId: hostEndpointId))
             logger?.log("控制流就绪；远端 \(connection.remoteId().description.prefix(12))")
         } catch let error as TetherError {
             await teardownConnection()
@@ -140,6 +186,9 @@ actor TetherLink: TetherStreamFactory {
     }
 
     private func teardownConnection() async {
+        let wasReady = linkState.isReady
+        isTearingDown = true
+        defer { isTearingDown = false }
         controlLoop?.cancel()
         controlLoop = nil
         try? await controlSend?.finish()
@@ -157,6 +206,7 @@ actor TetherLink: TetherStreamFactory {
         establishedAt = nil
         for continuation in messageContinuations.values { continuation.finish() }
         messageContinuations.removeAll()
+        if wasReady { setState(.idle) }
     }
 
     // MARK: - 控制流
@@ -210,6 +260,9 @@ actor TetherLink: TetherStreamFactory {
         controlRecv = nil
         for continuation in messageContinuations.values { continuation.finish() }
         messageContinuations.removeAll()
+        // 主动断开时不要报 closed —— 否则上层会立刻重连，形成"断-连"风暴。
+        guard !isTearingDown else { return }
+        setState(.closed(reason: reason))
     }
 
     /// 读一行控制消息（带超时）。只用于配对握手这种一次性的同步读。
@@ -263,7 +316,7 @@ actor TetherLink: TetherStreamFactory {
 
     // MARK: - 状态与诊断
 
-    func isConnected() -> Bool { connection != nil && controlSend != nil }
+    func isConnected() -> Bool { connection != nil && controlSend != nil && linkState.isReady }
 
     func diagnostics(proxyPort: UInt16? = nil, proxyURL: String? = nil) -> TetherDiagnostics? {
         guard let connection, let hostId else { return nil }

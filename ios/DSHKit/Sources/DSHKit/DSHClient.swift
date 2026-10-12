@@ -381,6 +381,9 @@ public actor DSHClient {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        for (name, value) in await provider.requestHeaders() {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
         request.httpBody = data
         request.timeoutInterval = 120
 

@@ -42,9 +42,7 @@ struct SessionView: View {
                 let created = SessionModel(
                     sessionId: summary.sessionId,
                     title: summary.title,
-                    client: model.client,
-                    settings: model.settings,
-                    logs: model.logs
+                    appModel: model
                 )
                 session = created
                 await created.open()

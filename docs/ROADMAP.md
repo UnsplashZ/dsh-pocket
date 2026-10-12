@@ -21,7 +21,7 @@
       unary / `$events` / `session/follow` / `session/page` 四条路径 —— 这是比 Node 探针更强的回归
 - [x] `session/page`：用 follow 快照的 `cursor` 作为 `throughSeq` 向上补一页，验证不重不漏
       （`testPageBackwardsIsContiguous` 断言页内升序、无重复、不越过 `throughSeq`）
-- [x] `tools/dev-proxy.mjs`：注入 cookie 的本地代理（HTTP + WS 升级都通，DEV-DIRECT 用）
+- [x] `tools/direct-gateway.mjs`：注入 cookie 的本地代理（HTTP + WS 升级都通，DEV-DIRECT 用）
 - [x] **枚举端点并核对**：读 DSH 本机安装的 `dsh-api-remotes` 允许清单（27 条转发事件，
       其中 `approval/request`、`user-questions/request` 是 waterfall）→ 更新本文档与 PROTOCOL-NOTES
 - [ ] `session/prompt` 的完整流内事件序列（`turn/start → step/start → assistant/message → tool/call → tool/result`）
@@ -146,7 +146,7 @@ cd ios/DSHKit   && swift test --disable-sandbox      # 47 条
 cd ios/TetherKit && swift test --disable-sandbox     # 27 条
 
 # 对着**活着的 DSH** 跑协议回归（需要先起 dev 代理）
-node tools/dev-proxy.mjs &
+node tools/direct-gateway.mjs &
 cd ios/DSHKit && DSH_LIVE=1 swift test --disable-sandbox --filter LiveIntegration
 
 # App：构建 + 单测 + 跑起来

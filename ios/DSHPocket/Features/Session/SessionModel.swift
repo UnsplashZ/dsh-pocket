@@ -13,7 +13,12 @@ import SwiftUI
 @Observable
 public final class SessionModel {
     let sessionId: String
-    private let client: DSHClient
+    /// 通过 AppModel 拿 client，而不是在初始化时抓一份引用。
+    ///
+    /// 传输掉线重连后 AppModel 会换一个 `DSHClient`（本地代理端口可能变、旧的 WS 全死），
+    /// 抓着旧引用的话重订阅会一直失败 —— 表现就是"界面永远在重连"。
+    private unowned let appModel: AppModel
+    private var client: DSHClient { appModel.client }
     private let settings: AppSettings
     private let logs: MemoryLogSink
 
@@ -72,12 +77,12 @@ public final class SessionModel {
     private var reconnectAttempt = 0
     private var pendingPromptRpcId: String?
 
-    init(sessionId: String, title: String, client: DSHClient, settings: AppSettings, logs: MemoryLogSink) {
+    init(sessionId: String, title: String, appModel: AppModel) {
         self.sessionId = sessionId
         self.title = title
-        self.client = client
-        self.settings = settings
-        self.logs = logs
+        self.appModel = appModel
+        self.settings = appModel.settings
+        self.logs = appModel.logs
     }
 
     // MARK: 打开 / 关闭

@@ -51,6 +51,9 @@ public actor RPCClient {
         // 原生客户端不发 Origin：trust 栅栏要求 Origin 与 Host 同源，
         // 而我们的 authority 是 127.0.0.1:<派生端口>，索性不发（见 PROTOCOL-NOTES §1.2）。
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        for (name, value) in await provider.requestHeaders() {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
         request.timeoutInterval = 30
 
         let rpcId = RpcId.make()

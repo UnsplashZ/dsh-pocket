@@ -46,6 +46,35 @@ public struct NotificationPreferences: Sendable, Equatable {
     public var anyEnabled: Bool { approvals || questions || completions }
 }
 
+/// 连接方式。三种模式在协议层看来完全一样（都只是一个 base URL），
+/// 区别只在"这个 URL 是怎么来的"。
+public enum TransportMode: String, CaseIterable, Identifiable, Sendable {
+    /// 走 iroh P2P：公网可用，打洞成功时不经第三方，失败回退中转（只见密文）。
+    case remote
+    /// 直连网关（DEV-DIRECT）：模拟器开发用，打本机回环。
+    case devDirect
+    /// 直连网关（Tailscale / 局域网 / 反向代理）：填一个手机能路由到的地址 + 令牌。
+    case directGateway
+
+    public var id: String { rawValue }
+
+    public var label: LocalizedStringKey {
+        switch self {
+        case .remote: return "远端连接（iroh）"
+        case .devDirect: return "开发直连（本机）"
+        case .directGateway: return "直连网关（Tailscale / 局域网）"
+        }
+    }
+
+    public var symbol: String {
+        switch self {
+        case .remote: return "point.3.connected.trianglepath.dotted"
+        case .devDirect: return "laptopcomputer"
+        case .directGateway: return "network"
+        }
+    }
+}
+
 /// 应用设置。`UserDefaults` 是唯一存储 —— 这里没有需要 Keychain 的东西
 /// （设备密钥由 TetherKit 自己管，见 `TetherSecretStore`）。
 @MainActor
@@ -59,6 +88,9 @@ public final class AppSettings {
         static let notifyCompletions = "settings.notify.completions"
         static let showRawEvents = "settings.showRawEvents"
         static let devDirect = "settings.devDirect"
+        static let transportMode = "settings.transportMode"
+        static let gatewayURL = "settings.gatewayURL"
+        static let gatewayToken = "settings.gatewayToken"
         static let devDirectURL = "settings.devDirectURL"
         static let activeHost = "settings.activeHost"
         static let hasOnboarded = "settings.hasOnboarded"
@@ -93,6 +125,21 @@ public final class AppSettings {
         didSet { defaults.set(devDirectEnabled, forKey: Key.devDirect) }
     }
 
+    /// 连接方式。默认走 iroh。
+    public var transportMode: TransportMode {
+        didSet { defaults.set(transportMode.rawValue, forKey: Key.transportMode) }
+    }
+
+    /// 直连网关地址，例如 `http://100.64.0.1:8788`。
+    public var gatewayURL: String {
+        didSet { defaults.set(gatewayURL, forKey: Key.gatewayURL) }
+    }
+
+    /// 直连网关的共享令牌。绑非回环地址时网关会要求它。
+    public var gatewayToken: String {
+        didSet { defaults.set(gatewayToken, forKey: Key.gatewayToken) }
+    }
+
     public var devDirectBaseURL: String {
         didSet { defaults.set(devDirectBaseURL, forKey: Key.devDirectURL) }
     }
@@ -117,6 +164,14 @@ public final class AppSettings {
         self.notifications = prefs
         self.showRawEvents = defaults.bool(forKey: Key.showRawEvents)
         self.devDirectEnabled = defaults.bool(forKey: Key.devDirect)
+        // 迁移：老版本只有 devDirectEnabled 这个开关。
+        if let raw = defaults.string(forKey: Key.transportMode), let mode = TransportMode(rawValue: raw) {
+            self.transportMode = mode
+        } else {
+            self.transportMode = defaults.bool(forKey: Key.devDirect) ? .devDirect : .remote
+        }
+        self.gatewayURL = defaults.string(forKey: Key.gatewayURL) ?? ""
+        self.gatewayToken = defaults.string(forKey: Key.gatewayToken) ?? ""
         self.devDirectBaseURL = defaults.string(forKey: Key.devDirectURL) ?? "http://127.0.0.1:8788"
         self.activeHostId = defaults.string(forKey: Key.activeHost)
         self.hasOnboarded = defaults.bool(forKey: Key.hasOnboarded)

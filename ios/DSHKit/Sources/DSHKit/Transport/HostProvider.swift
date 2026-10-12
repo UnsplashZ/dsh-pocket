@@ -12,6 +12,17 @@ public protocol DSHHostProvider: Sendable {
     func webSocketURL() async throws -> URL
     /// 主机是否处于"已连接、可以发请求"的状态。
     func isReady() async -> Bool
+
+    /// 每个请求（含 WebSocket 升级）都要带上的额外头。
+    ///
+    /// 给"直连网关"用：网关会把请求转发给 DSH 并注入会话 cookie，
+    /// 它自己用 `Authorization: Bearer <token>` 做第二道门。
+    /// 默认没有额外头 —— iroh 路径靠端到端加密与配对白名单，不需要令牌。
+    func requestHeaders() async -> [String: String]
+}
+
+extension DSHHostProvider {
+    public func requestHeaders() async -> [String: String] { [:] }
 }
 
 /// URL 拼接小工具。放在具名命名空间里，这样 `(any DSHHostProvider).Type`

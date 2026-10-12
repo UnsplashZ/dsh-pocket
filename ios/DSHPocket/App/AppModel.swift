@@ -80,6 +80,9 @@ public final class AppModel {
     private var eventCoordinator: EventStreamCoordinator?
     private var tetherMessagesTask: Task<Void, Never>?
     private var workspaceTask: Task<Void, Never>?
+    private var transportSupervisor: Task<Void, Never>?
+    private var reconnectAttempt = 0
+    private var isBackgrounded = false
     private let notifier = NotificationCenterAdapter()
 
     // MARK: 初始化
@@ -118,9 +121,11 @@ public final class AppModel {
         localEndpointId = (try? await tether.localEndpointId()) ?? ""
         hosts = await tether.hosts()
         await notifier.configure()
+        startTransportSupervisor()
 
-        if settings.devDirectEnabled {
-            await activateClient(modeLabel: String(localized: "开发直连"))
+        if settings.transportMode != .remote {
+            // 直连网关：不需要 iroh，直接就能用。
+            await activateClient(modeLabel: coordinator.mode.label)
         } else if let hostId = settings.activeHostId, !hostId.isEmpty {
             await connect(hostId: hostId, pairingCode: nil, silent: true)
         }
@@ -128,19 +133,23 @@ public final class AppModel {
 
     /// 退到前台：iOS 不允许常驻后台连接，所以这里**立即重连**（DESIGN §9）。
     func handleForeground() async {
-        guard !settings.devDirectEnabled, let hostId = settings.activeHostId, !hostId.isEmpty else {
-            if settings.devDirectEnabled, !connection.isConnected {
-                await activateClient(modeLabel: String(localized: "开发直连"))
-            }
+        isBackgrounded = false
+        guard settings.transportMode == .remote else {
+            // 直连网关没有 iroh 连接要恢复，只要 client 还在就继续用。
+            if !connection.isConnected { await activateClient(modeLabel: coordinator.mode.label) }
             return
         }
-        if connection.isConnected, muxState.isHealthy { return }
-        logs.log(.info, "回到前台，重连")
+        guard let hostId = settings.activeHostId, !hostId.isEmpty else { return }
+        // 只有"确实没连着"才重连：之前每次回到前台都无条件重建一条 iroh 连接，
+        // 电脑端会把前一条顶掉（日志里是 closed by peer: 0），看起来就是"连一会就断"。
+        if await tether.isTransportHealthy() { return }
+        logs.log(.info, "回到前台，传输不健康，重连")
         await connect(hostId: hostId, pairingCode: nil, silent: true)
     }
 
     /// 退到后台：断开传输，只保留通知（iOS 上这是正解，别试图保活）。
     func handleBackground() async {
+        isBackgrounded = true
         logs.log(.info, "退到后台，断开传输")
         await eventCoordinator?.stop()
         eventCoordinator = nil
@@ -152,21 +161,26 @@ public final class AppModel {
         await tether.disconnect()
         coordinator.setRemoteBaseURL(nil)
         // 后台不保留"已连接"的外观：宁可显示未连接，也不做"假在线"。
-        if !settings.devDirectEnabled { connection = .idle }
+        if settings.transportMode == .remote { connection = .idle }
     }
 
     // MARK: 连接
 
     func connect(hostId: String, pairingCode: String?, silent: Bool = false) async {
+        // 重入保护：一次只允许一条连接在建立。电脑端同一身份只接受一条连接，
+        // 并发建连会把彼此顶掉。
+        guard !isConnecting else { return }
+        isConnecting = true
+        defer { isConnecting = false }
+
         connection = .connecting(hostId: hostId)
         if !silent { pendingApprovals.removeAll(); pendingQuestions.removeAll() }
         do {
-            let base = try await tether.connect(hostId: hostId, pairingCode: pairingCode)
-            coordinator.setRemoteBaseURL(base)
+            _ = try await tether.connect(hostId: hostId, pairingCode: pairingCode)
+            // 真正把 client 接上去的是状态流里的 .connected 分支 ——
+            // 这样"首次连接"和"掉线重连"走的是同一条路。
             settings.activeHostId = hostId
             hosts = await tether.hosts()
-            await activateClient(modeLabel: String(localized: "远端连接"))
-            logs.log(.info, "已连接 \(hostId.prefix(12))…")
         } catch {
             let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             connection = .failed(message)
@@ -174,7 +188,75 @@ public final class AppModel {
         }
     }
 
+    private var isConnecting = false
+
+    /// 用户在设置里改了连接方式/地址之后，按当前配置重建一次。
+    func activateConfiguredTransport() async {
+        if settings.transportMode == .remote {
+            guard let hostId = settings.activeHostId, !hostId.isEmpty else { return }
+            await connect(hostId: hostId, pairingCode: nil, silent: true)
+        } else {
+            coordinator.setRemoteBaseURL(nil)
+            await activateClient(modeLabel: coordinator.mode.label)
+        }
+    }
+
+    // MARK: 传输监督
+
+    /// 订阅传输层状态：拿到（可能是新的）本地代理基址就重建 client，
+    /// 掉线就按退避重连。
+    ///
+    /// 这是"连上一会儿就断、然后永远连不回来"的正解：控制流死掉之后 iroh 不会自己回来，
+    /// 必须有人在传输层之外把它重新拉起来。
+    private func startTransportSupervisor() {
+        transportSupervisor?.cancel()
+        transportSupervisor = Task { [weak self] in
+            guard let self else { return }
+            for await state in await self.tether.states() {
+                if Task.isCancelled { return }
+                await self.handle(transportState: state)
+            }
+        }
+    }
+
+    private func handle(transportState state: TetherSession.State) async {
+        switch state {
+        case .connected(let hostId, let baseURL):
+            reconnectAttempt = 0
+            guard let url = URL(string: baseURL) else { return }
+            coordinator.setRemoteBaseURL(url)
+            settings.activeHostId = hostId
+            await activateClient(modeLabel: String(localized: "远端连接"))
+            logs.log(.info, "传输就绪 \(hostId.prefix(12))… → \(baseURL)")
+
+        case .failed(let reason):
+            connection = .failed(reason)
+            logs.log(.warning, "传输断开：\(reason)")
+            await scheduleTransportReconnect()
+
+        case .idle:
+            if settings.transportMode == .remote { connection = .idle }
+
+        case .connecting:
+            connection = .connecting(hostId: settings.activeHostId ?? "")
+        }
+    }
+
+    private func scheduleTransportReconnect() async {
+        guard !isBackgrounded, settings.transportMode == .remote else { return }
+        guard let hostId = settings.activeHostId, !hostId.isEmpty else { return }
+        reconnectAttempt += 1
+        let wait = RetryPolicy.default.delay(afterAttempt: reconnectAttempt)
+        logs.log(.info, "\(wait.formatted) 后重连电脑（第 \(reconnectAttempt) 次）")
+        try? await Task.sleep(for: wait)
+        guard !Task.isCancelled, !isBackgrounded else { return }
+        await connect(hostId: hostId, pairingCode: nil, silent: true)
+    }
+
     func disconnect() async {
+        transportSupervisor?.cancel()
+        transportSupervisor = nil
+        reconnectAttempt = 0
         await eventCoordinator?.stop()
         eventCoordinator = nil
         workspaceTask?.cancel()
@@ -195,6 +277,12 @@ public final class AppModel {
 
     /// 换一个 DSHClient（因为 provider 在模式切换时不换，但连接状态换了）。
     private func activateClient(modeLabel: String) async {
+        // 先把上一代彻底拆掉：旧 client 的 WS、旧的事件世代、旧的工作区流
+        // 都要收干净，否则重连后会同时存在两条流。
+        await eventCoordinator?.stop()
+        eventCoordinator = nil
+        workspaceTask?.cancel()
+        workspaceTask = nil
         await client.closeTransport()
         client = DSHClient(provider: coordinator, logger: logs)
         connection = .connected(mode: modeLabel)

@@ -34,6 +34,6 @@ value = "v1." + base64url(JSON({version:1, authority, issuedAt, expiresAt})) + "
 - 默认有效期 30 天（与 DSH 自己的 `cookieMaxAgeDays` 默认一致），可随时重签。
 - 只在**本机**有意义（手机端不需要它：代理层会逐请求注入 cookie）。
 
-## `dev-proxy.mjs`（M0 计划中）
+## `direct-gateway.mjs`（M0 计划中）
 
 给 Pocket UI 的开发服务做代理：把 `/api/*` 与 WS 升级转发到 `127.0.0.1:19387`，并自动附加 `mint-cookie.cjs` 生成的 cookie。这样 UI 用 Vite dev server 热更新开发，协议请求与真机同源行为一致。

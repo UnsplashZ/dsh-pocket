@@ -131,9 +131,25 @@ bash ios/build.sh --test           # 15 条 App 层单测
 bash scripts/install-device.sh     # 装到真机（含证书续期提示）
 ```
 
-**DEV-DIRECT（不需要手机、不需要 iroh）**：起 `node tools/dev-proxy.mjs`，然后在 App 的
-设置里打开「开发直连」（或 `xcrun simctl spawn booted defaults write cc.zexa.dshpocket
-settings.devDirect -bool YES`）。协议层看到的与真机模式**完全同构**。
+**DEV-DIRECT（不需要手机、不需要 iroh）**：起 `node tools/direct-gateway.mjs`，然后在 App 的
+设置 → 连接方式里选「开发直连」。协议层看到的与真机模式**完全同构**。
+
+---
+
+## 三种连接方式（按可靠性从高到低）
+
+| 方式 | 怎么用 | 什么时候选它 |
+|---|---|---|
+| **直连网关（Tailscale / 局域网）** | 电脑上 `node tools/direct-gateway.mjs --host <tailnet或局域网地址> --token <令牌>`；App 设置 → 连接方式 → 直连网关，填地址与令牌 | 电脑和手机在同一个 tailnet / 同一 Wi-Fi。走的是 WireGuard 或局域网的**稳定 TCP**，不受 iroh 打洞波动影响 |
+| **远端连接（iroh）** | 电脑上装好 `dsh-plugin-tether`，App 扫码配对 | 公网、跨网络、不想开任何端口。打洞成功时不经第三方；失败回退中转（只见密文） |
+| **开发直连（本机）** | `node tools/direct-gateway.mjs`（绑回环） | 模拟器里开发界面与协议，不需要手机也不需要配对 |
+
+> **手机上开着代理/VPN 时优先用直连网关**：sing-box / Clash 这类 TUN 模式会把 UDP 一并接管，
+> iroh 的 QUIC 打洞会被干扰（表现为"连上一会儿就断"或直接超时）。
+> 直连网关走 TCP，隧道对它友好得多。App 的连接失败提示与诊断页都写了这一条。
+
+> ⚠️ 直连网关会代替你向 DSH 认证 —— **谁能连上它，谁就等于拿到了你的 DSH**。
+> 所以绑非回环地址时它强制要求 `--token`；公网使用请再套一层 TLS 反向代理。
 
 ---
 
@@ -155,7 +171,7 @@ dsh-pocket/
     vendor/               # iroh 部件（不入库，由脚本取）
   tools/
     mint-cookie.cjs       # 本机签发会话 cookie
-    dev-proxy.mjs         # DEV-DIRECT 用的注入 cookie 的本地代理（HTTP + WS）
+    direct-gateway.mjs         # 注入 cookie 的直连网关（DEV-DIRECT / Tailscale / 局域网共用）
     tether-host-dev.mjs   # 不开桌面端也能起 sidecar（扮演插件的 cookie 交接）
     capture-session.mjs   # 抓真实 follow 帧序列，落成解码器回归样本
   spikes/

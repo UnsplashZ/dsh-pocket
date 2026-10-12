@@ -263,7 +263,7 @@ dsh-pocket/
     TetherKit/              # SwiftPM：iroh-ffi 封装 + DLP + 本地代理
   tools/
     mint-cookie.cjs         # 本机签发会话 cookie
-    dev-proxy.mjs           # DEV-DIRECT 用的注入 cookie 的代理
+    direct-gateway.mjs           # DEV-DIRECT 用的注入 cookie 的代理
   spikes/                   # 一次性验证脚本（Node/Swift）
   scripts/
     install-device.sh       # 真机构建 + 装机 + 证书续期

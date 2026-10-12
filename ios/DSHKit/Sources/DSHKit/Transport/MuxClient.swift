@@ -162,7 +162,11 @@ public actor MuxClient {
         // webSocketURL() 给的是"基址"（ws://127.0.0.1:<port>）；所有流都走同一条
         // /api/remote.mux。忘了拼这一段的表现是代理端收到 `WS ↑ /` 然后立刻断开。
         let url = DSHAPI.remoteMux(base: base)
-        let task = session.webSocketTask(with: url)
+        var request = URLRequest(url: url)
+        for (name, value) in await provider.requestHeaders() {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
+        let task = session.webSocketTask(with: request)
         task.maximumMessageSize = 64 * 1024 * 1024   // 单会话快照实测 ~1 MB，给足余量
         socket = task
         closedReason = nil

@@ -431,6 +431,22 @@ EN: dict[str, str] = {
         "Archiving stops the running turn first. Everything already produced is kept.",
     "这个会话正在跑，DSH 不允许直接归档。先停下它再归档。":
         "This session is running, and DSH won’t archive it as-is. Stop it first, then archive.",
+    # 连接方式
+    "连接方式": "Connection",
+    "远端连接（iroh）": "Remote (iroh)",
+    "开发直连（本机）": "Dev direct (this Mac)",
+    "直连网关（Tailscale / 局域网）": "Direct gateway (Tailscale / LAN)",
+    "直连网关": "Direct gateway",
+    "开发直连地址": "Dev direct address",
+    "网关地址": "Gateway address",
+    "令牌": "Token",
+    "用这个地址连接": "Connect with this address",
+    "走 iroh 点对点：公网可用，打洞成功时不经第三方，回退中转时中转只见密文。":
+        "Peer-to-peer over iroh: works over the public internet, goes through no third party when hole-punching succeeds, and the relay only sees ciphertext on fallback.",
+    "打本机回环上的直连网关，模拟器开发用。需要先在电脑上跑 node tools/direct-gateway.mjs。":
+        "Hits a direct gateway on the loopback interface — for simulator development. Run node tools/direct-gateway.mjs on your computer first.",
+    "打你电脑上的直连网关。适合手机上开着代理/VPN（iroh 的 UDP 打洞会被隧道干扰），或者电脑和手机在同一个 tailnet / 局域网时。\n电脑上：node tools/direct-gateway.mjs --host <你的 tailnet 或局域网地址> --token <令牌>\n这条路依赖 tailnet / 局域网自身的加密；公网使用请放在 TLS 反向代理后面。":
+        "Hits a direct gateway on your computer. Best when a proxy/VPN is running on the phone (it interferes with iroh’s UDP hole-punching), or when phone and computer share a tailnet / LAN.\nOn your computer: node tools/direct-gateway.mjs --host <tailnet-or-LAN-address> --token <token>\nThis path relies on the tailnet / LAN for encryption; for public use put it behind a TLS reverse proxy.",
 }
 
 # 哪些插值表达式是整数。判错的后果是英文界面上显示成 `%lld` 字面量，

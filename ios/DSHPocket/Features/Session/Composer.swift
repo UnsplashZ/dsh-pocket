@@ -77,7 +77,13 @@ struct Composer: View {
             .padding(.horizontal, Token.Spacing.gutter)
             .padding(.vertical, Token.Spacing.tight)
         }
-        .background(.thinMaterial)
+        // 背景要**铺到屏幕底边**（含 home indicator 那一条），否则输入区下面会露出
+        // 一条与滚动区不同的底色，看起来像"多出来一条白边"。
+        .background {
+            Rectangle()
+                .fill(.bar)
+                .ignoresSafeArea(edges: .bottom)
+        }
         .overlay(alignment: .top) {
             Rectangle().fill(Color(.separator)).frame(height: 0.5)
         }
@@ -94,18 +100,16 @@ struct Composer: View {
         ) { result in
             Task { await loadFiles(result) }
         }
-        .toolbar {
-            // 硬件键盘：⌘↩ 发送、⇧⌘A 加附件
-            ToolbarItemGroup(placement: .keyboard) {
-                Button("附件") { showFileImporter = true }
-                    .keyboardShortcut("a", modifiers: [.command, .shift])
-                Spacer()
-                Button(isRunning ? "停止" : "发送") {
-                    isRunning ? stop() : send()
-                }
-                .keyboardShortcut(.return, modifiers: .command)
-                .disabled(!isRunning && !canSend)
-            }
+        // 硬件键盘：⌘↩ 发送。
+        //
+        // 之前这里用的是 `ToolbarItemGroup(placement: .keyboard)`，结果是键盘上方
+        // 浮出「附件」「发送」两个大胶囊 —— 而输入区本身就在键盘正上方、
+        // 同样的动作已经有一份了，纯属重复；键盘收起时那条 accessory 还会留下
+        // 一条白边。改成直接收按键，不再往键盘上挂任何东西。
+        .onKeyPress(.return, phases: .down) { press in
+            guard press.modifiers.contains(.command) else { return .ignored }
+            isRunning ? stop() : send()
+            return .handled
         }
     }
 

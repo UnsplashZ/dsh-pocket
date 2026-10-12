@@ -90,6 +90,11 @@ public actor TetherSession {
     private var proxy: LocalProxyServer?
     private var state: State = .idle
     private var hostBook: TetherHostBook
+    private var stateContinuations: [UUID: AsyncStream<State>.Continuation] = [:]
+    /// 连接一旦建立就把 hostId 记下来，掉线后监督器要拿它重连。
+    private var connectedHostId: String?
+    private var isDisconnecting = false
+    private var watchdog: Task<Void, Never>?
 
     public init(
         store: any TetherSecretStore,
@@ -140,6 +145,28 @@ public actor TetherSession {
 
     public func currentState() -> State { state }
 
+    /// 连接状态流（含掉线）。订阅时立刻收到当前状态。
+    ///
+    /// 上层靠它做两件事：拿到新的本地代理基址、以及**在掉线后触发重连**。
+    public func states() -> AsyncStream<State> {
+        let id = UUID()
+        return AsyncStream { continuation in
+            continuation.yield(state)
+            stateContinuations[id] = continuation
+            continuation.onTermination = { _ in
+                Task { await self.dropStateContinuation(id) }
+            }
+        }
+    }
+
+    private func dropStateContinuation(_ id: UUID) { stateContinuations[id] = nil }
+
+    private func setState(_ next: State) {
+        guard state != next else { return }
+        state = next
+        for continuation in stateContinuations.values { continuation.yield(next) }
+    }
+
     private var proxyPort: UInt16?
 
     /// 诊断页要的东西：走的是 direct 还是 relay、RTT、本地代理端口、控制流是否还活着。
@@ -157,7 +184,7 @@ public actor TetherSession {
         if case .connected(let current, let base) = state, current == hostId, let url = URL(string: base) {
             return url
         }
-        state = .connecting(hostId: hostId)
+        setState(.connecting(hostId: hostId))
 
         do {
             let identity = try ensureIdentity()
@@ -172,28 +199,81 @@ public actor TetherSession {
             self.proxy = proxy
             self.proxyPort = UInt16(base.port ?? 0)
 
-            state = .connected(hostId: hostId, baseURL: base.absoluteString)
+            connectedHostId = hostId
+            setState(.connected(hostId: hostId, baseURL: base.absoluteString))
 
             var record = hostBook.host(id: hostId) ?? TetherHostRecord(id: hostId, label: "电脑 \(hostId.prefix(6))")
             record.lastConnectedAt = Date()
             hostBook.upsert(record)
             hostBook.save()
 
+            startLinkWatchdog(link)
             logger?.log("已连接并起好本地代理：\(base.absoluteString)")
             return base
         } catch {
-            state = .failed((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
+            setState(.failed((error as? LocalizedError)?.errorDescription ?? error.localizedDescription))
             await teardown()
             throw error
         }
     }
 
     public func disconnect() async {
+        isDisconnecting = true
         await teardown()
-        state = .idle
+        isDisconnecting = false
+        connectedHostId = nil
+        setState(.idle)
+    }
+
+    /// 控制流断开时由监督器调用：把本地代理收掉并广播"失败"，让上层重连。
+    func noteLinkClosed(reason: String) async {
+        guard !isDisconnecting, connectedHostId != nil else { return }
+        logger?.log("传输断开，准备重连：\(reason)")
+        await proxy?.stop()
+        proxy = nil
+        proxyPort = nil
+        await link?.disconnect()
+        link = nil
+        setState(.failed(String(localized: "与电脑的连接断了：\(reason)")))
+    }
+
+    /// 监督器要用的：当前连的是哪台。
+    func currentHostId() -> String? { connectedHostId }
+
+    /// 传输是不是真的还活着（控制流 + 本地代理都在）。
+    /// 上层用它决定"回到前台要不要重连" —— 无条件重连会把电脑端的连接顶掉。
+    public func isTransportHealthy() async -> Bool {
+        guard state.isConnected, let link, let proxy else { return false }
+        guard await link.isConnected() else { return false }
+        return await proxy.currentBaseURL() != nil
+    }
+
+    /// 盯着控制流：它一死就广播"失败"，由上层决定何时重连。
+    ///
+    /// 为什么监督器放在传输层而不是上层：只有这里能直接看到 iroh 连接的死活。
+    /// 上层如果靠"请求失败了"来推断，会慢好几拍，而且分不清是网络问题还是电脑没响应。
+    private func startLinkWatchdog(_ link: TetherLink) {
+        watchdog?.cancel()
+        watchdog = Task { [weak self] in
+            for await linkState in await link.states() {
+                if Task.isCancelled { return }
+                switch linkState {
+                case .closed(let reason):
+                    await self?.noteLinkClosed(reason: reason)
+                    return
+                case .idle where !(await link.isConnected()):
+                    await self?.noteLinkClosed(reason: String(localized: "连接已关闭"))
+                    return
+                default:
+                    break
+                }
+            }
+        }
     }
 
     private func teardown() async {
+        watchdog?.cancel()
+        watchdog = nil
         await proxy?.stop()
         proxy = nil
         proxyPort = nil

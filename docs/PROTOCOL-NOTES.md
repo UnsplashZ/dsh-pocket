@@ -193,4 +193,4 @@ ws://127.0.0.1:<port>/api/remote.mux      Cookie: <cookie>
 | 在桌面浏览器里以手机视口迭代 | Playwright（Chromium / WebKit 均已在本机可用）：`--browser webkit --mobile` + `resize 393 852` |
 | 真机截图 | `xcrun devicectl device capture screenshot --device <UDID> --destination x.png` |
 | 真机装机 | `dsh-tether/ios-dist/resign-install.sh`（未签名 IPA + 个人团队重签 + `devicectl install/launch`） |
-| 实时看事件流 | M0 起用 `tools/dev-proxy.mjs` 把 `/api` 与 WS 转发到 127.0.0.1:19387，DevTools Network 面板直接看帧 |
+| 实时看事件流 | M0 起用 `tools/direct-gateway.mjs` 把 `/api` 与 WS 转发到 127.0.0.1:19387，DevTools Network 面板直接看帧 |

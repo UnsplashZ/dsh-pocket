@@ -151,7 +151,7 @@ final class AppLogicTests: XCTestCase {
         let suite = UserDefaults(suiteName: "test-\(UUID().uuidString)")!
         defer { suite.removePersistentDomain(forName: suite.description) }
         let settings = AppSettings(defaults: suite)
-        settings.devDirectEnabled = true
+        settings.transportMode = .devDirect
         settings.devDirectBaseURL = "http://127.0.0.1:8788"
 
         let session = TetherSession(store: EphemeralSecretStore(), deviceName: "test")
@@ -171,7 +171,7 @@ final class AppLogicTests: XCTestCase {
         let suite = UserDefaults(suiteName: "test-\(UUID().uuidString)")!
         defer { suite.removePersistentDomain(forName: suite.description) }
         let settings = AppSettings(defaults: suite)
-        settings.devDirectEnabled = false
+        settings.transportMode = .remote
 
         let session = TetherSession(store: EphemeralSecretStore(), deviceName: "test")
         let coordinator = HostCoordinator(settings: settings, session: session)
@@ -187,6 +187,74 @@ final class AppLogicTests: XCTestCase {
         }
         let ready = await coordinator.isReady()
         XCTAssertFalse(ready)
+    }
+
+    // MARK: 连接方式
+
+    @MainActor
+    func testTransportModeMigratesFromLegacyDevDirectFlag() {
+        let suite = UserDefaults(suiteName: "test-\(UUID().uuidString)")!
+        defer { suite.removePersistentDomain(forName: suite.description) }
+
+        // 老版本只有 devDirectEnabled 这个开关：打开过就要迁移成 .devDirect，
+        // 否则用户升级之后会莫名其妙地又走回 iroh。
+        suite.set(true, forKey: "settings.devDirect")
+        XCTAssertEqual(AppSettings(defaults: suite).transportMode, .devDirect)
+
+        suite.set(false, forKey: "settings.devDirect")
+        XCTAssertEqual(AppSettings(defaults: suite).transportMode, .remote)
+    }
+
+    @MainActor
+    func testTransportModeRoundTrip() {
+        let suite = UserDefaults(suiteName: "test-\(UUID().uuidString)")!
+        defer { suite.removePersistentDomain(forName: suite.description) }
+        let settings = AppSettings(defaults: suite)
+        settings.transportMode = .directGateway
+        settings.gatewayURL = "http://100.64.0.1:8788"
+        settings.gatewayToken = "s3cret"
+
+        let reloaded = AppSettings(defaults: suite)
+        XCTAssertEqual(reloaded.transportMode, .directGateway)
+        XCTAssertEqual(reloaded.gatewayURL, "http://100.64.0.1:8788")
+        XCTAssertEqual(reloaded.gatewayToken, "s3cret")
+    }
+
+    @MainActor
+    func testDirectGatewaySendsBearerTokenOnEveryRequest() async throws {
+        let suite = UserDefaults(suiteName: "test-\(UUID().uuidString)")!
+        defer { suite.removePersistentDomain(forName: suite.description) }
+        let settings = AppSettings(defaults: suite)
+        settings.transportMode = .directGateway
+        settings.gatewayURL = "http://100.64.0.1:8788"
+        settings.gatewayToken = "s3cret"
+
+        let session = TetherSession(store: EphemeralSecretStore(), deviceName: "test")
+        let coordinator = HostCoordinator(settings: settings, session: session)
+
+        let base = try await coordinator.baseURL()
+        XCTAssertEqual(base.absoluteString, "http://100.64.0.1:8788")
+        let headers = await coordinator.requestHeaders()
+        XCTAssertEqual(headers["Authorization"], "Bearer s3cret")
+
+        // 地址只填 host:port（没写 scheme）时也要能用
+        settings.gatewayURL = "100.64.0.1:8788"
+        let bare = try await coordinator.baseURL()
+        XCTAssertEqual(bare.absoluteString, "http://100.64.0.1:8788")
+    }
+
+    @MainActor
+    func testRemoteModeDoesNotSendGatewayToken() async throws {
+        let suite = UserDefaults(suiteName: "test-\(UUID().uuidString)")!
+        defer { suite.removePersistentDomain(forName: suite.description) }
+        let settings = AppSettings(defaults: suite)
+        settings.transportMode = .remote
+        settings.gatewayToken = "s3cret"   // 就算填了，iroh 路径也不该带上
+
+        let session = TetherSession(store: EphemeralSecretStore(), deviceName: "test")
+        let coordinator = HostCoordinator(settings: settings, session: session)
+        let headers = await coordinator.requestHeaders()
+        XCTAssertTrue(headers.isEmpty, "iroh 路径靠配对白名单，不需要也不该带网关令牌")
     }
 
     // MARK: 归档分流
