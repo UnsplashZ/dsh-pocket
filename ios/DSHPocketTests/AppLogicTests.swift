@@ -289,12 +289,84 @@ final class AppLogicTests: XCTestCase {
         XCTAssertEqual(SessionPartition.active(sessions, archived: archived).count, 0)
     }
 
-    private func makeSummary(id: String, title: String, updatedAt: TimeInterval) -> SessionSummary {
-        SessionSummary.decode(Fixture.json("""
-        {"sessionId":"\(id)","updatedAt":\(updatedAt * 1000),"agentAvailable":true,"running":false,"blank":false,
-         "cwd":"/Users/example/dev/Github/demo",
-         "projections":{"kind":"sequenced","asOfSeq":1,"values":{"title":"\(title)"}}}
-        """))!
+    private func makeSummary(
+        id: String,
+        title: String,
+        updatedAt: TimeInterval,
+        cwd: String = "/Users/example/dev/Github/demo",
+        origin: String? = nil,
+        parentSessionId: String? = nil
+    ) -> SessionSummary {
+        var object: [String: JSONValue] = [
+            "sessionId": .string(id),
+            "updatedAt": .number(updatedAt * 1000),
+            "agentAvailable": .bool(true),
+            "running": .bool(false),
+            "blank": .bool(false),
+            "cwd": .string(cwd),
+            "projections": .object([
+                "kind": .string("sequenced"),
+                "asOfSeq": .number(1),
+                "values": .object(["title": .string(title)]),
+            ]),
+        ]
+        if let origin { object["origin"] = .string(origin) }
+        if let parentSessionId { object["parentSessionId"] = .string(parentSessionId) }
+        return SessionSummary.decode(.object(object))!
+    }
+
+    // MARK: 会话分流（子代理 / 频道 / 工作区）
+
+    @MainActor
+    func testSubagentSessionsNeverReachTheList() {
+        let sessions = [
+            makeSummary(id: "session-aaa", title: "普通会话", updatedAt: 300),
+            makeSummary(id: "session-bbb", title: "子代理", updatedAt: 400, origin: "subagent"),
+            makeSummary(id: "session-ccc", title: "带父会话", updatedAt: 500, parentSessionId: "session-aaa"),
+        ]
+        // 官方工作区 UI 也是这么过滤的：origin === 'subagent' 一律不进主列表。
+        for scope in SessionScope.allCases {
+            let ids = SessionPartition.inScope(sessions, scope: scope).map(\.sessionId)
+            XCTAssertFalse(ids.contains("session-bbb"), "\(scope) 不该显示子代理会话")
+            XCTAssertFalse(ids.contains("session-ccc"), "\(scope) 不该显示带父会话的子会话")
+        }
+        XCTAssertEqual(SessionPartition.inScope(sessions, scope: .sessions).map(\.sessionId), ["session-aaa"])
+    }
+
+    @MainActor
+    func testChannelSessionsAreTheirOwnScope() {
+        let sessions = [
+            makeSummary(id: "session-aaa", title: "普通会话", updatedAt: 100),
+            makeSummary(id: "im:feishu_ab12cd34ef56:dm:1:oc_x", title: "飞书群", updatedAt: 200),
+            makeSummary(id: "im:weixin_31b4a82a1195:dm:2:o9cq@im.wechat", title: "微信", updatedAt: 300),
+        ]
+        XCTAssertEqual(SessionPartition.inScope(sessions, scope: .sessions).map(\.sessionId), ["session-aaa"])
+
+        let channels = SessionPartition.inScope(sessions, scope: .channels)
+        XCTAssertEqual(channels.count, 2)
+        XCTAssertEqual(channels.map { $0.category.channelLabel }, ["Feishu", "Weixin"])
+    }
+
+    func testChannelNameExtraction() {
+        XCTAssertNil(SessionSummary.channelName(from: "session-aaa"))
+        XCTAssertEqual(SessionSummary.channelName(from: "im:feishu_ab12cd34ef56:dm:1791780245515:oc_x"), "feishu")
+        XCTAssertEqual(SessionSummary.channelName(from: "im:weixin_31b4a82a1195:dm:1:o9cq"), "weixin")
+        XCTAssertEqual(SessionSummary.channelName(from: "im:plain:dm:1:x"), "plain")
+        XCTAssertEqual(SessionSummary.channelName(from: "im:"), "im")
+    }
+
+    @MainActor
+    func testWorkspaceFilter() {
+        let sessions = [
+            makeSummary(id: "a", title: "A", updatedAt: 100, cwd: "/Users/example/dev/Github/dsh-pocket"),
+            makeSummary(id: "b", title: "B", updatedAt: 200, cwd: "/Users/example/dev/Github/analytics"),
+        ]
+        XCTAssertEqual(SessionPartition.inScope(sessions, scope: .sessions).count, 2)
+        XCTAssertEqual(
+            SessionPartition.inScope(sessions, scope: .sessions, workspace: "dsh-pocket").map(\.sessionId),
+            ["a"]
+        )
+        XCTAssertTrue(SessionPartition.inScope(sessions, scope: .sessions, workspace: "不存在的").isEmpty)
     }
 
     // MARK: 依赖注入的合理性

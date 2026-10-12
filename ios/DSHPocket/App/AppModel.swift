@@ -263,7 +263,11 @@ public final class AppModel {
     /// `protocol` 关掉 —— 光看"连接失败"用户无从下手。
     private func transportFailureMessage(base: String) -> String {
         guard consecutiveTransportFailures >= 3 else { return base }
-        return String(localized: "\(base)\n连续失败 \(consecutiveTransportFailures) 次。如果电脑端重装过插件或清过配对数据，请在「设置 → 主机」里删掉这台电脑，然后重新配对。")
+        return String(
+            format: String(localized: "%@\n连续失败 %lld 次。如果电脑端重装过插件或清过配对数据，请在「设置 → 主机」里删掉这台电脑，然后重新配对。"),
+            base,
+            consecutiveTransportFailures
+        )
     }
 
     private func scheduleTransportReconnect() async {
@@ -420,6 +424,17 @@ public final class AppModel {
     /// 未归档的会话 —— 列表页只显示这些。
     var activeSessions: [SessionSummary] {
         SessionPartition.active(sessions, archived: archivedSessionIds)
+    }
+
+    /// 指定范围内、未归档的会话。列表页用它。
+    func scopedSessions(_ scope: SessionScope, workspace: String? = nil) -> [SessionSummary] {
+        SessionPartition.inScope(activeSessions, scope: scope, workspace: workspace)
+    }
+
+    /// 当前存在的所有工作区名（用于筛选）。
+    var workspaceNames: [String] {
+        let names = Set(activeSessions.filter { !$0.category.isChannel }.map(\.workspaceName))
+        return names.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
 
     /// 已归档的会话 —— 统一在设置里管理，不混进对话列表。
@@ -669,5 +684,25 @@ enum SessionPartition {
         sessions
             .filter { archived.contains($0.sessionId) }
             .sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    /// 按范围分流，并按工作区筛选。
+    ///
+    /// 子代理会话**永远不进列表** —— 官方工作区 UI 也是这么做的
+    /// （`if (session.origin === "subagent") return false`）。它们由父会话
+    /// 时间线里的那张卡承载，混进主列表只会把真正在用的会话淹掉。
+    static func inScope(
+        _ sessions: [SessionSummary],
+        scope: SessionScope,
+        workspace: String? = nil
+    ) -> [SessionSummary] {
+        sessions.filter { summary in
+            guard !summary.category.isSubagent else { return false }
+            guard scope.matches(summary.category) else { return false }
+            if let workspace, !workspace.isEmpty {
+                return summary.workspaceName == workspace
+            }
+            return true
+        }
     }
 }

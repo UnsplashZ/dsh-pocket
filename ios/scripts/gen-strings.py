@@ -447,11 +447,39 @@ EN: dict[str, str] = {
         "Hits a direct gateway on the loopback interface — for simulator development. Run node tools/direct-gateway.mjs on your computer first.",
     "打你电脑上的直连网关。适合手机上开着代理/VPN（iroh 的 UDP 打洞会被隧道干扰），或者电脑和手机在同一个 tailnet / 局域网时。\n电脑上：node tools/direct-gateway.mjs --host <你的 tailnet 或局域网地址> --token <令牌>\n这条路依赖 tailnet / 局域网自身的加密；公网使用请放在 TLS 反向代理后面。":
         "Hits a direct gateway on your computer. Best when a proxy/VPN is running on the phone (it interferes with iroh’s UDP hole-punching), or when phone and computer share a tailnet / LAN.\nOn your computer: node tools/direct-gateway.mjs --host <tailnet-or-LAN-address> --token <token>\nThis path relies on the tailnet / LAN for encryption; for public use put it behind a TLS reverse proxy.",
+    # 列表分流与筛选
+    "会话": "Sessions",
+    "频道": "Channels",
+    "范围": "Scope",
+    "筛选": "Filter",
+    "工作区": "Workspace",
+    "全部工作区": "All workspaces",
+    "清除工作区筛选": "Clear the workspace filter",
+    "显示全部工作区": "Show all workspaces",
+    "这个工作区下没有会话": "No sessions in this workspace",
+    "换一个工作区，或者清除筛选。": "Pick another workspace, or clear the filter.",
+    "没有频道会话": "No channel sessions",
+    "飞书、微信这类外部聊天接进 DSH 之后，会在这里出现。":
+        "External chats wired into DSH — Feishu, WeChat and the like — show up here.",
+    "排队发送": "Queue",
+    "插队给这一轮": "Steer into this turn",
+    # 连接失败的可执行提示
+    "上一次连接还在进行中": "A connection attempt is already in progress",
+    "%@\n连续失败 %lld 次。如果电脑端重装过插件或清过配对数据，请在「设置 → 主机」里删掉这台电脑，然后重新配对。":
+        "%@\nFailed %lld times in a row. If the plugin was reinstalled or its pairing data was cleared on your computer, delete this computer under Settings → Computers and pair again.",
 }
 
 # 哪些插值表达式是整数。判错的后果是英文界面上显示成 `%lld` 字面量，
 # 所以这里同时用"名字白名单"和"看 .count / Int( 这两种形状"两条判据。
 INT_EXPRESSIONS = {"turn", "count", "minutes", "remainder", "step", "index"}
+
+# 名字里带这些词的插值按整数处理。
+# 这是一条**启发式**，不是类型推断 —— 判错的后果是英文界面上显示成 `%lld` 字面量。
+# 所以约定是：凡是插进本地化串里的数字，名字要能被这条规则认出来，
+# 或者干脆用 `String(format:)` 写显式格式串（Format.duration 就是这么做的）。
+INT_NAME_HINTS = ("count", "Count", "failures", "Failures", "attempts", "Attempts",
+                  "index", "Index", "step", "Step", "turn", "Turn",
+                  "tokens", "Tokens", "bytes", "Bytes", "ms", "Ms", "size", "Size")
 
 
 def is_integer_expression(inner: str) -> bool:
@@ -462,7 +490,9 @@ def is_integer_expression(inner: str) -> bool:
         return True
     if "prefix(" in stripped or "suffix(" in stripped:
         return False
-    return False
+    # 最后一个标识符里带整数味儿的词
+    tail = stripped.split(".")[-1].split("(")[0]
+    return any(hint in tail for hint in INT_NAME_HINTS)
 
 
 def key_for(raw: str) -> str:

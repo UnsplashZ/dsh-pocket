@@ -12,6 +12,17 @@
         }
       }
     },
+    "%@\n连续失败 %lld 次。如果电脑端重装过插件或清过配对数据，请在「设置 → 主机」里删掉这台电脑，然后重新配对。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@\nFailed %lld times in a row. If the plugin was reinstalled or its pairing data was cleared on your computer, delete this computer under Settings → Computers and pair again."
+          }
+        }
+      }
+    },
     "%@，%@": {
       "extractionState": "manual",
       "localizations": {
@@ -207,6 +218,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Up"
+          }
+        }
+      }
+    },
+    "上一次连接还在进行中": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A connection attempt is already in progress"
           }
         }
       }
@@ -422,6 +444,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Try these three things"
+          }
+        }
+      }
+    },
+    "全部工作区": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All workspaces"
           }
         }
       }
@@ -1518,6 +1551,17 @@
         }
       }
     },
+    "换一个工作区，或者清除筛选。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pick another workspace, or clear the filter."
+          }
+        }
+      }
+    },
     "推理强度": {
       "extractionState": "manual",
       "localizations": {
@@ -1591,6 +1635,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "The log stays in local memory and is never sent anywhere; export it manually if you need to share it."
+          }
+        }
+      }
+    },
+    "显示全部工作区": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show all workspaces"
           }
         }
       }
@@ -1881,6 +1936,17 @@
         }
       }
     },
+    "没有频道会话": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No channel sessions"
+          }
+        }
+      }
+    },
     "流 · session/follow": {
       "extractionState": "manual",
       "localizations": {
@@ -1932,6 +1998,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Add attachment"
+          }
+        }
+      }
+    },
+    "清除工作区筛选": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear the workspace filter"
           }
         }
       }
@@ -2301,6 +2378,17 @@
         }
       }
     },
+    "筛选": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Filter"
+          }
+        }
+      }
+    },
     "粘贴配对串": {
       "extractionState": "manual",
       "localizations": {
@@ -2341,6 +2429,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "The self-check calls DSH’s client protocol directly (unary + streams), bypassing the UI. If a host upgrade breaks something, look here first."
+          }
+        }
+      }
+    },
+    "范围": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scope"
           }
         }
       }
@@ -2604,6 +2703,17 @@
         }
       }
     },
+    "这个工作区下没有会话": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No sessions in this workspace"
+          }
+        }
+      }
+    },
     "这个目录是空的": {
       "extractionState": "manual",
       "localizations": {
@@ -2777,17 +2887,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Connection"
-          }
-        }
-      }
-    },
-    "连接没有完成，请再试一次。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The connection didn’t finish. Please try again."
           }
         }
       }
@@ -2975,6 +3074,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Your decision is needed"
+          }
+        }
+      }
+    },
+    "频道": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Channels"
+          }
+        }
+      }
+    },
+    "飞书、微信这类外部聊天接进 DSH 之后，会在这里出现。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "External chats wired into DSH — Feishu, WeChat and the like — show up here."
           }
         }
       }

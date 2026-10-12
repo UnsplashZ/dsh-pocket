@@ -214,6 +214,79 @@ final class LiveIntegrationTests: XCTestCase {
         }
     }
 
+    /// **真的发一条消息**。
+    ///
+    /// 这条测试是补课：`session/prompt` 的形状（`mode` 必填、图片内联 base64）
+    /// 之前是靠读源码猜的，猜错了两次，而单测只验形状、验不出"宿主收不收"。
+    /// 会真的起一轮 agent（然后立刻 cancel），所以默认跳过：
+    ///     DSH_LIVE_PROMPT=1 DSH_LIVE=1 swift test --filter LivePrompt
+    func testLivePromptIsAccepted() async throws {
+        try requireLive()
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["DSH_LIVE_PROMPT"] == "1",
+            "会真的起一轮 agent。设 DSH_LIVE_PROMPT=1 才跑。"
+        )
+        let client = makeClient()
+
+        // 用一个临时会话，别打扰用户正在用的那些。
+        let sessionId = try await client.createSession(cwd: NSHomeDirectory())
+        let requestId = RpcId.make()
+
+        let accepted = try await client.prompt(
+            sessionId: sessionId,
+            requestId: requestId,
+            text: "Reply with exactly: pong",
+            mode: .queue
+        )
+        XCTAssertTrue(accepted, "session/prompt 应该被接受（形状对了才会被接受）")
+
+        // 同 requestId 重发应该幂等接受，而不是报错
+        let again = try await client.prompt(
+            sessionId: sessionId,
+            requestId: requestId,
+            text: "Reply with exactly: pong",
+            mode: .queue
+        )
+        XCTAssertTrue(again, "同一个 requestId 重发应当幂等")
+
+        // 别把 agent 挂着跑
+        _ = try await client.cancel(sessionId: sessionId)
+    }
+
+    /// `session/cancel` 的形状只有 `{sessionId}` —— 多发字段会被边界校验拒掉。
+    /// 对空闲会话调用应当成功（无事可取消），而不是抛边界错误。
+    func testCancelAcceptsBareSessionId() async throws {
+        try requireLive()
+        let client = makeClient()
+        let sessions = try await client.listSessions()
+        guard let idle = sessions.first(where: { !$0.isRunning && !$0.sessionId.hasPrefix("im:") }) else {
+            throw XCTSkip("没有空闲会话")
+        }
+        let result = try await client.cancel(sessionId: idle.sessionId)
+        XCTAssertTrue(result, "对空闲会话 cancel 应当是成功的空操作，而不是边界校验失败")
+    }
+
+    /// `session/selectModel` 是**扁平**的 `{sessionId, provider, model}`，
+    /// 套一层 `selection` 会被拒。这里用当前模型选一次当前模型（幂等）。
+    func testSelectModelUsesFlatShape() async throws {
+        try requireLive()
+        let client = makeClient()
+        let sessions = try await client.listSessions()
+        guard let target = sessions.first(where: { !$0.sessionId.hasPrefix("im:") && $0.projections.modelSelection != nil }),
+              let selection = target.projections.modelSelection else {
+            throw XCTSkip("没有带模型信息的会话")
+        }
+        XCTAssertFalse(selection.provider.isEmpty, "modelSelection 应该能解出 provider（它是嵌套的 lastUsed/next）")
+        XCTAssertFalse(selection.model.isEmpty, "modelSelection 应该能解出 model")
+        // 选同一个模型：不改变任何状态，但会走完整条校验路径。
+        try await client.selectModel(
+            sessionId: target.sessionId,
+            provider: selection.provider,
+            model: selection.model,
+            reasoningEffort: selection.reasoningEffort
+        )
+    }
+
     func testModelCatalogAndUnaryErrorShape() async throws {
         try requireLive()
         let client = makeClient()

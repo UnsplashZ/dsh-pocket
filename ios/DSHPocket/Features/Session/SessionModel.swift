@@ -300,25 +300,31 @@ public final class SessionModel {
         requestScrollToBottom()
 
         do {
-            // 附件先上传拿到 receipt，再随 prompt 一起提交。
+            // 附件：图片**内联 base64** 直接随 prompt 走；文件必须先上传拿 receiptId。
+            // （这是线上契约，不是优化选择 —— 见 DSHClient.prompt 的注释。）
             var promptAttachments: [DSHClient.PromptAttachment] = []
             for attachment in snapshotAttachments {
-                let upload = try await client.uploadFile(
-                    sessionId: sessionId,
-                    name: attachment.name,
-                    data: attachment.data
-                )
                 if attachment.isImage {
-                    promptAttachments.append(.image(upload.file))
+                    promptAttachments.append(.image(
+                        data: attachment.data,
+                        mediaType: attachment.mediaType,
+                        name: attachment.name
+                    ))
                 } else {
-                    promptAttachments.append(.fileReceipt(receiptId: upload.receiptId, file: upload.file))
+                    let upload = try await client.uploadFile(
+                        sessionId: sessionId,
+                        name: attachment.name,
+                        data: attachment.data
+                    )
+                    promptAttachments.append(.file(receiptId: upload.receiptId))
                 }
             }
             _ = try await client.prompt(
                 sessionId: sessionId,
                 requestId: rpcId,
                 text: text,
-                attachments: promptAttachments
+                attachments: promptAttachments,
+                mode: .queue
             )
             pendingPromptRpcId = nil
         } catch {

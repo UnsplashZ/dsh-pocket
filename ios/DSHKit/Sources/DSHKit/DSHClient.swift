@@ -161,7 +161,29 @@ public actor DSHClient {
     // MARK: - 交互
 
     /// 提交一条消息。
-    /// - Parameter mode: `steer` 表示"插队给正在跑的这一轮"；不传表示排到下一轮。
+    ///
+    /// **线上形状是严格的**（读自 `SessionPromptRequest`，本机版本核对过）：
+    ///
+    /// ```ts
+    /// interface SessionPromptRequest {
+    ///     requestId: SessionRequestId;
+    ///     sessionId: SessionId;
+    ///     mode: 'queue' | 'steer';        // ← 必填！少一个字段就是边界校验失败
+    ///     content: readonly PromptContentPart[];
+    ///     clientTimeZone?: string;
+    /// }
+    /// type PromptContentPart =
+    ///   | { type: 'text';  text: string }
+    ///   | { type: 'image'; mediaType: ImageMediaType; data: string; name?: string }  // ← base64 内联
+    ///   | { type: 'file';  receiptId: file-upload-receipt-id }
+    /// ```
+    ///
+    /// 两个曾经踩过的坑：
+    ///   · `mode` 是必填的。省略它 → `wire field "request" failed boundary validation`，
+    ///     表现就是"消息发不出去"。
+    ///   · 图片是**内联 base64**，不是附件引用。电脑端收到后自己落盘成 durable attachment。
+    ///
+    /// - Parameter mode: `queue` 排到下一轮；`steer` 插队给正在跑的这一轮。
     @discardableResult
     public func prompt(
         sessionId: String,
@@ -169,53 +191,54 @@ public actor DSHClient {
         text: String,
         attachments: [PromptAttachment] = [],
         clientTimeZone: String? = TimeZone.current.identifier,
-        mode: String? = nil
+        mode: PromptMode = .queue
     ) async throws -> Bool {
         var content: [JSONValue] = []
-        if !text.isEmpty { content.append(.object(["type": .string("text"), "text": .string(text)])) }
+        if !text.isEmpty {
+            content.append(.object(["type": .string("text"), "text": .string(text)]))
+        }
         for attachment in attachments {
             switch attachment {
-            case .image(let ref):
-                content.append(.object([
+            case .image(let data, let mediaType, let name):
+                var part: [String: JSONValue] = [
                     "type": .string("image"),
-                    "attachment": .object(ref.json),
-                ]))
-            case .fileReceipt(let receiptId, _):
+                    "mediaType": .string(mediaType),
+                    "data": .string(data.base64EncodedString()),
+                ]
+                if let name, !name.isEmpty { part["name"] = .string(name) }
+                content.append(.object(part))
+            case .file(let receiptId):
                 content.append(.object([
                     "type": .string("file"),
                     "receiptId": .string(receiptId),
                 ]))
-            case .stagedFile(let attachment):
-                content.append(.object([
-                    "type": .string("file"),
-                    "attachment": .object(attachment.json),
-                ]))
             }
         }
         var request: [String: JSONValue] = [
-            "sessionId": .string(sessionId),
             "requestId": .string(requestId),
+            "sessionId": .string(sessionId),
+            "mode": .string(mode.rawValue),
             "content": .array(content),
         ]
         if let clientTimeZone { request["clientTimeZone"] = .string(clientTimeZone) }
-        if let mode { request["mode"] = .string(mode) }
 
         let value = try await rpc.call(method: "session/prompt", payload: ["args": .object(["request": .object(request)])])
         return value.bool("accepted") ?? false
     }
 
-    /// 打断正在跑的一轮。返回是否被接受。
+    /// 打断正在跑的一轮。
+    ///
+    /// 请求形状只有 `{sessionId}` —— 多发一个字段（比如 `requestId`）就会被边界校验拒掉。
     @discardableResult
-    public func cancel(sessionId: String, requestId: String = RpcId.make()) async throws -> Bool {
+    public func cancel(sessionId: String) async throws -> Bool {
         let value = try await rpc.call(method: "session/cancel", payload: [
             "args": .object([
-                "request": .object([
-                    "sessionId": .string(sessionId),
-                    "requestId": .string(requestId),
-                ])
+                "request": .object(["sessionId": .string(sessionId)])
             ])
         ])
-        return value.bool("accepted") ?? (value.isNull ? true : false)
+        // 宿主不保证返回 accepted；没有明确失败就算成功。
+        if let accepted = value.bool("accepted") { return accepted }
+        return true
     }
 
     /// 会话排队项（`session/updateQueue`）：编辑或删除还没被消化的消息。
@@ -318,33 +341,34 @@ public actor DSHClient {
         try await rpc.call("session/modelCatalog")
     }
 
+    /// `session/selectModel`。请求是 `SessionSelectModelRequest extends ModelSelection`，
+    /// 也就是**扁平**的 `{sessionId, provider, model, reasoningEffort?}` ——
+    /// 套一层 `selection` 会被边界校验拒掉。
     public func selectModel(
         sessionId: String,
         provider: String,
         model: String,
         reasoningEffort: String? = nil
     ) async throws {
-        var selection: [String: JSONValue] = [
+        var request: [String: JSONValue] = [
+            "sessionId": .string(sessionId),
             "provider": .string(provider),
             "model": .string(model),
         ]
-        if let reasoningEffort { selection["reasoningEffort"] = .string(reasoningEffort) }
+        if let reasoningEffort { request["reasoningEffort"] = .string(reasoningEffort) }
         _ = try await rpc.call(method: "session/selectModel", payload: [
-            "args": .object([
-                "request": .object([
-                    "sessionId": .string(sessionId),
-                    "selection": .object(selection),
-                ])
-            ])
+            "args": .object(["request": .object(request)])
         ])
     }
 
     // MARK: - 图片与文件
 
+    /// 提交时的附件。**形状与线上契约一一对应**（见 `prompt` 的说明）。
     public enum PromptAttachment: Sendable {
-        case image(DSHAttachmentRef)
-        case fileReceipt(receiptId: String, file: DSHAttachmentRef)
-        case stagedFile(DSHAttachmentRef)
+        /// 图片：线上要 base64 内联。
+        case image(data: Data, mediaType: String, name: String? = nil)
+        /// 文件：只带上传拿到的 receiptId。
+        case file(receiptId: String)
     }
 
     /// 取回一张会话里引用过的图片（base64 → Data）。

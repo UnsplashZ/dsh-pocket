@@ -53,6 +53,7 @@
 		A4C4DA46B5DCBB456010BE0A /* DSHError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2151DE06AE4BA2D88CBE912C /* DSHError.swift */; };
 		A4D35E605F7A98B9F1ABA329 /* TetherSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AAEDF5B0163D090BF27398A /* TetherSession.swift */; };
 		AD46495FBEDBD188501813BC /* AppLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9FA0B78A3547368B545428A /* AppLogicTests.swift */; };
+		B2C68D45F6D1B2B35D9ED533 /* SessionCategory.swift in Sources */ = {isa = PBXBuildFile; fileRef = B225F0688C4A99917EBDD4AE /* SessionCategory.swift */; };
 		B2F99E897F8DC4F71127968C /* IrohLib.swift in Sources */ = {isa = PBXBuildFile; fileRef = 649275652C15B4E856D19630 /* IrohLib.swift */; };
 		B4AD5FE8791A38577D7AE2C8 /* PairingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBF83F4E8B796777D460DAE3 /* PairingSheet.swift */; };
 		C2665264EC06FAA6E444E409 /* FilesSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20391EC33E89609CD0C82B2E /* FilesSheet.swift */; };
@@ -60,6 +61,7 @@
 		C7C6CA257F9F4F86986457BD /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 11DD1FE84C8891CE789BA08F /* Security.framework */; };
 		D051BDD7042B5F35D33DD166 /* RPCClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD7894845FFE4AECBFFF46BF /* RPCClient.swift */; };
 		D2641787F38253254D561E75 /* TimelineRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4F4775F445DDBB99CD6F0AC /* TimelineRow.swift */; };
+		EA0E68CC7F6507DDFA6DE538 /* PromptMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = F345924C6640FF3AAB53E779 /* PromptMode.swift */; };
 		EC447F99538B096408898E49 /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DD8113BDAC19FC1DACA36A1 /* WelcomeView.swift */; };
 		F0331CB4B6C1CF214442030F /* TetherWire.swift in Sources */ = {isa = PBXBuildFile; fileRef = A45D16E92E08B9CC5DE69CA8 /* TetherWire.swift */; };
 		F4CD12090587030CFFD87AF8 /* SessionEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = E67688A27EA05DFC126FA9D6 /* SessionEvent.swift */; };
@@ -180,6 +182,7 @@
 		A61720A16CF30E3539C3DDD3 /* ApprovalViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalViews.swift; sourceTree = "<group>"; };
 		AB8FD867EC3110B3BB52E461 /* TetherProxyPort.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TetherProxyPort.swift; sourceTree = "<group>"; };
 		AD7894845FFE4AECBFFF46BF /* RPCClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPCClient.swift; sourceTree = "<group>"; };
+		B225F0688C4A99917EBDD4AE /* SessionCategory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCategory.swift; sourceTree = "<group>"; };
 		B3E177347AB2BA195EBD899C /* TetherSecretStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TetherSecretStore.swift; sourceTree = "<group>"; };
 		B624E63D100EADA66BC73883 /* EventStreamCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventStreamCoordinator.swift; sourceTree = "<group>"; };
 		BBF83F4E8B796777D460DAE3 /* PairingSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingSheet.swift; sourceTree = "<group>"; };
@@ -196,6 +199,7 @@
 		E6171EF0D2E0ED43307720E3 /* DSHPocketTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = DSHPocketTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E67688A27EA05DFC126FA9D6 /* SessionEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionEvent.swift; sourceTree = "<group>"; };
 		E9FA0B78A3547368B545428A /* AppLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLogicTests.swift; sourceTree = "<group>"; };
+		F345924C6640FF3AAB53E779 /* PromptMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptMode.swift; sourceTree = "<group>"; };
 		F4662D3F79BDEB3E7FA8D5C7 /* SettingsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsSheet.swift; sourceTree = "<group>"; };
 		F714C252B15543051C29E9C2 /* DSHKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = DSHKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -269,6 +273,8 @@
 			isa = PBXGroup;
 			children = (
 				6607BBF3D413D89A4B537871 /* Projections.swift */,
+				F345924C6640FF3AAB53E779 /* PromptMode.swift */,
+				B225F0688C4A99917EBDD4AE /* SessionCategory.swift */,
 				E67688A27EA05DFC126FA9D6 /* SessionEvent.swift */,
 				79B7887EBC326BB1948E7ABE /* TimelineBuilder.swift */,
 				332E9727DA5B522FCF725E72 /* TimelineItem.swift */,
@@ -678,8 +684,10 @@
 				4B2610E3E5F08B31B0D6B327 /* JSONValue.swift in Sources */,
 				5E9D06012AD7777CCDDAFC04 /* MuxClient.swift in Sources */,
 				5BA98D3D35912124CBD15736 /* Projections.swift in Sources */,
+				EA0E68CC7F6507DDFA6DE538 /* PromptMode.swift in Sources */,
 				D051BDD7042B5F35D33DD166 /* RPCClient.swift in Sources */,
 				3379AE831FF66E5DA0E09FB1 /* Retry.swift in Sources */,
+				B2C68D45F6D1B2B35D9ED533 /* SessionCategory.swift in Sources */,
 				F4CD12090587030CFFD87AF8 /* SessionEvent.swift in Sources */,
 				78E396D2D850FB21020E1833 /* TimelineBuilder.swift in Sources */,
 				122EA2D82CF1FAF439A5C61E /* TimelineItem.swift in Sources */,

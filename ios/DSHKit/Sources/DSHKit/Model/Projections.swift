@@ -11,6 +11,9 @@ public struct SessionSummary: Sendable, Identifiable, Hashable {
     public let agentAvailable: Bool
     public let isBlank: Bool
     public let parentSessionId: String?
+    /// `origin`。官方 UI 用它把子代理会话从主列表里排除
+    /// （`dsh-client-ui-workspace/lib/client.js`: `if (session.origin === "subagent") return false`）。
+    public let origin: String?
     /// 投影覆盖到哪个 seq（`projections.asOfSeq`）。
     public let asOfSeq: Int
     public let projections: SessionProjections
@@ -38,6 +41,30 @@ public struct SessionSummary: Sendable, Identifiable, Hashable {
         return (cwd as NSString).lastPathComponent
     }
 
+    /// 会话的类别。
+    ///
+    /// 判据全部来自线上字段，不猜：
+    ///   · `origin == "subagent"`（或带 `parentSessionId`）→ 子代理会话。官方 UI 也不在主列表显示它；
+    ///   · `sessionId` 以 `im:` 开头 → IM 桥接出来的频道会话（形如
+    ///     `im:feishu_<id>:dm:<ts>:<peer>` / `im:weixin_<id>:dm:<ts>:<peer>`），
+    ///     它们是"和某个外部聊天对象的一条线"，和你在电脑上开的会话不是一类东西；
+    ///   · 其余 → 普通会话。
+    public var category: SessionCategory {
+        if origin == "subagent" || parentSessionId != nil { return .subagent }
+        if let channel = Self.channelName(from: sessionId) { return .channel(channel) }
+        return .session
+    }
+
+    /// 从 `im:<channel>_<id>:<kind>:<ts>:<peer>` 里取出渠道名（feishu / weixin / …）。
+    public static func channelName(from sessionId: String) -> String? {
+        guard sessionId.hasPrefix("im:") else { return nil }
+        let rest = sessionId.dropFirst(3)
+        guard let firstSegment = rest.split(separator: ":").first else { return "im" }
+        // `feishu_ab12cd34ef56` → `feishu`
+        let channel = firstSegment.split(separator: "_").first.map(String.init) ?? String(firstSegment)
+        return channel.isEmpty ? "im" : channel
+    }
+
     public static func decode(_ value: JSONValue) -> SessionSummary? {
         guard let sessionId = value.string("sessionId") else { return nil }
         return SessionSummary(
@@ -48,6 +75,7 @@ public struct SessionSummary: Sendable, Identifiable, Hashable {
             agentAvailable: value.bool("agentAvailable") ?? false,
             isBlank: value.bool("blank") ?? false,
             parentSessionId: value.string("parentSessionId"),
+            origin: value.string("origin"),
             asOfSeq: value.int("projections.asOfSeq") ?? -1,
             projections: SessionProjections(json: value["projections"] ?? .object([:]))
         )
@@ -90,7 +118,14 @@ public struct SessionProjections: Sendable, Hashable {
                 status: .init(raw: $0.string("status"))
             )
         }
-        self.modelSelection = values["modelSelection"].map(ModelSelection.init(json:))
+        // `modelSelection` 是**嵌套**的 `{lastUsed: {...}, next: {...}}`，
+        // 不是扁平的 `{provider, model}`。当成扁平读会得到空的 provider/model ——
+        // 表现是会话页的模型标签空白，以及 selectModel 拿空值去选（`session/model-unavailable`）。
+        self.modelSelection = values["modelSelection"].flatMap { raw in
+            let chosen = raw["next"] ?? raw["lastUsed"] ?? raw
+            let selection = ModelSelection(json: chosen)
+            return selection.provider.isEmpty && selection.model.isEmpty ? nil : selection
+        }
         self.permissions = values["permissions"].map(PermissionState.init(json:))
         self.plan = values["plan"].map(PlanState.init(json:))
         self.userQuestions = UserQuestionsState(json: values["userQuestions"] ?? .object([:]))

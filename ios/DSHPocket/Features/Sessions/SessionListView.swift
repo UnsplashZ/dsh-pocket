@@ -13,6 +13,10 @@ struct SessionListView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var query = ""
+    /// 显示范围：普通会话 / 频道会话。子代理会话两边都不出现。
+    @State private var scope: SessionScope = .sessions
+    /// 工作区筛选。`nil` = 全部。
+    @State private var workspace: String?
     @State private var renaming: SessionSummary?
     /// 正在跑、需要先停下来才能归档的会话。
     @State private var archivingRunning: SessionSummary?
@@ -76,6 +80,40 @@ struct SessionListView: View {
         }
         .listStyle(.insetGrouped)
         .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: Text("搜索标题或摘要"))
+        // 范围分段控件钉在搜索框下面。放在 List 里会跟着滚走，
+        // 而"我现在看的是会话还是频道"必须一直可见。
+        .safeAreaInset(edge: .top, spacing: 0) {
+            VStack(spacing: 0) {
+                Picker("范围", selection: $scope) {
+                    ForEach(SessionScope.allCases) { option in
+                        Text(option.label).tag(option)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, Token.Spacing.gutter)
+                .padding(.vertical, Token.Spacing.tight)
+
+                if let workspace {
+                    HStack(spacing: Token.Spacing.hairline) {
+                        Image(systemName: "folder")
+                        Text(workspace)
+                        Button {
+                            self.workspace = nil
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .symbolRenderingMode(.hierarchical)
+                        }
+                        .accessibilityLabel(Text("清除工作区筛选"))
+                        Spacer()
+                    }
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, Token.Spacing.gutter)
+                    .padding(.bottom, Token.Spacing.tight)
+                }
+            }
+            .background(.bar)
+        }
         .refreshable { await model.refreshSessions() }
         .navigationTitle("会话")
         .toolbar { toolbar }
@@ -142,15 +180,8 @@ struct SessionListView: View {
 
     private var filtered: [SessionSummary] {
         // 已归档的会话统一去「设置 → 已归档」管理，不混进对话列表（否则本机 32 个归档
-        // 会把列表彻底淹没）。
-        let active = model.activeSessions
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return active }
-        return active.filter { summary in
-            summary.title.localizedCaseInsensitiveContains(trimmed)
-                || summary.subtitle.localizedCaseInsensitiveContains(trimmed)
-                || summary.workspaceName.localizedCaseInsensitiveContains(trimmed)
-        }
+        // 会把列表彻底淹没）。子代理会话由 `inScope` 一并排除。
+        model.scopedSessions(scope, workspace: workspace).filter(matchesQuery)
     }
 
     private struct Group: Identifiable {
@@ -160,7 +191,13 @@ struct SessionListView: View {
     }
 
     private var groups: [Group] {
-        let grouped = Dictionary(grouping: filtered) { $0.workspaceName }
+        let scoped = model.scopedSessions(scope, workspace: workspace).filter(matchesQuery)
+        let grouped = Dictionary(grouping: scoped) { summary -> String in
+            switch scope {
+            case .sessions: return summary.workspaceName
+            case .channels: return summary.category.channelLabel ?? String(localized: "频道")
+            }
+        }
         return grouped
             .map { Group(key: $0.key, sessions: $0.value.sorted { $0.updatedAt > $1.updatedAt }) }
             .sorted { lhs, rhs in
@@ -170,9 +207,18 @@ struct SessionListView: View {
             }
     }
 
+    private func matchesQuery(_ summary: SessionSummary) -> Bool {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return true }
+        return summary.title.localizedCaseInsensitiveContains(trimmed)
+            || summary.subtitle.localizedCaseInsensitiveContains(trimmed)
+            || summary.workspaceName.localizedCaseInsensitiveContains(trimmed)
+    }
+
+    /// 工作区筛选候选：只列普通会话的工作区 —— 频道会话的 cwd 往往是宿主目录，
+    /// 放进筛选器只会制造噪音。
     private var workspaces: [String] {
-        let paths = Set(model.sessions.compactMap(\.cwd))
-        return paths.sorted()
+        model.workspaceNames
     }
 
     // MARK: 状态
@@ -281,6 +327,21 @@ struct SessionListView: View {
                 Button("重试") { Task { await model.refreshSessions() } }
                     .buttonStyle(.borderedProminent)
             }
+        } else if filtered.isEmpty, model.connection.isConnected, scope == .channels {
+            ContentUnavailableView(
+                "没有频道会话",
+                systemImage: "antenna.radiowaves.left.and.right",
+                description: Text("飞书、微信这类外部聊天接进 DSH 之后，会在这里出现。")
+            )
+        } else if filtered.isEmpty, model.connection.isConnected, workspace != nil {
+            ContentUnavailableView {
+                Label("这个工作区下没有会话", systemImage: "folder")
+            } description: {
+                Text("换一个工作区，或者清除筛选。")
+            } actions: {
+                Button("显示全部工作区") { workspace = nil }
+                    .buttonStyle(.borderedProminent)
+            }
         } else if model.sessions.isEmpty, model.connection.isConnected {
             ContentUnavailableView {
                 Label("还没有会话", systemImage: "bubble.left.and.bubble.right")
@@ -309,6 +370,28 @@ struct SessionListView: View {
                 Label("新建会话", systemImage: "square.and.pencil")
             }
             .disabled(!model.connection.isConnected)
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Menu {
+                Section("工作区") {
+                    Button {
+                        workspace = nil
+                    } label: {
+                        Label("全部工作区", systemImage: workspace == nil ? "checkmark" : "square.grid.2x2")
+                    }
+                    ForEach(workspaces, id: \.self) { name in
+                        Button {
+                            workspace = (workspace == name) ? nil : name
+                        } label: {
+                            Label(name, systemImage: workspace == name ? "checkmark" : "folder")
+                        }
+                    }
+                }
+            } label: {
+                Label("筛选", systemImage: workspace == nil
+                      ? "line.3.horizontal.decrease.circle"
+                      : "line.3.horizontal.decrease.circle.fill")
+            }
         }
         ToolbarItem(placement: .topBarTrailing) {
             Button {
