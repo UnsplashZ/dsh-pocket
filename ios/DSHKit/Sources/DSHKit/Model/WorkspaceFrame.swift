@@ -13,7 +13,10 @@ public enum WorkspaceFrame: Sendable {
     case baseline(archivedSessionIds: [String], pinnedSessionIds: [String], workspaces: [WorkspaceSummary])
     case archived([String])
     case pinned([String])
+    /// `upsert`：新增/更新一个工作区。
     case workspaces([WorkspaceSummary])
+    /// `order`：工作区顺序变了。
+    case order([String])
     case other(type: String, value: JSONValue)
 
     public static func decode(_ value: JSONValue) -> WorkspaceFrame {
@@ -31,21 +34,36 @@ public enum WorkspaceFrame: Sendable {
             return .pinned(value.array("pinnedSessionIds")?.compactMap(\.stringValue) ?? [])
         case "upsert":
             return .workspaces([WorkspaceSummary(json: value["workspace"] ?? .object([:]))])
+        case "order":
+            return .order(value.array("workspaceIds")?.compactMap(\.stringValue) ?? [])
         default:
             return .other(type: value.string("type") ?? "?", value: value)
         }
     }
 }
 
-/// 工作区（`cwd` 的分组单位）。
+/// 工作区（会话的分组单位）。
+///
+/// 线上形状（`WorkspaceView`，本机实测核对过）：
+/// ```ts
+/// { workspaceId, path, title, sessionIds[], createdAt, updatedAt }
+/// ```
+///
+/// **`session/create` 要的是 `workspaceId`，不是 `cwd`。** 只传 `cwd` 建出来的会话
+/// 在电脑端会落在「未分组」里 —— 这正是"选完工作区不生效"的原因。
 public struct WorkspaceSummary: Sendable, Hashable, Identifiable {
     public let id: String
-    public let name: String
-    public let path: String?
+    public let title: String
+    public let path: String
+    public let sessionIds: [String]
 
     public init(json: JSONValue) {
-        self.id = json.string("id") ?? json.string("workspaceId") ?? ""
-        self.name = json.string("name") ?? json.string("title") ?? (json.string("path").map { ($0 as NSString).lastPathComponent } ?? "")
-        self.path = json.string("path") ?? json.string("cwd")
+        let id = json.string("workspaceId") ?? json.string("id") ?? ""
+        self.id = id
+        let path = json.string("path") ?? ""
+        self.path = path
+        self.title = json.string("title")
+            ?? (path.isEmpty ? id : (path as NSString).lastPathComponent)
+        self.sessionIds = json.array("sessionIds")?.compactMap(\.stringValue) ?? []
     }
 }

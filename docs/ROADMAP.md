@@ -87,6 +87,8 @@
 - [x] 审批（S4）：时间线卡片 + 通知；决策走 `$events/result`；「稍后」
 - [x] 提问（`user-questions/request`）：单选/多选/开放文本
 - [x] 模型切换（`session/modelCatalog` / `session/selectModel`）
+      —— 注意模型在 `groups[].models[]`，推理强度**按模型**取
+- [x] **权限档位**（`permissionPresets/catalog` 读 + `/permission <preset>` 命令写，见 ADR-0014）
 - [x] 图片（`PhotosPicker`）与文件（`.fileImporter`）上传（走 `POST /api/session/uploadFileBinary`）
 - [x] 文件浏览（S5）：`workspaceFiles/list|read` + QuickLook
 - [x] `present` 产物的取回与分享（时间线内产物卡 + ShareLink）

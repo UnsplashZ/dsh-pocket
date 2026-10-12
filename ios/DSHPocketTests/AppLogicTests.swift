@@ -89,61 +89,6 @@ final class AppLogicTests: XCTestCase {
         XCTAssertNil(Format.contextPressure(ContextPressure(json: .object([:]))), "窗口为 0 时不该显示百分比")
     }
 
-    // MARK: Markdown 切分
-
-    func testMarkdownSegmentsSplitCodeFences() {
-        let text = """
-        先说结论。
-
-        ```swift
-        let a = 1
-        ```
-
-        就这样。
-        """
-        let segments = MarkdownBody.segments(of: text)
-        XCTAssertEqual(segments.count, 3)
-        guard case .prose(let first) = segments[0] else { return XCTFail("第一段应是散文") }
-        XCTAssertEqual(first, "先说结论。")
-        guard case .code(let code, let language) = segments[1] else { return XCTFail("第二段应是代码") }
-        XCTAssertEqual(language, "swift")
-        XCTAssertEqual(code, "let a = 1")
-        guard case .prose(let last) = segments[2] else { return XCTFail("第三段应是散文") }
-        XCTAssertEqual(last, "就这样。")
-    }
-
-    func testMarkdownSegmentsExtractHeadings() {
-        let text = """
-        # 一级
-        ## 二级
-        正文
-        ### 三级
-        """
-        let segments = MarkdownBody.segments(of: text)
-        let headings = segments.compactMap { segment -> (Int, String)? in
-            if case .heading(let level, let text) = segment { return (level, text) }
-            return nil
-        }
-        XCTAssertEqual(headings.map(\.0), [1, 2, 3])
-        XCTAssertEqual(headings.map(\.1), ["一级", "二级", "三级"])
-        // `#` 不是标题时要留在正文里（例如 C 语言的 #include）
-        let include = MarkdownBody.segments(of: "#include <stdio.h>")
-        XCTAssertEqual(include.count, 1)
-        guard case .prose(let line) = include[0] else { return XCTFail() }
-        XCTAssertEqual(line, "#include <stdio.h>")
-    }
-
-    func testMarkdownSegmentsHandleUnclosedFence() {
-        let segments = MarkdownBody.segments(of: "前文\n```\n未闭合的代码")
-        XCTAssertEqual(segments.count, 2)
-        guard case .code(let code, _) = segments[1] else { return XCTFail() }
-        XCTAssertEqual(code, "未闭合的代码")
-    }
-
-    func testMarkdownSegmentsOnEmptyInput() {
-        XCTAssertTrue(MarkdownBody.segments(of: "").isEmpty)
-    }
-
     // MARK: 主机协调器
 
     @MainActor
@@ -191,34 +136,154 @@ final class AppLogicTests: XCTestCase {
 
     // MARK: 新建会话的工作区
 
-    /// `session/create` 的 `cwd` **必须是绝对路径**。列表里显示的是 basename，
-    /// 直接拿它当路径传会被宿主拒：
-    /// `session header cwd must be an absolute path, got "dsh-pocket"`。
-    /// 这就是"选完工作区没反应"的根因。
+    /// 新建会话的候选工作区**来自宿主的工作区注册表**，不是从会话反推。
+    ///
+    /// 从会话反推会漏掉"已添加但还没有会话"的工作区 —— 用户实测：`chat-bot`
+    /// 当时只有频道会话，于是它在新建议话的列表里消失了。
     @MainActor
-    func testWorkspaceTargetsCarryAbsolutePathsNotDisplayNames() {
-        let sessions = [
-            makeSummary(id: "a", title: "A", updatedAt: 100, cwd: "/Users/example/dev/Github/dsh-pocket"),
-            makeSummary(id: "b", title: "B", updatedAt: 200, cwd: "/Users/example/dev/Github/dsh-pocket"),
-            makeSummary(id: "c", title: "C", updatedAt: 300, cwd: "/Users/example/dev/Github/analytics"),
+    func testWorkspaceListComesFromTheRegistryNotFromSessions() {
+        let registry = [
+            Fixture.workspace(id: "w1", path: "/Users/example/dev/Github/dsh-pocket", title: "dsh-pocket", sessionIds: ["a", "b"]),
+            Fixture.workspace(id: "w2", path: "/Users/example/dev/Github/chat-bot", title: "chat-bot", sessionIds: ["im:weixin_x:dm:1:y"]),
+            Fixture.workspace(id: "w3", path: "/Users/example/dev/scripts/net-tools", title: "net-tools", sessionIds: []),
         ]
-        let targets = SessionPartition.workspaceTargets(sessions, archived: [])
-        XCTAssertEqual(targets.map(\.cwd).sorted(), ["/Users/example/dev/Github/analytics", "/Users/example/dev/Github/dsh-pocket"])
-        XCTAssertTrue(targets.allSatisfy { $0.cwd.hasPrefix("/") }, "传给 session/create 的必须是绝对路径")
-        XCTAssertEqual(targets.first { $0.cwd.hasSuffix("dsh-pocket") }?.sessionCount, 2)
-        XCTAssertEqual(targets.first { $0.cwd.hasSuffix("dsh-pocket") }?.name, "dsh-pocket", "显示名仍用 basename")
+        // 这三个里只有 w1 有普通会话，但**三个都要能选**。
+        XCTAssertEqual(registry.count, 3)
+        XCTAssertTrue(registry.contains { $0.title == "chat-bot" })
+        XCTAssertTrue(registry.contains { $0.title == "net-tools" && $0.sessionIds.isEmpty })
     }
 
-    /// 同名不同目录的工作区不能被合并成一个 —— id 用完整路径。
-    @MainActor
-    func testWorkspaceTargetsDoNotMergeSameNamedDirectories() {
-        let sessions = [
-            makeSummary(id: "a", title: "A", updatedAt: 100, cwd: "/work/one/Github"),
-            makeSummary(id: "b", title: "B", updatedAt: 200, cwd: "/work/two/Github"),
-        ]
-        let targets = SessionPartition.workspaceTargets(sessions, archived: [])
-        XCTAssertEqual(targets.count, 2, "同名不同目录必须分开")
-        XCTAssertEqual(Set(targets.map(\.id)).count, 2)
+    /// `session/create` 要的是 **`workspaceId`**。
+    ///
+    /// 只传 `cwd` 建出来的会话在电脑端会落到「未分组」—— 用户看到的就是
+    /// "选了工作区但不生效"。而 `workspaceId` 与 `cwd` 不能同时给（会被拒）。
+    func testWorkspaceTargetCarriesWorkspaceId() {
+        let summary = Fixture.workspace(id: "ws-42", path: "/Users/example/dev/Github/analytics", title: "analytics")
+        XCTAssertEqual(summary.id, "ws-42")
+        XCTAssertEqual(summary.title, "analytics")
+        XCTAssertEqual(summary.path, "/Users/example/dev/Github/analytics")
+    }
+
+    // MARK: Markdown 块级解析
+
+    /// 表格曾经原样显示成 `| 方向 | 能做什么 |` —— 因为压根没有块级解析。
+    func testMarkdownParsesTables() {
+        let text = """
+        我能帮你做这些事：
+
+        | 方向 | 能做什么 |
+        | --- | :---: |
+        | 写代码 | 读代码库、定位 bug |
+        | 查资料 | 联网搜索 |
+        """
+        let blocks = MarkdownParser.parse(text)
+        XCTAssertEqual(blocks.count, 2)
+        guard case .table(let table) = blocks[1] else { return XCTFail("第二块应该是表格") }
+        XCTAssertEqual(table.headers, ["方向", "能做什么"])
+        XCTAssertEqual(table.rows.count, 2)
+        XCTAssertEqual(table.rows[0], ["写代码", "读代码库、定位 bug"])
+        XCTAssertEqual(table.alignments, [.leading, .center])
+    }
+
+    func testMarkdownTableToleratesRaggedRows() {
+        // 少列/多列的行都要能容错，不能让整段渲染失败
+        let text = """
+        | a | b | c |
+        |---|---|---|
+        | 1 |
+        | 1 | 2 | 3 | 4 |
+        """
+        guard case .table(let table) = MarkdownParser.parse(text).first else { return XCTFail() }
+        XCTAssertEqual(table.rows[0], ["1", "", ""], "缺的列补空")
+        XCTAssertEqual(table.rows[1], ["1", "2", "3"], "多的列截掉")
+    }
+
+    func testMarkdownParsesListsQuotesAndRules() {
+        let text = """
+        - 第一项
+        - 第二项
+          - 缩进项
+
+        1. 有序一
+        2. 有序二
+
+        > 引用一行
+
+        ---
+        """
+        let blocks = MarkdownParser.parse(text)
+        let markers = blocks.compactMap { block -> String? in
+            if case .listItem(let marker, _, _) = block { return marker }
+            return nil
+        }
+        XCTAssertEqual(markers, ["•", "•", "•", "1.", "2."])
+
+        let depths = blocks.compactMap { block -> Int? in
+            if case .listItem(_, _, let depth) = block { return depth }
+            return nil
+        }
+        XCTAssertEqual(depths[2], 1, "缩进项要有一层深度")
+        XCTAssertTrue(blocks.contains { if case .quote = $0 { return true }; return false })
+        XCTAssertTrue(blocks.contains { if case .rule = $0 { return true }; return false })
+    }
+
+    func testMarkdownKeepsCodeFencesIntact() {
+        let text = """
+        前面的话
+
+        ```swift
+        let a = 1
+        | 这不是表格 |
+        ```
+
+        后面的话
+        """
+        let blocks = MarkdownParser.parse(text)
+        XCTAssertEqual(blocks.count, 3)
+        guard case .code(let language, let code) = blocks[1] else { return XCTFail() }
+        XCTAssertEqual(language, "swift")
+        XCTAssertTrue(code.contains("| 这不是表格 |"), "代码块里的内容不该被当成表格")
+    }
+
+    func testMarkdownRecognisesStandaloneImages() {
+        let blocks = MarkdownParser.parse("![架构图](https://example.com/a.png)")
+        guard case .image(let alt, let url) = blocks.first else { return XCTFail("应该识别为图片块") }
+        XCTAssertEqual(alt, "架构图")
+        XCTAssertEqual(url, "https://example.com/a.png")
+    }
+
+    /// `---` 是分隔线，不是空列表项。
+    func testMarkdownDistinguishesRuleFromListMarker() {
+        XCTAssertEqual(MarkdownParser.parse("---"), [.rule])
+        XCTAssertEqual(MarkdownParser.parse("***"), [.rule])
+        guard case .listItem = MarkdownParser.parse("- 项").first else { return XCTFail("- 才是列表项") }
+    }
+
+    // MARK: 权限档位
+
+    func testPermissionPresetCatalogParses() {
+        let catalog = PermissionPresetCatalog.decode(Fixture.json(#"""
+        {"options":[{"value":"read-only","name":"read-only"},
+                    {"value":"workspace-write","name":"workspace-write"},
+                    {"value":"danger-full-access","name":"danger-full-access"}],
+         "defaultPreset":"workspace-write"}
+        """#))
+        XCTAssertEqual(catalog.options.map(\.value), ["read-only", "workspace-write", "danger-full-access"])
+        XCTAssertEqual(catalog.defaultPreset, "workspace-write")
+        XCTAssertTrue(catalog.options.first { $0.value == "danger-full-access" }?.isRisky ?? false)
+        XCTAssertFalse(catalog.options.first { $0.value == "read-only" }?.isRisky ?? true)
+        for preset in catalog.options {
+            XCTAssertNotNil(preset.explanation, "\(preset.value) 应该有一句解释")
+        }
+    }
+
+    func testCommandExecutionParsesSuccessAndFailure() {
+        let ok = CommandExecution.decode(Fixture.json(#"{"commandId":"cmd-1","result":{"kind":"success","text":"preset read-only"}}"#))
+        XCTAssertTrue(ok.isSuccess)
+        XCTAssertEqual(ok.text, "preset read-only")
+
+        let bad = CommandExecution.decode(Fixture.json(#"{"commandId":"cmd-2","result":{"kind":"error","text":"unknown preset"}}"#))
+        XCTAssertFalse(bad.isSuccess)
     }
 
     // MARK: 连接方式
@@ -429,6 +494,20 @@ final class AppLogicTests: XCTestCase {
 
 /// 与 DSHKit 测试同款的 JSON 构造助手（这里只需要最简的一个）。
 enum Fixture {
+    static func workspace(
+        id: String,
+        path: String,
+        title: String? = nil,
+        sessionIds: [String] = []
+    ) -> WorkspaceSummary {
+        WorkspaceSummary(json: .object([
+            "workspaceId": .string(id),
+            "path": .string(path),
+            "title": .string(title ?? (path as NSString).lastPathComponent),
+            "sessionIds": .array(sessionIds.map { .string($0) }),
+        ]))
+    }
+
     static func json(_ text: String) -> JSONValue {
         (try? JSONDecoder().decode(JSONValue.self, from: Data(text.utf8))) ?? .null
     }

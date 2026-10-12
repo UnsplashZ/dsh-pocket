@@ -19,6 +19,7 @@ struct SessionView: View {
     @State private var showRename = false
     @State private var renameText = ""
     @State private var showModelPicker = false
+    @State private var showPermissionPicker = false
     @State private var showShadowed = false
     @State private var isFollowingBottom = true
     @State private var lastKnownTailId: String?
@@ -43,6 +44,7 @@ struct SessionView: View {
             #if DEBUG
             // 调试用：`defaults write cc.zexa.dshpocket DSHShowModelPicker -bool YES`
             if UserDefaults.standard.bool(forKey: "DSHShowModelPicker") { showModelPicker = true }
+            if UserDefaults.standard.bool(forKey: "DSHShowPermissionPicker") { showPermissionPicker = true }
             #endif
             if session == nil {
                 let created = SessionModel(
@@ -64,6 +66,11 @@ struct SessionView: View {
         .sheet(isPresented: $showModelPicker) {
             if let session {
                 ModelPickerSheet(session: session)
+            }
+        }
+        .sheet(isPresented: $showPermissionPicker) {
+            if let session {
+                PermissionPickerSheet(session: session)
             }
         }
         .alert("重命名会话", isPresented: $showRename) {
@@ -313,6 +320,16 @@ struct SessionView: View {
         }
     }
 
+    private func permissionMenuTitle(_ session: SessionModel) -> String {
+        switch session.currentPermission {
+        case "read-only": return String(localized: "权限：仅可查看")
+        case "workspace-write": return String(localized: "权限：工作区内修改")
+        case "danger-full-access": return String(localized: "权限：完全权限")
+        case .some(let other): return String(localized: "权限：\(other)")
+        case nil: return String(localized: "权限")
+        }
+    }
+
     // MARK: 工具栏
 
     @ToolbarContentBuilder
@@ -330,6 +347,11 @@ struct SessionView: View {
                         UIPasteboard.general.string = session.sessionId
                     } label: {
                         Label("复制会话 ID", systemImage: "doc.on.doc")
+                    }
+                    Button {
+                        showPermissionPicker = true
+                    } label: {
+                        Label(permissionMenuTitle(session), systemImage: "lock.shield")
                     }
                     Button {
                         showModelPicker = true

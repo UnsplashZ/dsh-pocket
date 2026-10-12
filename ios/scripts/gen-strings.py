@@ -479,6 +479,36 @@ EN: dict[str, str] = {
     "清除筛选": "Clear the filter",
     "默认展开思考过程": "Expand reasoning by default",
     "按名字或路径找会话": "Search by name or path",
+    # 权限档位
+    "权限": "Permissions",
+    "权限：%@": "Permissions: %@",
+    "权限：仅可查看": "Permissions: Read only",
+    "权限：工作区内修改": "Permissions: Workspace write",
+    "权限：完全权限": "Permissions: Full access",
+    "仅可查看": "Read only",
+    "工作区内修改": "Workspace write",
+    "完全权限": "Full access",
+    "正在读取权限档位…": "Loading permission presets…",
+    "读不到权限档位": "Couldn’t load permission presets",
+    "当前会话": "This session",
+    "当前档位": "Current",
+    "现在": "Now",
+    "档位": "Preset",
+    "只影响这个会话。改完电脑端会记一条权限变更，时间线上也看得到。":
+        "Affects this session only. Your computer records the change, and it shows up on the timeline.",
+    "只能读，不能改文件，也不能跑会写盘的命令。": "Read only — no file changes, no commands that write.",
+    "能在工作区目录里读写。工作区之外的操作仍然要你批准。":
+        "Read and write inside the workspace directory. Anything outside still needs your approval.",
+    "读写不受工作区限制，而且会减少确认步骤，包括敏感操作与外部命令。只在你信任接下来的任务时用。":
+        "Unrestricted reads and writes, with fewer confirmation steps — including sensitive operations and external commands. Only use it when you trust what comes next.",
+    "启用完全权限？": "Turn on full access?",
+    "我已了解风险，仍然启用": "I understand the risk — enable it",
+    "完全权限会读写不受工作区限制，并减少确认步骤 —— 包括敏感操作、文件修改和外部命令。仅在你信任接下来的任务时使用。":
+        "Full access removes the workspace limit on reads and writes and cuts confirmation steps — including sensitive operations, file changes, and external commands. Only use it when you trust what comes next.",
+    "切换权限失败": "Couldn’t switch permissions",
+    # Markdown 表格与图片
+    "表格，%lld 列 %lld 行": "Table, %lld columns by %lld rows",
+    "图片 %@，未加载：只从你的电脑取数据": "Image %@, not loaded: data comes only from your computer",
 }
 
 # 哪些插值表达式是整数。判错的后果是英文界面上显示成 `%lld` 字面量，

@@ -52,6 +52,8 @@ public final class SessionModel {
     /// 这个会话当前用的模型（`projections.modelSelection` 的 `next`/`lastUsed`）。
     /// 模型页拿它做初始选中项。
     private(set) var modelSelection: ModelSelection?
+    /// 这个会话当前的文件读写/审批档位（`projections.permissions.currentValue`）。
+    private(set) var currentPermission: String?
     private(set) var contextPressure: ContextPressure?
     private(set) var todos: [TimelineItem.TodoEntry] = []
 
@@ -195,6 +197,12 @@ public final class SessionModel {
     private func apply(_ event: SessionEvent) {
         let delta = builder.apply(event)
         lastSeq = max(lastSeq, event.seq)
+        // 标题是**事件**推过来的（`session/title`），不是只在投影里。
+        // 不处理它的话，自动生成的标题永远反映不到 App 上
+        // （用户看到的就是新建的会话一直显示 `session-xxxx`）。
+        if event.type == "session/title", let newTitle = event.string("data.title"), !newTitle.isEmpty {
+            title = newTitle
+        }
         if event.type == "turn/start" { isTurnRunning = true }
         if event.type == "turn/end" { isTurnRunning = false }
         if event.type == "step/end" { isStreaming = false }
@@ -223,6 +231,9 @@ public final class SessionModel {
         if let title = values.string("title"), !title.isEmpty { self.title = title }
         if let pressure = values["contextPressure"] {
             contextPressure = ContextPressure(json: pressure)
+        }
+        if let value = values.string("permissions.currentValue") ?? values["permissions"]?.string("currentValue") {
+            currentPermission = value
         }
         if let raw = values["modelSelection"] {
             // 嵌套形状：`{lastUsed: {...}, next: {...}}`。当扁平读会永远拿到空值。
@@ -430,6 +441,24 @@ public final class SessionModel {
         )
         modelLabel = model
         modelSelection = ModelSelection(provider: provider, model: model, reasoningEffort: reasoningEffort)
+    }
+
+    /// 可选的权限档位。
+    func loadPermissionPresets() async throws -> PermissionPresetCatalog {
+        try await client.permissionPresets()
+    }
+
+    /// 切换权限档位。走斜杠命令 `/permission <preset>` ——
+    /// 这是 DSH 客户端协议里唯一能改当前会话权限的入口。
+    func selectPermissionPreset(_ preset: String) async throws {
+        let execution = try await client.selectPermissionPreset(sessionId: sessionId, preset: preset)
+        guard execution.isSuccess else {
+            throw DSHClientError.remote(DSHError(
+                code: "command/failed",
+                message: execution.text.isEmpty ? String(localized: "切换权限失败") : execution.text
+            ))
+        }
+        currentPermission = preset
     }
 
     /// 模型清单。**失败要抛出去**，让模型页能显示"读不到 + 重试"，

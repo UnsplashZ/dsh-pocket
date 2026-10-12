@@ -118,3 +118,47 @@ SwiftPM 状态"上。
 - **App 永不自动决策**这条规则不被破坏：`unavailable` 不是批准；
 - 代价：用户离线期间的审批会被判为"没人答得上"，回来后在时间线上看到的是
   `approval/decided { outcome: 'unavailable' }` —— 这是事实，不做美化。
+
+## ADR-0013 · Markdown 自己写块级渲染器，不引第三方库
+
+**日期**：2026-10-12
+**背景**：助手正文里的 Markdown 之前只处理"内联 + 代码围栏"，**表格会原样显示**成
+`| 方向 | 能做什么 |`。调研了 [swift-markdown-ui (MarkdownUI)](https://github.com/gonzalezreal/swift-markdown-ui)
+（纯 SwiftUI、无 UIKit 桥接、MIT，是这类需求的事实标准）。
+
+**试过的路**：
+1. 作为 SwiftPM 依赖加进 `project.yml` → **Xcode 27 加载工程时直接挂死**
+   （`xcodebuild -list` 60 秒不返回，`-resolvePackageDependencies` 输出空列表，
+   包永远不会被解析）。不带包引用时同一个工程秒开 —— 与本机环境有关，不是配置问题。
+2. Vendored（像 IrohLib 那样把源码搬进工程内 target）→ 需要连
+   `swift-cmark`（C 库，带 modulemap）+ `NetworkImage` 一起搬，
+   加起来约 5 MB 源码。对一个"把表格画对"的需求不成比例。
+
+**决定**：自己写**块级**解析 + 排版（`MarkdownParser` + `MarkdownBody`）：
+标题、段落、代码块、**表格**、列表、引用、分隔线、单独成段的图片。
+内联（粗体/斜体/行内代码/链接）继续用系统自带的 `AttributedString(markdown:)` —— 那部分不用自己写。
+
+**后果**：
+- 零新依赖，符合 ADR-0006；
+- 解析是纯函数，可单测（表格容错、`---` 与列表标记的歧义、代码块里不解析表格…都钉住了）；
+- 能力边界明确：**没有** HTML 内联、脚注、任务列表勾选框这些。真需要时再评估；
+- **隐私红利**：正文里的远程图片**刻意不加载**。这个 App 的承诺是"所有流量都只去你自己的电脑"，
+  引一个会自动拉 `http(s)` 图片的渲染库就破坏了这个承诺。现在远程图片渲染成一行占位，
+  并写明"未加载：只从你的电脑取数据"。
+
+## ADR-0014 · 权限档位走「斜杠命令」，不走 `settings/*`
+
+**日期**：2026-10-12
+**背景**：用户要求"读写权限必须加入设置"。查了 DSH 安装里**全部** Remote 方法：
+`permissionPresets` 只暴露 `catalog`（只读），没有任何写方法。
+**决定**：改权限走 **`commands/execute`** 跑 `dsh-permission-presets` 注册的
+斜杠命令 `/permission <preset>`；读走 `permissionPresets/catalog`。
+**后果**：
+- 这是"改**当前会话**权限"的唯一入口。`settings.mutate` 改的是"新会话的默认档位"，
+  语义不同（[DESIGN.md](DESIGN.md) §4.2 本来也把 `settings/*` 排除在一期之外）；
+- 线上形状有个坑：agent scope 是**放进 `args` 里**的
+  （`{args:{agentId, line, submittedAttachments}}`），放 payload 顶层会被拒
+  （`Remote payload must contain exactly one plain-object args field`）；
+- 危险档位（`danger-full-access`）要先确认再改，并且如实说明"减少确认步骤、
+  包括敏感操作与外部命令"，不美化也不恐吓；
+- 自动化测试里**只跑不带参数的 `/permission`**（它只打印当前档位，不改任何东西）。

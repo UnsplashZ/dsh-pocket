@@ -132,7 +132,8 @@ struct SessionListView: View {
 
     private func createSession(in target: AppModel.WorkspaceTarget) {
         Task {
-            guard let id = await model.createSession(cwd: target.cwd) else { return }
+            // 传 workspaceId：会话才会落进这个工作区，而不是电脑端的「未分组」。
+            guard let id = await model.createSession(workspaceId: target.workspaceId, cwd: target.cwd) else { return }
             // 列表可能还没刷到这个新会话，用占位保证"选完立刻进去"。
             if let summary = model.sessionSummary(for: id, cwd: target.cwd) {
                 onSelect(summary)

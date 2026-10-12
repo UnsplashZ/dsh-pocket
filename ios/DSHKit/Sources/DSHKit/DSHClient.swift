@@ -256,9 +256,19 @@ public actor DSHClient {
 
     // MARK: - 会话管理
 
-    public func createSession(cwd: String? = nil, agentPreset: String? = nil) async throws -> String {
+    /// 建一个会话。
+    ///
+    /// **传 `workspaceId`，不要只传 `cwd`。** 宿主对 `session.create` 的校验是
+    /// "workspaceId 或 cwd 二选一"（两个都给会被拒），而只给 `cwd` 建出来的会话
+    /// 在电脑端会落到「未分组」—— 用户看到的就是"选了工作区但不生效"。
+    public func createSession(
+        workspaceId: String? = nil,
+        cwd: String? = nil,
+        agentPreset: String? = nil
+    ) async throws -> String {
         var request: [String: JSONValue] = [:]
-        if let cwd { request["cwd"] = .string(cwd) }
+        if let workspaceId { request["workspaceId"] = .string(workspaceId) }
+        else if let cwd { request["cwd"] = .string(cwd) }
         if let agentPreset { request["agentPreset"] = .string(agentPreset) }
         let value = try await rpc.call(method: "session/create", payload: ["args": .object(["request": .object(request)])])
         guard let sessionId = value.string("sessionId") else {
@@ -359,6 +369,49 @@ public actor DSHClient {
         _ = try await rpc.call(method: "session/selectModel", payload: [
             "args": .object(["request": .object(request)])
         ])
+    }
+
+    // MARK: - 权限档位
+
+    /// 可选的权限档位（`permissionPresets/catalog`，只读）。
+    public func permissionPresets() async throws -> PermissionPresetCatalog {
+        PermissionPresetCatalog.decode(try await rpc.call("permissionPresets/catalog"))
+    }
+
+    /// 执行一条**斜杠命令**。
+    ///
+    /// 权限档位的"写"走的就是这条路：`dsh-permission-presets` 注册了一个
+    /// `permission` 命令（`/permission <preset>`，不带参数则打印当前档位）。
+    /// 线上形状是 `{args: {agentId, line, submittedAttachments}}` ——
+    /// agent scope 是**放进 args 里**的，放到 payload 顶层会被拒
+    /// （`Remote payload must contain exactly one plain-object args field`）。
+    ///
+    /// 这是 DSH 客户端协议里**唯一**能改权限的入口：`permissionPresets` 只暴露
+    /// `catalog`（只读），直接写回去要走 `settings/*`（那是全局默认值，不是当前会话）。
+    @discardableResult
+    public func executeCommand(sessionId: String, line: String) async throws -> CommandExecution {
+        let value = try await rpc.call(method: "commands/execute", payload: [
+            "args": .object([
+                "agentId": .string(sessionId),
+                "line": .string(line),
+                "submittedAttachments": .array([]),
+            ])
+        ])
+        return CommandExecution.decode(value)
+    }
+
+    /// 可用的斜杠命令清单。
+    public func commands(sessionId: String) async throws -> [JSONValue] {
+        let value = try await rpc.call(method: "commands/list", payload: [
+            "args": .object(["agentId": .string(sessionId)])
+        ])
+        return value.arrayValue ?? []
+    }
+
+    /// 切换当前会话的权限档位。
+    @discardableResult
+    public func selectPermissionPreset(sessionId: String, preset: String) async throws -> CommandExecution {
+        try await executeCommand(sessionId: sessionId, line: "/permission \(preset)")
     }
 
     // MARK: - 图片与文件

@@ -342,6 +342,38 @@ final class LiveIntegrationTests: XCTestCase {
         _ = try await client.cancel(sessionId: sessionId)
     }
 
+    /// 权限档位：catalog 只读，改档位走 `/permission <preset>` 这个斜杠命令。
+    ///
+    /// 这里**只跑不带参数的 `/permission`** —— 它只打印当前档位，不改任何东西，
+    /// 所以可以随便跑。真正改权限的操作不能进自动化测试。
+    func testPermissionCatalogAndCommandPath() async throws {
+        try requireLive()
+        let client = makeClient()
+
+        let catalog = try await client.permissionPresets()
+        XCTAssertFalse(catalog.options.isEmpty, "应该有可选的权限档位")
+        XCTAssertTrue(catalog.options.contains { $0.value == "read-only" })
+        XCTAssertTrue(catalog.options.contains { $0.value == "workspace-write" })
+
+        let sessions = try await client.listSessions()
+        guard let target = sessions.first(where: { !$0.sessionId.hasPrefix("im:") && !$0.isRunning }) else {
+            throw XCTSkip("没有空闲会话")
+        }
+
+        // 命令清单里必须有 permission（每条是对象，取 name 字段）
+        let commands = try await client.commands(sessionId: target.sessionId)
+        let names = commands.compactMap { $0.string("name") }
+        XCTAssertFalse(names.isEmpty, "命令清单不该是空的")
+        XCTAssertTrue(names.contains("permission"),
+                      "命令清单里应该有 permission，实际：\(names.prefix(8))")
+
+        // 不带参数 → 只读当前档位
+        let execution = try await client.executeCommand(sessionId: target.sessionId, line: "/permission")
+        XCTAssertTrue(execution.isSuccess, "不带参数的 /permission 应当成功")
+        XCTAssertTrue(execution.text.contains("preset") || execution.text.contains("current"),
+                      "应当回报当前档位，实际：\(execution.text)")
+    }
+
     func testModelCatalogAndUnaryErrorShape() async throws {
         try requireLive()
         let client = makeClient()

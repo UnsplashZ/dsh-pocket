@@ -57,6 +57,11 @@ public final class AppModel {
     /// 已归档的会话 ID。**只有 `workspace/follow` 会告诉你这个** —— `session/list` 里没有。
     private(set) var archivedSessionIds: Set<String> = []
     private(set) var pinnedSessionIds: Set<String> = []
+    /// 全部工作区，来自 `workspace/follow` 的 baseline。
+    ///
+    /// **不能从会话反推** —— 那样会漏掉"已添加但还没有会话"的工作区
+    /// （用户实测：`chat-bot` 只有频道会话，就在新建会话的列表里消失了）。
+    private(set) var workspaces: [WorkspaceSummary] = []
     private(set) var isLoadingSessions = false
     private(set) var sessionListError: String?
     private(set) var lastRefreshedAt: Date?
@@ -412,15 +417,29 @@ public final class AppModel {
 
     private func apply(workspaceFrame frame: WorkspaceFrame) async {
         switch frame {
-        case .baseline(let archived, let pinned, _):
+        case .baseline(let archived, let pinned, let workspaces):
             archivedSessionIds = Set(archived)
             pinnedSessionIds = Set(pinned)
-            logs.log(.info, "工作区基线：\(archived.count) 个已归档、\(pinned.count) 个已置顶")
+            self.workspaces = workspaces.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+            logs.log(.info, "工作区基线：\(self.workspaces.count) 个工作区、\(archived.count) 个已归档")
         case .archived(let ids):
             archivedSessionIds = Set(ids)
         case .pinned(let ids):
             pinnedSessionIds = Set(ids)
-        case .workspaces, .other:
+        case .workspaces(let upserted):
+            for workspace in upserted {
+                if let index = workspaces.firstIndex(where: { $0.id == workspace.id }) {
+                    workspaces[index] = workspace
+                } else {
+                    workspaces.append(workspace)
+                }
+            }
+            workspaces.sort { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        case .order(let ids):
+            workspaces.sort { lhs, rhs in
+                (ids.firstIndex(of: lhs.id) ?? .max) < (ids.firstIndex(of: rhs.id) ?? .max)
+            }
+        case .other:
             break
         }
     }
@@ -487,11 +506,11 @@ public final class AppModel {
 
     /// 一个可新建会话的工作区目标。
     struct WorkspaceTarget: Identifiable, Hashable, Sendable {
-        /// 同一个 basename 可能对应不同目录（`/a/Github` 与 `/b/Github`），
-        /// 所以 id 用**完整路径**，不是显示名。
-        public var id: String { cwd }
+        /// 工作区的稳定 id。`session/create` 要的就是它。
+        public var id: String { workspaceId }
         public var name: String
         public var cwd: String
+        public var workspaceId: String
         public var sessionCount: Int
     }
 
@@ -501,7 +520,14 @@ public final class AppModel {
     /// `session header cwd must be an absolute path, got "dsh-pocket"`。
     /// 之前这里就是传 basename，所以"选完工作区没反应"。
     var workspaceTargets: [WorkspaceTarget] {
-        SessionPartition.workspaceTargets(activeSessions, archived: archivedSessionIds)
+        workspaces.map { workspace in
+            WorkspaceTarget(
+                name: workspace.title,
+                cwd: workspace.path,
+                workspaceId: workspace.id,
+                sessionCount: workspace.sessionIds.count
+            )
+        }
     }
 
     /// 已归档的会话 —— 统一在设置里管理，不混进对话列表。
@@ -553,9 +579,12 @@ public final class AppModel {
         }
     }
 
-    func createSession(cwd: String?) async -> String? {
+    /// 在指定工作区里建会话。
+    ///
+    /// 传 `workspaceId`（不是 cwd）—— 只传 cwd 建出来的会话在电脑端会落进「未分组」。
+    func createSession(workspaceId: String?, cwd: String?) async -> String? {
         do {
-            let id = try await client.createSession(cwd: cwd)
+            let id = try await client.createSession(workspaceId: workspaceId, cwd: workspaceId == nil ? cwd : nil)
             await refreshSessions()
             // 新会话在 `session/list` 里可能晚一拍才出现。等一小会儿再找，
             // 找不到就直接把 id 交给调用方（它能自己合成一个占位会话去打开）。
@@ -772,23 +801,6 @@ enum SessionPartition {
     /// 子代理会话**永远不进列表** —— 官方工作区 UI 也是这么做的
     /// （`if (session.origin === "subagent") return false`）。它们由父会话
     /// 时间线里的那张卡承载，混进主列表只会把真正在用的会话淹掉。
-    /// 新建会话的可选工作区。**id 与 cwd 都用完整路径** ——
-    /// 同名不同目录（`/a/Github` 与 `/b/Github`）不能被合并，
-    /// 而且 `session/create` 只接受绝对路径。
-    static func workspaceTargets(
-        _ sessions: [SessionSummary],
-        archived: Set<String>
-    ) -> [AppModel.WorkspaceTarget] {
-        var counts: [String: Int] = [:]
-        for summary in active(sessions, archived: archived) where !summary.category.isChannel {
-            guard let cwd = summary.cwd, !cwd.isEmpty, cwd.hasPrefix("/") else { continue }
-            counts[cwd, default: 0] += 1
-        }
-        return counts
-            .map { AppModel.WorkspaceTarget(name: ($0.key as NSString).lastPathComponent, cwd: $0.key, sessionCount: $0.value) }
-            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-    }
-
     static func inScope(
         _ sessions: [SessionSummary],
         scope: SessionScope,
