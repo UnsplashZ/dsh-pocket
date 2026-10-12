@@ -83,6 +83,9 @@ public final class AppModel {
     private var transportSupervisor: Task<Void, Never>?
     private var reconnectAttempt = 0
     private var isBackgrounded = false
+    /// 连续几次传输失败。用来把"电脑端已经不认这台手机了"这种需要人工介入的
+    /// 情况和普通网络抖动区分开 —— 后者重试就好，前者要用户去删掉主机记录重新配对。
+    private var consecutiveTransportFailures = 0
     private let notifier = NotificationCenterAdapter()
 
     // MARK: 初始化
@@ -166,10 +169,17 @@ public final class AppModel {
 
     // MARK: 连接
 
-    func connect(hostId: String, pairingCode: String?, silent: Bool = false) async {
+    /// 连上电脑。**返回错误文案**（`nil` 表示成功）。
+    ///
+    /// 返回结果而不是让调用方去读 `connection`：状态流是异步更新的，
+    /// 调用方立刻读会读到还没更新的旧值。配对页之前就是这么错的 ——
+    /// 明明连上了却显示"连接没有完成，请再试一次"，用户再点一次就发了第二个
+    /// `pair`，被电脑端判成协议错误。
+    @discardableResult
+    func connect(hostId: String, pairingCode: String?, silent: Bool = false) async -> String? {
         // 重入保护：一次只允许一条连接在建立。电脑端同一身份只接受一条连接，
         // 并发建连会把彼此顶掉。
-        guard !isConnecting else { return }
+        guard !isConnecting else { return String(localized: "上一次连接还在进行中") }
         isConnecting = true
         defer { isConnecting = false }
 
@@ -181,10 +191,13 @@ public final class AppModel {
             // 这样"首次连接"和"掉线重连"走的是同一条路。
             settings.activeHostId = hostId
             hosts = await tether.hosts()
+            consecutiveTransportFailures = 0
+            return nil
         } catch {
             let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             connection = .failed(message)
             logs.log(.error, "连接失败：\(message)")
+            return message
         }
     }
 
@@ -230,8 +243,9 @@ public final class AppModel {
             logs.log(.info, "传输就绪 \(hostId.prefix(12))… → \(baseURL)")
 
         case .failed(let reason):
-            connection = .failed(reason)
-            logs.log(.warning, "传输断开：\(reason)")
+            consecutiveTransportFailures += 1
+            connection = .failed(transportFailureMessage(base: reason))
+            logs.log(.warning, "传输断开（第 \(consecutiveTransportFailures) 次）：\(reason)")
             await scheduleTransportReconnect()
 
         case .idle:
@@ -242,8 +256,24 @@ public final class AppModel {
         }
     }
 
+    /// 反复失败到一定次数就换一句**可执行**的话。
+    ///
+    /// 这个场景真的会发生：电脑端的配对白名单被清过（重装插件、换 data-dir），
+    /// 而这台手机还记着旧记录。此时 App 会一直发 hello，电脑端一直以
+    /// `protocol` 关掉 —— 光看"连接失败"用户无从下手。
+    private func transportFailureMessage(base: String) -> String {
+        guard consecutiveTransportFailures >= 3 else { return base }
+        return String(localized: "\(base)\n连续失败 \(consecutiveTransportFailures) 次。如果电脑端重装过插件或清过配对数据，请在「设置 → 主机」里删掉这台电脑，然后重新配对。")
+    }
+
     private func scheduleTransportReconnect() async {
         guard !isBackgrounded, settings.transportMode == .remote else { return }
+        // 连续失败太多就别再无脑重试了：这多半需要用户动手（重新配对），
+        // 一直重试只会刷日志、耗电。
+        guard consecutiveTransportFailures <= 6 else {
+            logs.log(.warning, "连续失败已达 \(consecutiveTransportFailures) 次，暂停自动重连")
+            return
+        }
         guard let hostId = settings.activeHostId, !hostId.isEmpty else { return }
         reconnectAttempt += 1
         let wait = RetryPolicy.default.delay(afterAttempt: reconnectAttempt)
@@ -456,6 +486,7 @@ public final class AppModel {
 
     func forgetHost(_ id: String) async {
         await tether.forgetHost(id: id)
+        consecutiveTransportFailures = 0
         hosts = await tether.hosts()
         if settings.activeHostId == id {
             settings.activeHostId = nil

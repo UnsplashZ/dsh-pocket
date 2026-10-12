@@ -24,6 +24,30 @@ public struct TetherDiagnostics: Sendable, Equatable {
     public var controlAlive: Bool
 }
 
+/// 连接建立后要发的**首行消息**。
+///
+/// 电脑端对它的校验是**二选一、且与"是否已配对"严格对应**的：
+///
+/// ```rust
+/// let paired = store.devices.iter().any(|d| d.id == remote);
+/// match (paired, hello) {
+///     (true,  Wire::Hello { name }) => name,      // 已配对 → 只接受 hello
+///     (false, Wire::Pair  { code, name }) => {…}  // 未配对 → 只接受 pair
+///     _ => { conn.close(1, b"protocol"); bail!("未按协议发首行") }
+/// }
+/// ```
+///
+/// 所以**不能"有配对码就发 pair"** —— 对一台已经认识这台手机的电脑发 pair，
+/// 会被判成协议错误并直接断开（真机上踩到过：配对成功之后再点一次配对，
+/// 电脑端日志是 `the first line does not follow the protocol(paired=true)`）。
+/// 官方 Rust 客户端也是靠自己的"已配对列表"决定发哪个，而不是先发 pair 试试。
+public enum TetherFirstMessage: Sendable, Equatable {
+    /// 已配对：只报个名字。
+    case hello
+    /// 未配对：拿配对码换白名单里的一个位置。
+    case pair(code: String)
+}
+
 /// 一条 iroh 连接的生命周期。
 ///
 /// 为什么需要把它暴露出来：控制流断掉之后**不会自己回来** —— 上层必须知道
@@ -106,6 +130,13 @@ actor TetherLink: TetherStreamFactory {
     ///   - hostEndpointId: 电脑端的 64 位十六进制端点 ID。
     ///   - pairingCode: 首次配对时的 6 位码；已配对则传 `nil`（走 hello）。
     func connect(hostEndpointId: String, pairingCode: String?) async throws {
+        try await connect(
+            hostEndpointId: hostEndpointId,
+            firstMessage: pairingCode.map { .pair(code: $0) } ?? .hello
+        )
+    }
+
+    func connect(hostEndpointId: String, firstMessage: TetherFirstMessage) async throws {
         guard !connecting else { throw TetherError.transport("已有一次连接正在进行") }
         guard let peerBytes = TetherProxyPort.bytes(fromHex: hostEndpointId), peerBytes.count == 32 else {
             throw TetherError.invalidEndpointId(hostEndpointId)
@@ -134,10 +165,19 @@ actor TetherLink: TetherStreamFactory {
             self.controlSend = send
             self.controlRecv = recv
 
-            let first = pairingCode.map { TetherWire.pair(code: $0, name: name) } ?? TetherWire.hello(name: name)
+            let first: Data
+            let isPairing: Bool
+            switch firstMessage {
+            case .hello:
+                first = TetherWire.hello(name: name)
+                isPairing = false
+            case .pair(let code):
+                first = TetherWire.pair(code: code, name: name)
+                isPairing = true
+            }
             try await send.writeAll(buf: first)
 
-            if pairingCode != nil {
+            if isPairing {
                 let reply = try await readControlLine(timeout: .seconds(20))
                 switch TetherHostMessage.decode(line: reply) {
                 case .pairOk:

@@ -253,6 +253,39 @@ final class TetherContractTests: XCTestCase {
         XCTAssertEqual(record.shortId.count, 12)
     }
 
+    // MARK: 首行消息（hello / pair 二选一）
+
+    /// 电脑端的校验是**严格二选一**的，选错就是"连不上"，而且报错信息毫无指向性
+    /// （只有 `close(1, b"protocol")`）。所以这条决策必须有单测。
+    func testFirstMessageIsHelloWhenAlreadyPaired() {
+        // 已经配对过：就算用户又填了一次配对码，也只能发 hello。
+        // 这是真机上踩到的坑：配对成功后重开配对页再点一次，发出去的是 pair，
+        // 电脑端 `(paired=true, Pair)` → 协议错误 → 直接断开。
+        XCTAssertEqual(TetherSession.firstMessage(alreadyPaired: true, pairingCode: "123456"), .hello)
+        XCTAssertEqual(TetherSession.firstMessage(alreadyPaired: true, pairingCode: nil), .hello)
+        XCTAssertEqual(TetherSession.firstMessage(alreadyPaired: true, pairingCode: ""), .hello)
+    }
+
+    func testFirstMessageIsPairOnlyWhenUnpaired() {
+        XCTAssertEqual(TetherSession.firstMessage(alreadyPaired: false, pairingCode: "123456"), .pair(code: "123456"))
+        // 没配对过又没有码：不该发 hello 去撞墙，而是明确地"还不会连"
+        XCTAssertNil(TetherSession.firstMessage(alreadyPaired: false, pairingCode: nil))
+        XCTAssertNil(TetherSession.firstMessage(alreadyPaired: false, pairingCode: ""))
+    }
+
+    /// 主机簿是"已配对"的唯一依据 —— 它得真的记得住。
+    func testHostBookDrivesTheAlreadyPairedDecision() {
+        var book = TetherHostBook()
+        let hostId = String(repeating: "ab", count: 32)
+        XCTAssertNil(book.host(id: hostId))
+        XCTAssertEqual(TetherSession.firstMessage(alreadyPaired: book.host(id: hostId) != nil, pairingCode: "123456"),
+                       .pair(code: "123456"))
+
+        book.upsert(TetherHostRecord(id: hostId, label: "我的 Mac"))
+        XCTAssertEqual(TetherSession.firstMessage(alreadyPaired: book.host(id: hostId) != nil, pairingCode: "123456"),
+                       .hello)
+    }
+
     // MARK: 本地代理端口
 
     /// 首选端口被占用时必须**回退到系统分配**，而不是报错。

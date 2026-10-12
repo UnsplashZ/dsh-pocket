@@ -179,6 +179,27 @@ public actor TetherSession {
 
     /// 连上一台电脑并**同时把本地代理起好**。
     /// - Returns: 本地代理基址（`http://127.0.0.1:<port>`），把它交给 DSHKit 即可。
+    /// 首行到底发什么。
+    ///
+    /// 电脑端是**严格二选一**的（`(paired, hello)` 的 match 只有两条合法分支，
+    /// 其余一律 `close(1, b"protocol")`），所以这个决策不能猜、必须有单测：
+    ///   · 我们这边记着这台电脑 → `hello`（就算用户又填了一次配对码也一样）；
+    ///   · 没记着、但有配对码 → `pair`；
+    ///   · 没记着、也没配对码 → 连不上（应该引导用户去配对，而不是发个 hello 撞墙）。
+    static func firstMessage(alreadyPaired: Bool, pairingCode: String?) -> TetherFirstMessage? {
+        if alreadyPaired { return .hello }
+        guard let pairingCode, !pairingCode.isEmpty else { return nil }
+        return .pair(code: pairingCode)
+    }
+
+    /// 我们是否已经把这台电脑记在主机簿里。
+    ///
+    /// 这个判断决定了首行发 `hello` 还是 `pair` —— 电脑端是**严格二选一**的，
+    /// 对已配对的电脑发 pair 会被判成协议错误并断开。
+    public func isPaired(hostId: String) -> Bool {
+        hostBook.host(id: hostId) != nil
+    }
+
     @discardableResult
     public func connect(hostId: String, pairingCode: String? = nil) async throws -> URL {
         if case .connected(let current, let base) = state, current == hostId, let url = URL(string: base) {
@@ -200,7 +221,17 @@ public actor TetherSession {
             let link = TetherLink(identity: identity, name: deviceName, logger: logger)
             self.link = link
 
-            try await link.connect(hostEndpointId: hostId, pairingCode: pairingCode)
+            // 首行发什么，由**我们的主机簿**决定，而不是"有没有填配对码"。
+            // 已经配对过的电脑只接受 hello；对它发 pair 会被判成协议错误。
+            let alreadyPaired = isPaired(hostId: hostId)
+            guard let firstMessage = Self.firstMessage(alreadyPaired: alreadyPaired, pairingCode: pairingCode) else {
+                throw TetherError.notPaired
+            }
+            if alreadyPaired, pairingCode != nil {
+                logger?.log("这台电脑已经在主机簿里，改发 hello（对已配对的电脑发 pair 会被判成协议错误）")
+            }
+
+            try await link.connect(hostEndpointId: hostId, firstMessage: firstMessage)
 
             let preferred = TetherProxyPort.port(for: hostId)
             let proxy = LocalProxyServer(factory: link, preferredPort: preferred, logger: logger)

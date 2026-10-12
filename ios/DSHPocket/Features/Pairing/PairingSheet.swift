@@ -223,14 +223,14 @@ struct PairingSheet: View {
         guard let id = resolveEndpointId(), !code.isEmpty else { return }
         step = .connecting
         Task {
-            await model.connect(hostId: id, pairingCode: code)
-            switch model.connection {
-            case .connected:
+            // 用 connect 的**返回值**判断结果。之前是立刻去读 model.connection，
+            // 而它是异步更新的 —— 明明连上了也会显示"连接没有完成"，
+            // 用户再点一次就发了第二个 pair，被电脑端判成协议错误。
+            let failure = await model.connect(hostId: id, pairingCode: code)
+            if let failure {
+                step = .failed(failure)
+            } else {
                 dismiss()
-            case .failed(let message):
-                step = .failed(message)
-            default:
-                step = .failed(String(localized: "连接没有完成，请再试一次。"))
             }
         }
     }

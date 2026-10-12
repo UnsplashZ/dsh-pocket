@@ -13,6 +13,13 @@
 //   {"type":"ready","endpoint_id":"…"}     ← 端点 ID（配对串前半段）
 //   {"type":"pairing","code":"123456",…}   ← 配对码（开了 --pair）
 // 之后 sidecar 的日志走 stderr，直接透传。
+//
+// ⚠️ **data-dir 就是这台电脑的身份**（`identity.key` 在里面）。清掉它 = 换一台
+// 新电脑，所有已配对的手机都要重新配对，而且端点 ID 会变。所以：
+//   · 不要 `rm -rf` 这个目录；
+//   · 想再开一个配对窗口，**不要重启进程**，发个信号就行：
+//         kill -USR1 <本进程 pid>
+//     它会通过 stdin 给 sidecar 发 `{"type":"pairing-begin"}`，开一个新窗口。
 import { createRequire } from 'node:module'
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
@@ -50,7 +57,10 @@ if (options.help) {
                                    [--proxy-target 127.0.0.1:19387] [--pair] [--json]
 
 --pair  启动即开配对窗口（默认只在白名单为空时自动开）
---json  第一行输出一个机器可读的 JSON 摘要（便于脚本消费）`)
+--json  第一行输出一个机器可读的 JSON 摘要（便于脚本消费）
+
+再开一个配对窗口（不重启、不换身份）：
+  kill -USR1 <本进程 pid>`)
   process.exit(0)
 }
 
@@ -61,6 +71,13 @@ if (!fs.existsSync(options.binary)) {
 }
 
 fs.mkdirSync(options.dataDir, { recursive: true })
+
+const identityPath = path.join(options.dataDir, 'identity.key')
+const hadIdentity = fs.existsSync(identityPath)
+if (!hadIdentity) {
+  console.log(`[tether-dev] ${options.dataDir} 里没有 identity.key —— 会新建一把主机身份。`)
+  console.log('[tether-dev] 之后请**保留这个目录**：它是这台电脑的身份，删掉等于换一台新电脑。')
+}
 
 const args = [
   'host',
@@ -90,6 +107,22 @@ function pushProxyAuth() {
 // 所以定期重签一次 —— 与真实插件的行为一致。
 const cookieRefresh = setInterval(pushProxyAuth, 6 * 60 * 60 * 1000)
 
+/// 按需开一个新的配对窗口。
+///
+/// 走的是插件真正用的那条路：往 sidecar 的 stdin 发 `pairing-begin`
+/// （见 `host/src/main.rs` 的 `PluginIn::PairingBegin`）。
+/// 这样就不需要为了重开窗口而重启进程 —— 重启会带着新的身份，把已配对的手机全废掉。
+function openPairingWindow(reason) {
+  if (!cookiePushed) {
+    console.error('[tether-dev] sidecar 还没就绪，稍后再试')
+    return
+  }
+  child.stdin.write(`${JSON.stringify({ type: 'pairing-begin' })}\n`)
+  console.log(`[tether-dev] 已请求新的配对窗口（${reason}）`)
+}
+
+process.on('SIGUSR1', () => openPairingWindow('收到 SIGUSR1'))
+
 let buffered = ''
 child.stdout.on('data', (chunk) => {
   buffered += chunk.toString('utf8')
@@ -106,14 +139,18 @@ child.stdout.on('data', (chunk) => {
       console.log(line)
       console.log(`[tether-dev] 端点 ID：${message.endpoint_id}`)
       pushProxyAuth()
+      console.log(`[tether-dev] 主机身份已就绪（稳定）：${message.endpoint_id}`)
+      console.log(`[tether-dev] 想再开一个配对窗口：kill -USR1 ${process.pid}`)
       continue
     }
     if (message?.type === 'pairing') {
       console.log(line)
       console.log(`[tether-dev] 配对串（${Math.round(message.expires_in_sec / 60)} 分钟内有效）：${readyEndpointId}#${message.code}`)
+      console.log(`[tether-dev] 重新开窗口不用重启：kill -USR1 ${process.pid}`)
       if (options.json) {
         console.log(JSON.stringify({ endpointId: readyEndpointId, code: message.code, dataDir: options.dataDir }))
       }
+      console.log(`[tether-dev] 完整配对串：${readyEndpointId}#${message.code}`)
       continue
     }
     console.log(line)
