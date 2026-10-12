@@ -43,7 +43,12 @@ struct TimelineRow: View {
             UserBubble(message: message, session: session, time: item.time)
 
         case .assistantMessage(let message):
-            AssistantCard(message: message, time: item.time)
+            // 轮次结束之后思考过程要收起来（除非用户手动展开）。
+            AssistantCard(
+                message: message,
+                time: item.time,
+                isTurnComplete: item.turn.map { session.completedTurns.contains($0) } ?? false
+            )
 
         case .toolCall(let call):
             ToolRow(call: call)
@@ -299,12 +304,25 @@ struct QueuedMessagesRow: View {
 struct AssistantCard: View {
     let message: TimelineItem.AssistantMessage
     let time: Date
+    /// 这一轮跑完了没有。决定了思考过程是"边跑边看"还是"收起来"。
+    var isTurnComplete: Bool = false
 
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    // 默认隐藏（长推理会把对话挤下去）；设置里可以改成默认展开。
+    // 跑着的时候：折叠面板，默认收起（长推理会把对话挤下去），设置里可以改成默认展开。
     @State private var reasoningExpanded = false
+    /// 轮次结束**之后**用户有没有手动把思考过程翻出来。
+    ///
+    /// 与上面那个分开：用户要的是"输出最终结果时全部隐藏，除非手动展开"。
+    /// 跑的时候该看就看，跑完就该消失 —— 两种状态不能共用一个开关。
+    @State private var reasoningRevealedAfterCompletion = false
     @State private var hasAppliedDefault = false
+
+    private var hasReasoning: Bool {
+        message.blocks.contains { if case .reasoning(let text) = $0 {
+            return !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }; return false }
+    }
 
     var body: some View {
         HStack {
@@ -316,7 +334,13 @@ struct AssistantCard: View {
                             MarkdownBody(text: text)
 
                         case .reasoning(let text):
-                            reasoningBlock(text)
+                            // 轮次结束 + 用户没手动展开 → **整块不渲染**。
+                            // 这就是"输出最终结果时把思考过程全藏起来"。
+                            if !isTurnComplete {
+                                reasoningBlock(text)
+                            } else if reasoningRevealedAfterCompletion {
+                                revealedReasoningBlock(text)
+                            }
 
                         case .image(let reference):
                             Label(reference.name ?? String(localized: "图片"), systemImage: "photo")
@@ -339,6 +363,21 @@ struct AssistantCard: View {
                         if message.interrupted {
                             StatusBadge("已中断", symbol: "stop.circle", tone: .warning)
                         }
+                        // 轮次结束后思考过程整块藏起来了，入口留在这里。
+                        // 做得**刻意低干扰**：一行小字，跟时间并排，不抢正文。
+                        if isTurnComplete, hasReasoning, !reasoningRevealedAfterCompletion {
+                            Button {
+                                withAnimation(reduceMotion ? nil : .snappy) {
+                                    reasoningRevealedAfterCompletion = true
+                                }
+                            } label: {
+                                Label("思考过程", systemImage: "brain")
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityHint(Text("展开这一轮模型的推理过程"))
+                        }
                         Spacer(minLength: 0)
                         Text(Format.time(time))
                             .font(.caption2)
@@ -350,6 +389,40 @@ struct AssistantCard: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(String(localized: "助手回复")))
+    }
+
+    /// 轮次结束、用户手动翻出来之后的推理内容。
+    ///
+    /// 与跑着时的折叠面板不同：这里**给一个明确的收起按钮** ——
+    /// 用户是主动翻出来的，得能主动放回去。
+    private func revealedReasoningBlock(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: Token.Spacing.hairline) {
+            HStack {
+                Label("思考过程", systemImage: "brain")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("收起") {
+                    withAnimation(reduceMotion ? nil : .snappy) {
+                        reasoningRevealedAfterCompletion = false
+                    }
+                }
+                .font(.caption2)
+                .buttonStyle(.plain)
+                .foregroundStyle(.tint)
+            }
+            Text(text)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+        }
+        .padding(Token.Spacing.tight)
+        .background(
+            RoundedRectangle(cornerRadius: Token.Radius.chip, style: .continuous)
+                .fill(Color(.tertiarySystemFill))
+        )
+        .accessibilityElement(children: .contain)
     }
 
     private func reasoningBlock(_ text: String) -> some View {
@@ -370,6 +443,8 @@ struct AssistantCard: View {
             guard !hasAppliedDefault else { return }
             hasAppliedDefault = true
             reasoningExpanded = model.settings.expandReasoningByDefault
+            // 设置里打开"默认展开"时，轮次结束之后也一并翻出来。
+            reasoningRevealedAfterCompletion = model.settings.expandReasoningByDefault
         }
     }
 }

@@ -1132,6 +1132,17 @@
         }
       }
     },
+    "展开这一轮模型的推理过程": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show the model’s reasoning for this turn"
+          }
+        }
+      }
+    },
     "工作区": {
       "extractionState": "manual",
       "localizations": {
@@ -1962,6 +1973,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Search titles and summaries"
+          }
+        }
+      }
+    },
+    "收起": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collapse"
           }
         }
       }

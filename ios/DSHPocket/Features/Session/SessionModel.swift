@@ -59,6 +59,12 @@ public final class SessionModel {
     /// 队列**不在会话日志里** —— 实测：轮次跑着的时候发一条，日志里一条 `user/message`
     /// 都没有，它只出现在这个投影里。所以想显示"排队中"，唯一的数据来源是它。
     private(set) var queuedMessages: [QueuedMessage] = []
+    /// 已经结束的轮次。
+    ///
+    /// 用它决定"思考过程要不要收起来" —— 用户要的是**输出最终结果之后**才收，
+    /// 跑的过程中仍然可以看（那时候推理正是有用的实时反馈）。
+    /// 在 `publish()` 里算一次，别在每一行的渲染里遍历整个时间线。
+    private(set) var completedTurns: Set<Int> = []
     private(set) var contextPressure: ContextPressure?
     private(set) var todos: [TimelineItem.TodoEntry] = []
 
@@ -328,6 +334,10 @@ public final class SessionModel {
         let visible = settings.showRawEvents ? builder.items : conversational
         items = visible
         shadowedItems = visible.filter(\.isShadowed)
+        completedTurns = Set(builder.items.compactMap { item in
+            if case .turnEnd(let turn, _) = item.kind { return turn }
+            return nil
+        })
     }
 
     /// 每次"应该滚到底"时自增。View 观察它做一次 `scrollTo`。
