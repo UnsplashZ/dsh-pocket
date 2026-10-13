@@ -588,6 +588,12 @@ EN: dict[str, str] = {
     "电脑跑完这一轮就会发出去。": "Your computer sends it when this turn finishes.",
     "展开模型的推理过程": "Show the model’s reasoning",
     "思考中…": "Thinking…",
+    # 轮次收拢
+    "已完成": "Done",
+    "用时 %@": "took %@",
+    "%lld 步": "%lld steps",
+    "展开这一轮的过程": "Expand this turn’s steps",
+    "收起这一轮的过程": "Collapse this turn’s steps",
 }
 
 # 哪些插值表达式是整数。判错的后果是英文界面上显示成 `%lld` 字面量，

@@ -145,6 +145,17 @@
         }
       }
     },
+    "%lld 步": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld steps"
+          }
+        }
+      }
+    },
     "%lld 毫秒": {
       "extractionState": "manual",
       "localizations": {
@@ -2562,6 +2573,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "The user skipped this question without answering."
+          }
+        }
+      }
+    },
+    "用时 %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "took %@"
           }
         }
       }

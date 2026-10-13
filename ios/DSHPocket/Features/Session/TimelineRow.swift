@@ -299,6 +299,110 @@ struct QueuedMessagesRow: View {
     }
 }
 
+// MARK: - 轮次分组
+
+/// 一个轮次。
+///
+/// 跑完了就**收拢**：明面上只留一行「已完成，用时 X」+ 最终结论，
+/// 中间的思考、命令、过场说明全部折叠进去（点摘要行展开）。
+/// 这跟桌面端一致 —— 一个跑了半小时的轮次能刷出几十屏，
+/// 真正要回看的往往只有最后那段话。
+///
+/// 还在跑的轮次**照常全展开**：正在发生的事没有收拢的道理。
+struct TurnGroupView: View {
+    let turn: TimelineTurn
+    let session: SessionModel
+
+    @State private var isExpanded = false
+
+    private var startItem: TimelineItem? {
+        turn.items.first { if case .turnStart = $0.kind { return true }; return false }
+    }
+
+    /// 轮内除摘要两端之外的条目。
+    private var bodyItems: [TimelineItem] {
+        turn.items.filter { item in
+            switch item.kind {
+            case .turnStart, .turnEnd: return false
+            default: return true
+            }
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Token.Spacing.tight) {
+            if let startItem {
+                TimelineRow(item: startItem, session: session)
+                    .padding(.horizontal, Token.Spacing.gutter)
+            }
+
+            if turn.isComplete {
+                summaryRow
+                    .padding(.horizontal, Token.Spacing.gutter)
+
+                if let headline = turn.headline {
+                    TimelineRow(item: headline, session: session)
+                        .padding(.horizontal, Token.Spacing.gutter)
+                        .id(headline.id)
+                }
+
+                if isExpanded {
+                    ForEach(turn.collapsible) { item in
+                        TimelineRow(item: item, session: session)
+                            .padding(.horizontal, Token.Spacing.gutter)
+                            .id(item.id)
+                    }
+                }
+            } else {
+                // 跑着：全展开，实时看得到。
+                ForEach(bodyItems) { item in
+                    TimelineRow(item: item, session: session)
+                        .padding(.horizontal, Token.Spacing.gutter)
+                        .id(item.id)
+                }
+            }
+        }
+    }
+
+    private var summaryRow: some View {
+        Button {
+            withAnimation(.snappy) { isExpanded.toggle() }
+        } label: {
+            HStack(spacing: Token.Spacing.tight) {
+                Image(systemName: turn.isComplete ? "checkmark.circle" : "circle.dotted")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(summaryLabel)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                if !turn.collapsible.isEmpty {
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .frame(minHeight: Token.minimumHitTarget)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(turn.collapsible.isEmpty)
+        .accessibilityLabel(Text(summaryLabel))
+        .accessibilityHint(Text(isExpanded ? "收起这一轮的过程" : "展开这一轮的过程"))
+    }
+
+    private var summaryLabel: String {
+        var parts: [String] = [String(localized: "已完成")]
+        if let duration = turn.duration, let formatted = Format.duration(duration) {
+            parts.append(String(format: String(localized: "用时 %@"), formatted))
+        }
+        if turn.collapsedCount > 0 {
+            parts.append(String(format: String(localized: "%lld 步"), turn.collapsedCount))
+        }
+        return parts.joined(separator: " · ")
+    }
+}
+
 // MARK: - 助手卡片
 
 struct AssistantCard: View {

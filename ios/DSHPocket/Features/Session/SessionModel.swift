@@ -65,6 +65,8 @@ public final class SessionModel {
     /// 跑的过程中仍然可以看（那时候推理正是有用的实时反馈）。
     /// 在 `publish()` 里算一次，别在每一行的渲染里遍历整个时间线。
     private(set) var completedTurns: Set<Int> = []
+    /// 按轮次分组后的渲染块。在 `publish()` 里算一次。
+    private(set) var timelineBlocks: [TimelineBlock] = []
     private(set) var contextPressure: ContextPressure?
     private(set) var todos: [TimelineItem.TodoEntry] = []
 
@@ -338,6 +340,7 @@ public final class SessionModel {
             if case .turnEnd(let turn, _) = item.kind { return turn }
             return nil
         })
+        timelineBlocks = builder.timelineBlocks(includingShadowed: settings.showRawEvents)
     }
 
     /// 每次"应该滚到底"时自增。View 观察它做一次 `scrollTo`。

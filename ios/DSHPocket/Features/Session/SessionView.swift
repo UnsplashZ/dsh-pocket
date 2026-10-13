@@ -99,14 +99,20 @@ struct SessionView: View {
                         shadowedSection(session)
                     }
 
-                    ForEach(session.items.filter { !$0.isShadowed }) { item in
-                        TimelineRow(item: item, session: session)
-                            .id(item.id)
-                            .padding(.horizontal, Token.Spacing.gutter)
-                            .background(
-                                RoundedRectangle(cornerRadius: Token.Radius.card, style: .continuous)
-                                    .fill(highlightId == item.id ? Color.accentColor.opacity(0.12) : .clear)
-                            )
+                    // 按轮次分组渲染：跑完的轮次收拢成一行摘要 + 最终结论。
+                    ForEach(session.timelineBlocks) { block in
+                        switch block {
+                        case .turn(let turn):
+                            TurnGroupView(turn: turn, session: session)
+                        case .item(let item):
+                            TimelineRow(item: item, session: session)
+                                .id(item.id)
+                                .padding(.horizontal, Token.Spacing.gutter)
+                                .background(
+                                    RoundedRectangle(cornerRadius: Token.Radius.card, style: .continuous)
+                                        .fill(highlightId == item.id ? Color.accentColor.opacity(0.12) : .clear)
+                                )
+                        }
                     }
 
                     // 排队中的消息放在最后。

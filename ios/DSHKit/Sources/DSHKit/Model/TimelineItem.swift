@@ -144,11 +144,24 @@ extension TimelineItem {
 
         /// 有没有值得画出来的东西。
         ///
-        /// 空白（含只有换行/空格的）推理块不算 —— 实测宿主会发来 `text: ""` 的
-        /// `reasoning` 块，渲染出来就是一个点不开也看不到内容的"思考过程"卡片。
+        /// 两种块都**不算**：
+        ///   · 空白（含只有换行/空格的）文本与推理块 —— 实测宿主会发来 `text: ""`
+        ///     的 `reasoning` 块、以及流式刚开始的空 `text` 块，画出来就是一张
+        ///     点不开也看不到内容的"思考过程"卡片、或者一个空气泡；
+        ///   · `.toolCall` —— 工具调用走单独的 `ToolRow`，助手卡片对它是 `EmptyView`。
+        ///     算进来的话，"只声明了一个工具调用"的助手消息会渲染成一张
+        ///     **只有时间、没有任何文字的空白卡片**（实测就是这样）。
         public var hasRenderableContent: Bool {
-            if !blocks.isEmpty { return true }
-            return false
+            blocks.contains { block in
+                switch block {
+                case .text(let value), .reasoning(let value):
+                    return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                case .image:
+                    return true
+                case .toolCall:
+                    return false
+                }
+            }
         }
 
         public var plainText: String {

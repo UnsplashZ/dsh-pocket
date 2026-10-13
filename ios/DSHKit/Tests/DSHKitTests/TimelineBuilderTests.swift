@@ -368,6 +368,90 @@ final class TimelineBuilderTests: XCTestCase {
         XCTAssertNotEqual(approval.approvalId, approval.callId, "它们确实不是一回事")
     }
 
+    // MARK: 轮次分组
+
+    private func foldTurn(_ builder: inout TimelineBuilder, turn: Int, startSeq: Int, text: String, reasoning: String = "想一想") throws {
+        let events = [
+            Fixture.turnStart(turn, seq: startSeq),
+            Fixture.injectedContext("time", kind: "time-context", seq: startSeq + 1),
+            Fixture.assistantMessage(text: text, reasoning: reasoning, seq: startSeq + 2),
+            Fixture.toolCall("call_\(turn)", seq: startSeq + 3),
+            Fixture.toolResult("call_\(turn)", output: "ok", seq: startSeq + 4),
+            Fixture.assistantMessage(text: "最终结论 \(turn)", seq: startSeq + 5),
+            Fixture.turnEnd(turn, seq: startSeq + 6),
+        ]
+        for raw in events { _ = builder.apply(try Fixture.event(raw)) }
+    }
+
+    /// 跑完的轮次要收拢成：一行摘要 + 最终结论，中间的进折叠区。
+    func testCompletedTurnGroupsIntoSummaryPlusHeadline() throws {
+        var builder = TimelineBuilder()
+        _ = builder.apply(try Fixture.event(Fixture.userMessage("帮我看看", seq: 1)))
+        try foldTurn(&builder, turn: 1, startSeq: 2, text: "我先看一下")
+
+        let blocks = builder.timelineBlocks()
+        XCTAssertEqual(blocks.count, 2, "一条用户消息 + 一个轮次")
+
+        guard case .turn(let turn) = blocks[1] else { return XCTFail("第二块应当是轮次") }
+        XCTAssertTrue(turn.isComplete)
+        XCTAssertEqual(turn.turn, 1)
+        XCTAssertNotNil(turn.duration, "时长用 turn/start 与 turn/end 的时间算")
+
+        // 明面上留的是**最后**那条有正文的助手消息
+        guard case .assistantMessage(let headline)? = turn.headline?.kind else { return XCTFail("应当有结论") }
+        XCTAssertEqual(headline.plainText, "最终结论 1")
+
+        // 折叠区里有：中间那句过场话、工具行、注入上下文
+        let collapsedTexts = turn.collapsible.compactMap { item -> String? in
+            if case .assistantMessage(let message) = item.kind { return message.plainText }
+            return nil
+        }
+        XCTAssertTrue(collapsedTexts.contains("我先看一下"), "过场话应当被收起来")
+        XCTAssertFalse(collapsedTexts.contains("最终结论 1"), "结论不该同时出现在折叠区")
+        XCTAssertTrue(turn.collapsible.contains { if case .toolCall = $0.kind { return true }; return false })
+        XCTAssertFalse(turn.collapsible.contains { if case .turnStart = $0.kind { return true }; return false },
+                       "turn/start 自己就是摘要的一部分，不重复收进去")
+    }
+
+    /// 还在跑的轮次**不**收拢 —— 正在发生的事没有收拢的道理。
+    func testRunningTurnIsNotCollapsed() throws {
+        var builder = TimelineBuilder()
+        _ = builder.apply(try Fixture.event(Fixture.turnStart(1, seq: 1)))
+        _ = builder.apply(try Fixture.event(Fixture.assistantMessage(text: "正在做", seq: 2)))
+
+        let blocks = builder.timelineBlocks()
+        guard case .turn(let turn) = blocks.first else { return XCTFail("应当有轮次") }
+        XCTAssertFalse(turn.isComplete)
+        XCTAssertNil(turn.duration)
+    }
+
+    /// 轮次之外的条目（会话头、用户消息）不进组，照常显示。
+    func testItemsOutsideTurnsStayStandalone() throws {
+        var builder = TimelineBuilder()
+        _ = builder.apply(try Fixture.event(Fixture.userMessage("第一句", seq: 1)))
+        _ = builder.apply(try Fixture.event(Fixture.userMessage("第二句", seq: 2)))
+        let blocks = builder.timelineBlocks()
+        XCTAssertEqual(blocks.count, 2)
+        for block in blocks {
+            guard case .item = block else { return XCTFail("都应当是独立条目") }
+        }
+    }
+
+    /// **只有工具调用的助手消息不该渲染成空白卡片。**
+    ///
+    /// 实测踩过：`hasRenderableContent` 把 `.toolCall` 也算作"有内容"，
+    /// 但助手卡片对它是 `EmptyView`（工具走单独的 `ToolRow`）——
+    /// 结果屏幕上多出一张只有时间、没有任何文字的空白卡片。
+    func testAssistantMessageWithOnlyToolCallsIsNotRenderable() throws {
+        var builder = TimelineBuilder()
+        _ = builder.apply(try Fixture.event(
+            Fixture.assistantMessage(text: "", toolCall: ("call_x", "bash", "{}"), seq: 1)
+        ))
+        let assistant = builder.items.first { if case .assistantMessage = $0.kind { return true }; return false }
+        XCTAssertNotNil(assistant, "条目本身还在（工具行要用它）")
+        XCTAssertFalse(assistant?.isConversational ?? true, "但不该出现在默认视图里")
+    }
+
     // MARK: 落盘 / 续拉
 
     /// 折叠状态必须能**原样**往返 —— 恢复之后还能继续增量折叠，而不是只能画。
