@@ -75,15 +75,13 @@ public final class SessionModel {
     private(set) var queuedMessages: [QueuedMessage] = []
     /// 投影里的队列（`projections.inbox`）。**权威、总是最新**，但只在快照时更新。
     private var projectionQueued: [QueuedMessage] = []
-    /// 这个会话打开后有没有收到过**实时的** `agent/inbox/spliced`。
+    /// 收到过实时 `agent/inbox/spliced` 之后就**在投影那份上做增量**。
     ///
-    /// 有的话就用日志推导的队列（它才反映得了"刚删掉一条"）；
-    /// 没有的话用投影 —— 因为**有界快照（`maxMessages: 50`）可能把 inbox 事件
-    /// 切在窗口之外**，那时日志里根本推不出队列。
+    /// 之前这里写的是"换成日志推导的队列"，那是个**回归**：
+    /// 日志窗口里可能只有刚来的那一条，原有的排队消息全丢了
+    ///（用户："发了新消息之后显示成 1 条排队消息，原有的不显示了"）。
     ///
-    /// 用户反馈："退出再进入该会话，排队消息就看不到了；
-    /// 即使没有折叠，关闭 APP 重新打开对话，排队的消息也看不到了。"
-    /// 就是这个原因。
+    /// 正确做法：投影是**基准**（权威、总是最新），实时事件在它上面做 splice。
     private var hasLiveInbox = false
     /// 已经结束的轮次。
     ///
@@ -415,7 +413,7 @@ public final class SessionModel {
         if event.type == "session/title", let newTitle = event.string("data.title"), !newTitle.isEmpty {
             title = newTitle
         }
-        if event.type == "agent/inbox/spliced" { hasLiveInbox = true }
+        if event.type == "agent/inbox/spliced" { applyLiveInboxSplice(event) }
         if event.type == "turn/start" {
             isTurnRunning = true
             summaryIsRunning = true
@@ -766,9 +764,7 @@ public final class SessionModel {
     /// 不撤的话同一句话会显示两遍 —— 一遍是"发送中…"的乐观气泡，
     /// 一遍是"排队中"的队列项。
     private func publishQueuedMessages() {
-        // 收到过实时 inbox 事件就信日志（它能反映"刚删掉一条"）；
-        // 否则信投影（有界快照可能把 inbox 事件切在窗口外，日志里推不出来）。
-        queuedMessages = hasLiveInbox ? builder.queuedMessages : projectionQueued
+        queuedMessages = projectionQueued
         let queuedRpcIds = Set(queuedMessages.compactMap(\.rpcId))
         guard !queuedRpcIds.isEmpty else { return }
         var removed = false
@@ -808,6 +804,25 @@ public final class SessionModel {
             contextBreakdown = ContextBreakdown(json: breakdown)
         }
         goal = values["goal"].map(SessionGoal.init(json:))
+    }
+
+    /// 把一条**实时的** `agent/inbox/spliced` 增量地应用到投影那份队列上。
+    ///
+    /// 事件形状是 `{target, start, removedCount, inserted}` —— 一次 splice：
+    /// 从第 `start` 条起删掉 `removedCount` 条，再把 `inserted` 插进去。
+    private func applyLiveInboxSplice(_ event: SessionEvent) {
+        hasLiveInbox = true
+        var list = projectionQueued
+        let start = event.int("data.start") ?? 0
+        let removed = event.int("data.removedCount") ?? 0
+        if removed > 0, start < list.count {
+            list.removeSubrange(start..<min(start + removed, list.count))
+        }
+        for inserted in event.array("data.inserted") ?? [] {
+            list.append(QueuedMessage(json: inserted))
+        }
+        projectionQueued = list
+        queuedMessages = list
     }
 
     // MARK: 斜杠命令 / 后台任务
