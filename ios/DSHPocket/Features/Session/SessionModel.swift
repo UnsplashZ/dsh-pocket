@@ -44,7 +44,15 @@ public final class SessionModel {
     private(set) var phase: Phase = .idle
     private(set) var isTurnRunning = false
     /// 这一轮是什么时候开始的 —— 工作状态那个实时计时器用它。
+    /// **是电脑时钟的时间**（`event.time` 来自宿主）。
     private(set) var turnStartedAt: Date?
+
+    /// 电脑时钟与本机的偏移（电脑时间 − 本机时间）。
+    ///
+    /// **计时器必须校正它**：`turnStartedAt` 用的是电脑的时间，而"现在"
+    /// 用的是手机的时钟。两边差几秒，计时器就跟电脑上对不上
+    ///（用户："工作中计时器和电脑上不一致"）。
+    private(set) var hostClockOffset: TimeInterval = 0
     private(set) var isStreaming = false
     private(set) var hasMoreHistory = false
     private(set) var isLoadingHistory = false
@@ -288,10 +296,25 @@ public final class SessionModel {
     /// 有界快照（`maxMessages: 50`）常常把 `turn/start` 切在窗口外，
     /// 那样计时器就永远不显示（跟队列那个问题同源）。
     private func syncTurnTimer() {
-        if isTurnRunning {
-            if turnStartedAt == nil { turnStartedAt = items.last?.time ?? Date() }
-        } else {
+        guard isTurnRunning else {
             turnStartedAt = nil
+            return
+        }
+        guard turnStartedAt == nil else { return }
+        // **起点要尽量贴近这一轮真正的开始。**
+        //
+        // 用 `items.last?.time` 是很差的近似（那可能是这一轮中间某一步），
+        // 所以手机上显示的时间跟电脑上对不上（用户反馈）。
+        // 取**当前这一轮第一条可见内容**的时间 —— 有界快照切掉开头时它仍是个下界，
+        // 但比"最后一条"准得多。
+        // **`currentTurn` 可能是 nil**（最后一条是注入上下文之类、没有 turn）。
+        // 那时 `first(where: { $0.turn == nil })` 会匹配到**日志最开头**那条 ——
+        // 计时器一下子跳到几十分钟前（实测显示 `32 分 47 秒`）。
+        let currentTurn = items.last?.turn
+        if let currentTurn, let first = items.first(where: { $0.turn == currentTurn }) {
+            turnStartedAt = first.time
+        } else {
+            turnStartedAt = items.last?.time ?? Date()
         }
     }
 
@@ -336,6 +359,15 @@ public final class SessionModel {
         applyProjections(snapshot.projections)
         if !hasVisibleContent { publish() }
 
+        // 用快照最后一条事件的时间对齐两边时钟。
+        //
+        // **夹在 ±5 分钟之内**：正常的时钟偏差不会超过这个量级；
+        // 超了说明"最后一条事件"其实很旧（比如宿主正卡在一个长命令上、
+        // 期间没有新事件），拿它当"现在"会把计时器拉偏。
+        if let hostTime = snapshot.events.last?.time {
+            let raw = hostTime.timeIntervalSinceNow
+            hostClockOffset = abs(raw) < 300 ? raw : 0
+        }
         let events = snapshot.events
         let chunkSize = 120
         var index = 0

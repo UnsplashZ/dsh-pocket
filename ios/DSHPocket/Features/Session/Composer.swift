@@ -328,7 +328,9 @@ struct Composer: View {
     private var workingIndicator: some View {
         if session.isTurnRunning, let startedAt = session.turnStartedAt {
             TimelineView(.periodic(from: .now, by: 1)) { context in
-                let elapsed = max(0, context.date.timeIntervalSince(startedAt))
+                // 加上两边时钟的偏移 —— 起点是**电脑的时间**，而 `context.date`
+                // 是手机的时钟。不校正的话计时器跟电脑上对不上。
+                let elapsed = max(0, context.date.timeIntervalSince(startedAt) + session.hostClockOffset)
                 HStack(spacing: Token.Spacing.tight) {
                     Circle()
                         .fill(Color.green)
@@ -343,7 +345,15 @@ struct Composer: View {
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, Token.Spacing.gutter)
-                .padding(.top, Token.Spacing.tight)
+                .padding(.vertical, Token.Spacing.tight)
+                // 自己一条完整的行 + 底部分隔线 ——
+                // 之前它跟下面的「N 条排队消息」标题贴在一起，看起来像重叠
+                //（用户："排队和工作中标签似乎有重叠"）。
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.bar)
+                .overlay(alignment: .bottom) {
+                    Rectangle().fill(Color(.separator)).frame(height: 0.5)
+                }
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel(Text(String(
                     format: String(localized: "工作中，已用时 %@"),
