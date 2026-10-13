@@ -316,13 +316,18 @@ struct TurnGroupView: View {
     @State private var isExpanded = false
     @State private var hasAppliedDefault = false
 
-    private var startItem: TimelineItem? {
-        turn.items.first { if case .turnStart = $0.kind { return true }; return false }
-    }
-
     /// 轮内除摘要两端之外的条目。
-    private var bodyItems: [TimelineItem] {
-        turn.items.filter { item in
+    ///
+    /// 在 `init` 里算一次 —— 它每个 body 求值都要扫一遍 `turn.items`，
+    /// 而滚动期间 body 的求值次数远多于数据更新次数。
+    private let startItem: TimelineItem?
+    private let bodyItems: [TimelineItem]
+
+    init(turn: TimelineTurn, session: SessionModel) {
+        self.turn = turn
+        self.session = session
+        self.startItem = turn.items.first { if case .turnStart = $0.kind { return true }; return false }
+        self.bodyItems = turn.items.filter { item in
             switch item.kind {
             case .turnStart, .turnEnd: return false
             default: return true

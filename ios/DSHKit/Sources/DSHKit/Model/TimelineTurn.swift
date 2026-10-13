@@ -17,7 +17,27 @@ public struct TimelineTurn: Sendable, Identifiable {
     public var endedAt: Date?
     public var endReason: TimelineItem.TurnEndReason?
     /// 轮内条目（含 `turn/start` 与 `turn/end` 本身），按 seq 升序。
-    public var items: [TimelineItem]
+    public var items: [TimelineItem] {
+        didSet { deriveCollections() }
+    }
+
+    // MARK: 派生集合
+    //
+    // **在构造时算一次，不要做成 computed property。**
+    // 这些属性每个都要扫一遍 `items`（其中两个还要排序），而 `body` 会挨个读它们 ——
+    // 每次渲染就是六七遍全扫 + 一次排序。渲染比 publish 频繁得多（滚动、动画都会触发），
+    // 长轮次上这就是卡顿的来源。
+
+    /// 默认留在明面上的那条：**最后一个有正文的助手消息**。
+    public private(set) var headline: TimelineItem?
+    /// **永远不折叠**的那些：用户自己说的话。
+    public private(set) var pinned: [TimelineItem] = []
+    /// 收进摘要里的那些。
+    public private(set) var collapsible: [TimelineItem] = []
+    /// 摘要行下面、收起时渲染的内容。
+    public private(set) var collapsedItems: [TimelineItem] = []
+    /// 摘要行下面、展开时渲染的内容（按 seq 升序）。
+    public private(set) var expandedItems: [TimelineItem] = []
 
     /// 这一轮花了多久。协议里**没有**时长字段，用两端事件的时间算。
     public var duration: TimeInterval? {
@@ -25,31 +45,40 @@ public struct TimelineTurn: Sendable, Identifiable {
         return max(0, endedAt.timeIntervalSince(startedAt))
     }
 
-    /// 默认留在明面上的那条：**最后一个有正文的助手消息**。
-    ///
-    /// 中间那些"我先看一下…"之类的过场话跟工具行一起收起来 ——
-    /// 它们对回看没有价值，只会把结论挤下去。
-    public var headline: TimelineItem? {
-        items.last { item in
+    public init(
+        turn: Int,
+        isComplete: Bool,
+        startedAt: Date?,
+        endedAt: Date?,
+        endReason: TimelineItem.TurnEndReason?,
+        items: [TimelineItem]
+    ) {
+        self.turn = turn
+        self.isComplete = isComplete
+        self.startedAt = startedAt
+        self.endedAt = endedAt
+        self.endReason = endReason
+        self.items = items
+        // `didSet` 在 init 里不触发，显式算一次。
+        deriveCollections()
+    }
+
+    /// 摘要里有多少东西 —— 决定摘要行要不要显示计数。
+    public var collapsedCount: Int { collapsible.count }
+
+    /// 把所有派生集合算好。构造时调一次。
+    private mutating func deriveCollections() {
+        // 结论 = 最后一个有正文的助手消息。中间那些"我先看一下…"跟工具行一起收起来。
+        headline = items.last { item in
             guard case .assistantMessage(let message) = item.kind else { return false }
             return !message.plainText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
-    }
-
-    /// **永远不折叠**的那些：用户自己说的话。
-    ///
-    /// 宿主的事件顺序是 `turn/start` → `user/message` → … → `turn/end`，
-    /// 也就是说用户的提示词**在轮次里面**。不特意挑出来的话，它会被当成
-    /// "轮内过程"一起收进摘要 —— 用户会以为自己的话被吞了。
-    public var pinned: [TimelineItem] {
-        items.filter { if case .userMessage = $0.kind { return true }; return false }
-    }
-
-    /// 收进摘要里的那些（`turn/start`、`turn/end`、用户消息、结论除外）。
-    public var collapsible: [TimelineItem] {
+        // 用户消息永远不折叠：宿主的事件顺序是 `turn/start` → `user/message` → … → `turn/end`，
+        // 提示词**在轮次里面**，不挑出来就会被当成"轮内过程"收进摘要。
+        pinned = items.filter { if case .userMessage = $0.kind { return true }; return false }
         let headlineId = headline?.id
         let pinnedIds = Set(pinned.map(\.id))
-        return items.filter { item in
+        collapsible = items.filter { item in
             switch item.kind {
             case .turnStart, .turnEnd, .userMessage:
                 return false
@@ -57,29 +86,10 @@ public struct TimelineTurn: Sendable, Identifiable {
                 return item.id != headlineId && !pinnedIds.contains(item.id)
             }
         }
-    }
-
-    /// 摘要里有多少东西 —— 决定摘要行要不要显示计数。
-    public var collapsedCount: Int { collapsible.count }
-
-    /// 摘要行**下面**收起时渲染的内容：只有结论。
-    ///
-    /// 用户消息不在这里 —— 它在摘要行**上面**单独渲染（永远可见），
-    /// 放进来会重复画一遍。
-    public var collapsedItems: [TimelineItem] {
-        [headline].compactMap { $0 }
-    }
-
-    /// 摘要行**下面**展开时渲染的内容：全过程 + 结论，**按时间顺序**。
-    ///
-    /// 展开后必须回到原始时序 —— 之前是"摘要 → 结论 → 过程"，
-    /// 过程跑到结论下面去了，读起来完全反了。
-    public var expandedItems: [TimelineItem] {
-        ordered(collapsible + [headline].compactMap { $0 })
-    }
-
-    private func ordered(_ list: [TimelineItem]) -> [TimelineItem] {
-        list.sorted { $0.seq < $1.seq }
+        // 用户消息不在这里 —— 它在摘要行**上面**单独渲染，放进来会重复画一遍。
+        collapsedItems = [headline].compactMap { $0 }
+        // 展开后必须回到原始时序。
+        expandedItems = (collapsible + [headline].compactMap { $0 }).sorted { $0.seq < $1.seq }
     }
 }
 

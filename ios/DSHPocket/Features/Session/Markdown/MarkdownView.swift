@@ -12,7 +12,17 @@ import SwiftUI
 struct MarkdownBody: View {
     let text: String
 
-    private var blocks: [MarkdownBlock] { MarkdownParser.parse(text) }
+    /// **解析一次，存下来。**
+    ///
+    /// 原来是 `private var blocks: [MarkdownBlock] { MarkdownParser.parse(text) }` ——
+    /// 每次 body 求值都重新解析一遍。滚动期间 body 的求值次数远多于数据更新次数，
+    /// 一条带表格的长回复（表格要拆行、算对齐、补列）反复解析是实打实的卡顿来源。
+    private let blocks: [MarkdownBlock]
+
+    init(text: String) {
+        self.text = text
+        self.blocks = MarkdownParser.parse(text)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Token.Spacing.tight) {
@@ -112,13 +122,19 @@ struct MarkdownBody: View {
 struct InlineMarkdown: View {
     let text: String
 
-    init(_ text: String) { self.text = text }
+    /// 同上：`AttributedString(markdown:)` 也不便宜，解析一次存下来。
+    private let attributed: AttributedString?
 
-    var body: some View {
-        if let attributed = try? AttributedString(
+    init(_ text: String) {
+        self.text = text
+        self.attributed = try? AttributedString(
             markdown: text,
             options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        ) {
+        )
+    }
+
+    var body: some View {
+        if let attributed {
             Text(attributed)
         } else {
             Text(text)

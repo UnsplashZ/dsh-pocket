@@ -503,6 +503,44 @@ final class TimelineBuilderTests: XCTestCase {
         XCTAssertGreaterThan(rawTurn.items.count, turn.items.count, "showRawEvents 下应当更全")
     }
 
+    /// 派生集合改成"构造时算一次"之后，**改 `items` 也要跟着重算**。
+    ///
+    /// 这几个属性原来都是 computed property（每次 body 求值重扫一遍 `items`），
+    /// 现在是存下来的。存下来就得保证写入路径也走重算，否则会拿着过期的一份渲染 ——
+    /// 这种 bug 在界面上表现为"内容不动了"，很难往回追。
+    func testTurnRecomputesDerivedCollectionsWhenItemsChange() throws {
+        var builder = TimelineBuilder()
+        _ = builder.apply(try Fixture.event(Fixture.turnStart(1, seq: 1)))
+        _ = builder.apply(try Fixture.event(Fixture.userMessage("第一句", seq: 2)))
+        _ = builder.apply(try Fixture.event(Fixture.assistantMessage(text: "结论一", seq: 3)))
+        _ = builder.apply(try Fixture.event(Fixture.turnEnd(1, seq: 4)))
+
+        guard case .turn(var turn) = builder.timelineBlocks().first else { return XCTFail() }
+        XCTAssertEqual(turn.pinned.count, 1)
+        guard case .assistantMessage(let first)? = turn.headline?.kind else { return XCTFail() }
+        XCTAssertEqual(first.plainText, "结论一")
+
+        // 追加一条更晚的助手正文：结论、折叠集合都要跟着更新
+        var later = TimelineBuilder()
+        _ = later.apply(try Fixture.event(Fixture.turnStart(1, seq: 1)))
+        _ = later.apply(try Fixture.event(Fixture.userMessage("第一句", seq: 2)))
+        _ = later.apply(try Fixture.event(Fixture.assistantMessage(text: "结论一", seq: 3)))
+        _ = later.apply(try Fixture.event(Fixture.assistantMessage(text: "结论二", seq: 5)))
+        _ = later.apply(try Fixture.event(Fixture.turnEnd(1, seq: 6)))
+        guard case .turn(let updated) = later.timelineBlocks().first else { return XCTFail() }
+        guard case .assistantMessage(let second)? = updated.headline?.kind else { return XCTFail() }
+        XCTAssertEqual(second.plainText, "结论二", "结论要跟着 items 更新")
+        XCTAssertFalse(
+            updated.collapsible.contains { $0.id == updated.headline?.id },
+            "新结论不该同时留在折叠区"
+        )
+
+        // 直接改 items 也要触发重算（didSet）
+        turn.items = updated.items
+        guard case .assistantMessage(let replaced)? = turn.headline?.kind else { return XCTFail() }
+        XCTAssertEqual(replaced.plainText, "结论二", "`items` 变了派生集合必须重算")
+    }
+
     /// 还在跑的轮次**不**收拢 —— 正在发生的事没有收拢的道理。
     func testRunningTurnIsNotCollapsed() throws {
         var builder = TimelineBuilder()

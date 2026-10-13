@@ -96,6 +96,8 @@ public final class SessionModel {
     /// 本次打开是不是先用缓存铺出来的。决定快照到达时走"续拉"还是"整体重建"。
     private var restoredFromCache = false
     private var backgroundObserver: (any NSObjectProtocol)?
+    /// 流式更新合帧用的待发任务。见 `scheduleStreamPublish`。
+    private var pendingStreamPublish: Task<Void, Never>?
     private var reconnectAttempt = 0
     private var pendingPromptRpcId: String?
 
@@ -297,9 +299,34 @@ public final class SessionModel {
         default:
             break
         }
-        if !delta.isEmpty {
-            if case .chunk = frame { isStreaming = true }
+        guard !delta.isEmpty else { return }
+        if case .chunk = frame { isStreaming = true }
+
+        switch frame {
+        case .end:
+            // 收尾必须**立刻**落屏，否则最后一段文字会晚一帧才出现。
+            pendingStreamPublish?.cancel()
+            pendingStreamPublish = nil
             publish()
+        default:
+            scheduleStreamPublish()
+        }
+    }
+
+    /// 把流式更新的 `publish()` **合帧**。
+    ///
+    /// 之前每个 chunk 都直接 `publish()` —— 而 `publish()` 会把整个时间线
+    /// 重新算一遍并交给 SwiftUI 重新渲染。宿主吐字快的时候，
+    /// 一次输出能触发成百上千次全量重渲染，滚动就是在这时候卡住的。
+    ///
+    /// 现在最多约 60 次/秒（16 ms 一帧），而且同一帧内的多个 chunk 只算一次。
+    private func scheduleStreamPublish() {
+        guard pendingStreamPublish == nil else { return }
+        pendingStreamPublish = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(16))
+            guard !Task.isCancelled, let self else { return }
+            self.pendingStreamPublish = nil
+            self.publish()
         }
     }
 

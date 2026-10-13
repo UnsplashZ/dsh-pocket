@@ -157,7 +157,10 @@ struct SessionView: View {
                         .onDisappear { isFollowingBottom = false }
                 }
                 .padding(.vertical, Token.Spacing.compact)
-                .textSelection(.enabled)
+                // **不要**在这里开 `.textSelection(.enabled)`。
+                // 它会给每个文本挂上选择手势，长列表滚动时是实打实的开销。
+                // 需要复制的地方各自开：代码块有复制按钮，审批参数与展开的
+                // 推理内容各自带了 `.textSelection(.enabled)`。
             }
             .scrollDismissesKeyboard(.interactively)
             .background(Color(.systemGroupedBackground))
@@ -180,12 +183,24 @@ struct SessionView: View {
             .onChange(of: session.items.last?.id) { _, newValue in
                 guard isFollowingBottom, let newValue else { return }
                 lastKnownTailId = newValue
-                scrollToBottom(proxy, animated: true)
+                // **跟随底部不加动画。**
+                // 内容是连续长出来的，每次都起一段 `.default` 动画会互相叠加，
+                // 手感变成一顿一顿的；而且动画期间又来一次更新，滚动位置会打架。
+                // 动画只留给"跳转"这类离散动作（跳到最新、补历史）。
+                scrollToBottom(proxy, animated: false)
             }
-            // 模型显式要求"滚到底"（快照分完、自己发了消息）：这时候布局已经稳定。
+            // 模型显式要求"滚到底"（快照分完、自己发了消息）。
             .onChange(of: session.scrollToBottomTicket) { _, _ in
                 isFollowingBottom = true
                 scrollToBottom(proxy, animated: false)
+                // **再补一次。** `LazyVStack` 是惰性的：第一次 `scrollTo` 时
+                // 下面几屏还没布局出来，落点会偏短，看起来像"停在半路"——
+                // 点进一个积压了很多新消息的会话时最明显。
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(60))
+                    guard isFollowingBottom else { return }
+                    scrollToBottom(proxy, animated: false)
+                }
             }
             .onChange(of: model.focusedApprovalId) { _, newValue in
                 guard let newValue else { return }
