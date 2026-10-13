@@ -420,6 +420,95 @@ public actor DSHClient {
         ])
     }
 
+    // MARK: - 消息评价
+
+    /// 读这个会话已有的评价（按 messageId）。
+    public func messageFeedback(sessionId: String) async throws -> [MessageFeedback] {
+        let value = try await rpc.call(method: "messageFeedback/list", payload: [
+            "args": .object(["request": .object(["sessionId": .string(sessionId)])])
+        ])
+        // 业务结果外面还包了一层 `{ok, value}`。
+        let inner = value["value"] ?? value
+        return (inner.array("items") ?? []).map(MessageFeedback.init(json:))
+    }
+
+    /// 点赞/点踩一条消息。
+    ///
+    /// `ifVersion` 传上次读到的版本；没有就传 `null`（**必填字段，不能省略**）。
+    @discardableResult
+    public func putMessageFeedback(
+        sessionId: String,
+        messageId: String,
+        rating: MessageFeedbackRating,
+        ifVersion: String?
+    ) async throws -> MessageFeedback? {
+        var request: [String: JSONValue] = [
+            "sessionId": .string(sessionId),
+            "messageId": .string(messageId),
+            "rating": .string(rating.rawValue),
+            "ifVersion": ifVersion.map { .string($0) } ?? .null,
+        ]
+        if request["ifVersion"] == .null { request["ifVersion"] = .null }
+        let value = try await rpc.call(method: "messageFeedback/put", payload: [
+            "args": .object(["request": .object(request)])
+        ])
+        // **业务级拒绝也是 200**：`{ok:false, error:{code,current?}}`。
+        // 最典型的是 `version-conflict` —— 别人在你之后改过。不显式抛出来的话
+        // 调用方会以为"保存成功了"，而实际上什么都没写。
+        try Self.throwIfBusinessRejected(value, fallbackMessage: "评价被拒")
+        return MessageFeedback(json: value["value"] ?? value)
+    }
+
+    /// 撤销评价。
+    @discardableResult
+    public func deleteMessageFeedback(
+        sessionId: String,
+        messageId: String,
+        ifVersion: String
+    ) async throws -> Bool {
+        let value = try await rpc.call(method: "messageFeedback/delete", payload: [
+            "args": .object(["request": .object([
+                "sessionId": .string(sessionId),
+                "messageId": .string(messageId),
+                "ifVersion": .string(ifVersion),
+            ])])
+        ])
+        try Self.throwIfBusinessRejected(value, fallbackMessage: "撤销评价被拒")
+        let inner = value["value"] ?? value
+        return inner.bool("absent") ?? false
+    }
+
+    /// 业务结果里 `{ok:false, error:{…}}` 要当成错误抛出去。
+    ///
+    /// DSH 的业务错误走 HTTP 200，只检查传输层会漏掉它们。
+    static func throwIfBusinessRejected(_ value: JSONValue, fallbackMessage: String) throws {
+        guard value.bool("ok") == false else { return }
+        let error = value["error"] ?? .object([:])
+        throw DSHClientError.remote(DSHError(
+            code: error.string("code") ?? "business/rejected",
+            message: error.string("message") ?? fallbackMessage
+        ))
+    }
+
+    // MARK: - 分支
+
+    /// 从某条消息处**分叉**出一个新会话。
+    ///
+    /// 线上形状：`session/fork({sessionId, atSeq?}) → {sessionId}`。
+    /// `atSeq` 省略就是从当前位置分叉。
+    @discardableResult
+    public func forkSession(sessionId: String, atSeq: Int?) async throws -> String {
+        var request: [String: JSONValue] = ["sessionId": .string(sessionId)]
+        if let atSeq { request["atSeq"] = .number(Double(atSeq)) }
+        let value = try await rpc.call(method: "session/fork", payload: [
+            "args": .object(["request": .object(request)])
+        ])
+        guard let id = value.string("sessionId"), !id.isEmpty else {
+            throw DSHTransportError.malformedResponse("fork 没有返回 sessionId")
+        }
+        return id
+    }
+
     // MARK: - 主机插件包
 
     /// 主机上的插件**包**清单。

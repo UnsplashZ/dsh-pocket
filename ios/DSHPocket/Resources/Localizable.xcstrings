@@ -1,6 +1,17 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
+    "%.0f tok/s": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%.0f tok/s"
+          }
+        }
+      }
+    },
     "%.1f 秒": {
       "extractionState": "manual",
       "localizations": {
@@ -167,6 +178,17 @@
         }
       }
     },
+    "%lld 轮": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld turns"
+          }
+        }
+      }
+    },
     "1 条排队中": {
       "extractionState": "manual",
       "localizations": {
@@ -310,6 +332,17 @@
         }
       }
     },
+    "上下文占用 %lld%%": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Context %lld%%"
+          }
+        }
+      }
+    },
     "上下文已压缩": {
       "extractionState": "manual",
       "localizations": {
@@ -339,6 +372,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "No analytics"
+          }
+        }
+      }
+    },
+    "与电脑的连接断了：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lost the connection to your computer: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "与电脑的连接断了：%@"
           }
         }
       }
@@ -888,6 +938,17 @@
         }
       }
     },
+    "只能读，不能改文件，也不能跑会写盘的命令。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Read only — no file changes, no commands that write."
+          }
+        }
+      }
+    },
     "可以手动输入 6 位配对码。": {
       "extractionState": "manual",
       "localizations": {
@@ -1292,6 +1353,17 @@
         }
       }
     },
+    "已停用": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disabled"
+          }
+        }
+      }
+    },
     "已停用 · %lld": {
       "extractionState": "manual",
       "localizations": {
@@ -1310,6 +1382,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Cancelled"
+          }
+        }
+      }
+    },
+    "已启用": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enabled"
           }
         }
       }
@@ -2053,6 +2136,17 @@
         }
       }
     },
+    "改这个会话的文件读写与审批档位": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Change this session’s file access and approval preset"
+          }
+        }
+      }
+    },
     "文件": {
       "extractionState": "manual",
       "localizations": {
@@ -2225,6 +2319,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Permissions"
+          }
+        }
+      }
+    },
+    "权限：": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permissions: "
           }
         }
       }
@@ -2444,6 +2549,17 @@
         }
       }
     },
+    "没有可寻址的位置，改不了": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No addressable location — can’t be changed"
+          }
+        }
+      }
+    },
     "没有归档的会话": {
       "extractionState": "manual",
       "localizations": {
@@ -2653,6 +2769,17 @@
         }
       }
     },
+    "用量 %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ tok"
+          }
+        }
+      }
+    },
     "电脑 ID": {
       "extractionState": "manual",
       "localizations": {
@@ -2715,6 +2842,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "When your computer needs approval, it comes to you"
+          }
+        }
+      }
+    },
+    "电脑上没有开着的配对窗口。请在电脑上打开「连接手机」再试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No pairing window is open on your computer. Open “Connect phone” there and try again."
           }
         }
       }
@@ -3018,6 +3156,17 @@
         }
       }
     },
+    "管理插件，不能自己关自己": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Management plugin — it can’t turn itself off"
+          }
+        }
+      }
+    },
     "粘贴配对串": {
       "extractionState": "manual",
       "localizations": {
@@ -3040,6 +3189,17 @@
         }
       }
     },
+    "系统组件，不能关": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System component — can’t be disabled"
+          }
+        }
+      }
+    },
     "给电脑说点什么…": {
       "extractionState": "manual",
       "localizations": {
@@ -3058,6 +3218,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Cache"
+          }
+        }
+      }
+    },
+    "缓存 %.0f%%": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cache %.0f%%"
+          }
+        }
+      }
+    },
+    "能在工作区目录里读写。工作区之外的操作仍然要你批准。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Read and write inside the workspace directory. Anything outside still needs your approval."
           }
         }
       }
@@ -3206,6 +3388,17 @@
         }
       }
     },
+    "读写不受工作区限制，而且会减少确认步骤，包括敏感操作与外部命令。只在你信任接下来的任务时用。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unrestricted reads and writes, with fewer confirmation steps — including sensitive operations and external commands. Only use it when you trust what comes next."
+          }
+        }
+      }
+    },
     "调试": {
       "extractionState": "manual",
       "localizations": {
@@ -3301,6 +3494,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "No sessions yet"
+          }
+        }
+      }
+    },
+    "还没有和这台电脑配对": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not paired with this computer yet"
           }
         }
       }
@@ -3631,6 +3835,17 @@
         }
       }
     },
+    "连接已关闭": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The connection was closed"
+          }
+        }
+      }
+    },
     "连接断了，正在重连": {
       "extractionState": "manual",
       "localizations": {
@@ -3719,6 +3934,28 @@
         }
       }
     },
+    "配对码不正确。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That pairing code is wrong."
+          }
+        }
+      }
+    },
+    "配对码试错次数超限，窗口已关。请在电脑上重新打开「连接手机」。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Too many wrong codes — the window is closed. Open “Connect phone” on your computer again."
+          }
+        }
+      }
+    },
     "配对窗口 10 分钟内有效，最多错 3 次。": {
       "extractionState": "manual",
       "localizations": {
@@ -3726,6 +3963,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "The pairing window lasts 10 minutes and allows 3 attempts."
+          }
+        }
+      }
+    },
+    "配对窗口已过期。请在电脑上重新打开「连接手机」。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The pairing window expired. Open “Connect phone” on your computer again."
           }
         }
       }
@@ -3836,6 +4084,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "External chats wired into DSH — Feishu, WeChat and the like — show up here."
+          }
+        }
+      }
+    },
+    "首字 %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TTFT %@"
           }
         }
       }

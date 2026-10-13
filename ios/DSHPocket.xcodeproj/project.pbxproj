@@ -30,6 +30,7 @@
 		4122BFF70BA7A48C3589BF8D /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C21C6211FB0AADD0108305AC /* AppModel.swift */; };
 		41A88EE867540735B3324899 /* TetherKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E056E04F55E32F4971BE31A7 /* TetherKit.framework */; };
 		44599F8D0882CE97D7645F7A /* DSHLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CE333F2A16C687DBA3400DA /* DSHLog.swift */; };
+		44FF524D67E6E0CE5C416554 /* PermissionLabels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 942183F7BAFEC2139A9DBACE /* PermissionLabels.swift */; };
 		45CA0CAB5D987419CA311B95 /* DSHKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F714C252B15543051C29E9C2 /* DSHKit.framework */; };
 		4B2610E3E5F08B31B0D6B327 /* JSONValue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 710D8119291D63FA6E07393A /* JSONValue.swift */; };
 		4BA0021D775CDA4309770840 /* ApprovalViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A61720A16CF30E3539C3DDD3 /* ApprovalViews.swift */; };
@@ -60,6 +61,7 @@
 		9C7C6C7AD42014091CB987A1 /* DSHKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F714C252B15543051C29E9C2 /* DSHKit.framework */; };
 		9D2E673286B4A73F0CB72B69 /* ModelPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 995A4C13DF026FD0CCDF5EED /* ModelPickerSheet.swift */; };
 		A2961CCDDA750A6A8B7C691E /* HostCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C5A7DC6BEFF48AE77F6319B /* HostCoordinator.swift */; };
+		A466F339BFBD733A2492ADE5 /* MessageFeedback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46609A991FC8C5A35FF55F60 /* MessageFeedback.swift */; };
 		A4C4DA46B5DCBB456010BE0A /* DSHError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2151DE06AE4BA2D88CBE912C /* DSHError.swift */; };
 		A4D35E605F7A98B9F1ABA329 /* TetherSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AAEDF5B0163D090BF27398A /* TetherSession.swift */; };
 		A6BE9190F5019A8A430646C2 /* PermissionPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = EECC9AE2D0F11BEC981A1404 /* PermissionPickerSheet.swift */; };
@@ -171,6 +173,7 @@
 		3A7C174641C1E1F8CA69CAC6 /* SessionCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCache.swift; sourceTree = "<group>"; };
 		40F731E69C3E40534DA3287A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		42AD7FF2C0BB55901583FD66 /* SessionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionModel.swift; sourceTree = "<group>"; };
+		46609A991FC8C5A35FF55F60 /* MessageFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageFeedback.swift; sourceTree = "<group>"; };
 		4EB168BF3F2BD1743521E92A /* MarkdownBlock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownBlock.swift; sourceTree = "<group>"; };
 		54FBBD8E05AA668CEF81EF66 /* DSHClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSHClient.swift; sourceTree = "<group>"; };
 		57FD4C43AD3A7045506EDF86 /* LocalProxyServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalProxyServer.swift; sourceTree = "<group>"; };
@@ -191,6 +194,7 @@
 		836591110B5A4AC8A0E97A47 /* HostBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostBundle.swift; sourceTree = "<group>"; };
 		890CF718E11E93024E730F42 /* TimelineTurn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineTurn.swift; sourceTree = "<group>"; };
 		924598A2E62CF91E30377D87 /* DSHPocketApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSHPocketApp.swift; sourceTree = "<group>"; };
+		942183F7BAFEC2139A9DBACE /* PermissionLabels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionLabels.swift; sourceTree = "<group>"; };
 		96B6F17E1CE1FA88D208E4B8 /* SessionRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRow.swift; sourceTree = "<group>"; };
 		97BB8F4E3F13184B4BCA31B0 /* SessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionView.swift; sourceTree = "<group>"; };
 		995A4C13DF026FD0CCDF5EED /* ModelPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelPickerSheet.swift; sourceTree = "<group>"; };
@@ -298,6 +302,7 @@
 			children = (
 				836591110B5A4AC8A0E97A47 /* HostBundle.swift */,
 				CBD739A226633E29134DDDE5 /* HostPlugin.swift */,
+				46609A991FC8C5A35FF55F60 /* MessageFeedback.swift */,
 				33BA4D73DF3106AB6973C28A /* ModelCatalog.swift */,
 				26456AC49423F3B6A1F97ACE /* PermissionPreset.swift */,
 				6607BBF3D413D89A4B537871 /* Projections.swift */,
@@ -495,6 +500,7 @@
 			children = (
 				30AC58D8B9981CB968F5B72C /* Composer.swift */,
 				995A4C13DF026FD0CCDF5EED /* ModelPickerSheet.swift */,
+				942183F7BAFEC2139A9DBACE /* PermissionLabels.swift */,
 				EECC9AE2D0F11BEC981A1404 /* PermissionPickerSheet.swift */,
 				42AD7FF2C0BB55901583FD66 /* SessionModel.swift */,
 				97BB8F4E3F13184B4BCA31B0 /* SessionView.swift */,
@@ -728,6 +734,7 @@
 				7D1604DE7CF072C44796FD1E /* HostPlugin.swift in Sources */,
 				9841EB1AD4F981BAEAC319B4 /* HostProvider.swift in Sources */,
 				4B2610E3E5F08B31B0D6B327 /* JSONValue.swift in Sources */,
+				A466F339BFBD733A2492ADE5 /* MessageFeedback.swift in Sources */,
 				3DDFBE4A5A035056DA874763 /* ModelCatalog.swift in Sources */,
 				5E9D06012AD7777CCDDAFC04 /* MuxClient.swift in Sources */,
 				180EF74A2CCF87F7403C8622 /* PermissionPreset.swift in Sources */,
@@ -794,6 +801,7 @@
 				9D2E673286B4A73F0CB72B69 /* ModelPickerSheet.swift in Sources */,
 				56F0FA7E876F80733D4CD5AF /* NewSessionSheet.swift in Sources */,
 				B4AD5FE8791A38577D7AE2C8 /* PairingSheet.swift in Sources */,
+				44FF524D67E6E0CE5C416554 /* PermissionLabels.swift in Sources */,
 				A6BE9190F5019A8A430646C2 /* PermissionPickerSheet.swift in Sources */,
 				95FCBC192362291AFC893D40 /* RootView.swift in Sources */,
 				3B8301CD794E29F85334619F /* SessionCache.swift in Sources */,

@@ -353,3 +353,38 @@ SwiftPM 状态"上。
 
 > 这个 bug 我改过一次又被后续编辑覆盖回去了 —— 是新增的测试
 > （`testAssistantMessageWithOnlyToolCallsIsNotRenderable`）把它抓回来的。
+
+## ADR-0022 · 输入框里的权限/上下文/统计，与消息级操作
+
+**日期**：2026-10-13
+**背景**：用户要求把输入框做成桌面端那样（直接改权限、显示用量与上下文、显示会话统计），
+并给消息补上复制、点赞点踩、分支、用量。
+**决定**：
+
+**输入框**（照桌面端的布局：输入框占整行，工具一行，统计一行）
+- **权限档位**直接放在输入框里 —— 它是"这次任务怎么跑"的一部分，跟打字是同一个动作。
+  之前藏在右上角 `⋯` 菜单里，每次都要点两层。
+- **上下文占用条**：`projections.contextPressure`，超过 85% 变橙。
+  这是"还能聊多久"的唯一线索 —— 快满时模型会开始压缩历史。
+- **统计行**：`projections.sessionStats` + `tokenUsage` →
+  `33 轮 · 1156 步 · 首字 11.8s · 100 tok/s · 缓存 98%`。
+
+**消息操作**：复制 / 👍 / 👎 / 分支 / 用量，放在页脚跟时间同一行 ——
+这些是**回看时**才需要的动作，不该占据正文的注意力。
+
+**三处协议坑**（都是探出来的，不是读出来的）：
+1. `messageFeedback/put` 的**线上形状是扁平的**：
+   `{request:{sessionId, messageId, rating, ifVersion}}`，
+   不是那个带 `item` 的 TS 接口。`ifVersion` **必填**，没有就传 `null`。
+2. **版本冲突是业务级拒绝**（HTTP 200 + `value.ok == false` + `error.code == "version-conflict"`），
+   不是传输错误。不显式识别的话调用方会以为"保存成功了"，而实际什么都没写。
+   现在 `DSHClientError.isVersionConflict` 识别它，`SessionModel` 会**重新拉取再重试一次** ——
+   用户只是点了个赞，不该看到"版本冲突"这种词。
+3. 缓存命中率的**分母是提示词总量**（未命中 + 命中），不是 `total` ——
+   后者把输出算进去了，比例会被输出长度稀释，跟桌面端对不上。
+
+**顺带修掉一个本地化漏洞**：`gen-strings.py` 只扫 `DSHPocket/`，
+而 `DSHKit` 里也有 `String(localized:)`。它是**静态库**，链接进 App 后
+`String(localized:)` 走的就是 App 的目录 —— 不扫它那些文案会漏翻译
+（英文界面上直接显示中文）。现在也扫 `DSHKit/Sources` 与 `TetherKit/Sources`，
+一扩就多找出 24 条。

@@ -111,6 +111,7 @@ public struct SessionProjections: Sendable, Hashable {
     public let title: String?
     public let goal: JSONValue?
     public let tokenUsage: TokenUsage
+    public let sessionStats: SessionStats
     public let contextPressure: ContextPressure?
     public let turnOutline: [TurnOutlineEntry]
     public let agentPreset: String?
@@ -131,6 +132,7 @@ public struct SessionProjections: Sendable, Hashable {
         self.title = values.string("title")
         self.goal = values["goal"]
         self.tokenUsage = TokenUsage(json: values["tokenUsage"] ?? .object([:]))
+        self.sessionStats = SessionStats(json: values["sessionStats"] ?? .object([:]))
         self.contextPressure = values["contextPressure"].map(ContextPressure.init(json:))
         self.turnOutline = (values.array("turnOutline") ?? []).map(TurnOutlineEntry.init(json:))
         self.agentPreset = values.string("agentPreset")
@@ -184,6 +186,83 @@ public struct TokenUsage: Sendable, Hashable {
     }
 
     public var total: Int { uncachedInputTokens + outputTokens + cacheReadTokens + cacheWriteTokens }
+
+    /// 缓存命中率。输入框下面那个 `缓存 99%` 就是它。
+    ///
+    /// 分母是**提示词总量**（未命中 + 命中），不是 total —— `total` 还把输出算进去了，
+    /// 那样算出来的比例会被输出长度稀释，跟桌面端对不上。
+    public var cacheHitRate: Double? {
+        let promptTokens = uncachedInputTokens + cacheReadTokens
+        guard promptTokens > 0 else { return nil }
+        return Double(cacheReadTokens) / Double(promptTokens)
+    }
+}
+
+/// **单条**助手消息的用量（`assistant/message` 的 `data.usage`）。
+///
+/// 与 `TokenUsage`（会话级投影）**字段名不一样**，别混：
+/// 那边是 `uncachedInputTokens`，这边是 `inputTokens`。
+public struct MessageUsage: Sendable, Hashable, Codable {
+    public var inputTokens: Int = 0
+    public var outputTokens: Int = 0
+    public var totalTokens: Int = 0
+    public var cacheReadTokens: Int = 0
+    public var reasoningTokens: Int = 0
+
+    public init(json: JSONValue) {
+        inputTokens = json.int("inputTokens") ?? 0
+        outputTokens = json.int("outputTokens") ?? 0
+        totalTokens = json.int("totalTokens") ?? 0
+        cacheReadTokens = json.int("cacheReadTokens") ?? 0
+        reasoningTokens = json.int("reasoningTokens") ?? 0
+    }
+
+    /// 缓存命中率。桌面端输入框下面那个 `Cache 99%` 就是它。
+    public var cacheHitRate: Double? {
+        let prompt = inputTokens + cacheReadTokens
+        guard prompt > 0 else { return nil }
+        return Double(cacheReadTokens) / Double(prompt)
+    }
+}
+
+/// 会话累计统计（`projections.sessionStats`）。
+///
+/// 实测形状：`{turns, steps, llmMs, toolMs, ttftMs, ttftSteps, decodeMs, decodeTokens}`。
+public struct SessionStats: Sendable, Hashable {
+    public var turns: Int = 0
+    public var steps: Int = 0
+    public var llmMs: Double = 0
+    public var toolMs: Double = 0
+    /// **累计**首字延迟与步数 —— 要相除才是平均 TTFT。
+    public var ttftMs: Double = 0
+    public var ttftSteps: Int = 0
+    public var decodeMs: Double = 0
+    public var decodeTokens: Int = 0
+
+    public init(json: JSONValue) {
+        turns = json.int("turns") ?? 0
+        steps = json.int("steps") ?? 0
+        llmMs = json.double("llmMs") ?? 0
+        toolMs = json.double("toolMs") ?? 0
+        ttftMs = json.double("ttftMs") ?? 0
+        ttftSteps = json.int("ttftSteps") ?? 0
+        decodeMs = json.double("decodeMs") ?? 0
+        decodeTokens = json.int("decodeTokens") ?? 0
+    }
+
+    public var isEmpty: Bool { turns == 0 && steps == 0 }
+
+    /// 平均首字延迟。
+    public var averageTimeToFirstToken: TimeInterval? {
+        guard ttftSteps > 0 else { return nil }
+        return (ttftMs / Double(ttftSteps)) / 1000
+    }
+
+    /// 解码速度（tok/s）。
+    public var tokensPerSecond: Double? {
+        guard decodeMs > 0 else { return nil }
+        return Double(decodeTokens) / (decodeMs / 1000)
+    }
 }
 
 public struct ContextPressure: Sendable, Hashable {

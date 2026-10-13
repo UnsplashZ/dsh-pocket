@@ -68,6 +68,12 @@ public final class SessionModel {
     /// 按轮次分组后的渲染块。在 `publish()` 里算一次。
     private(set) var timelineBlocks: [TimelineBlock] = []
     private(set) var contextPressure: ContextPressure?
+    /// 会话累计统计（轮数/步数/TTFT/解码速度）—— 输入框下面那行。
+    private(set) var sessionStats = SessionStats(json: .object([:]))
+    /// 会话累计用量（缓存命中率用它）。
+    private(set) var tokenUsage = TokenUsage(json: .object([:]))
+    /// 已有评价，按 messageId 索引。
+    private(set) var feedbacks: [String: MessageFeedback] = [:]
     private(set) var todos: [TimelineItem.TodoEntry] = []
 
     /// 上一次跟随失败的提示（给"所有失败都要有文案"这条）。
@@ -132,6 +138,8 @@ public final class SessionModel {
         observeBackgroundSave()
         observeTransportGeneration()
         await subscribe()
+        // 评价是低频操作，打开时拉一次就够（之后本地维护）。
+        await loadFeedbacks()
     }
 
     func close() {
@@ -355,7 +363,8 @@ public final class SessionModel {
         todos = (values.array("todos") ?? []).map {
             TimelineItem.TodoEntry(text: $0.string("content") ?? "", status: .init(raw: $0.string("status")))
         }
-        if let running = values["sessionStats"]?.int("turns") { _ = running }
+        sessionStats = SessionStats(json: values["sessionStats"] ?? .object([:]))
+        tokenUsage = TokenUsage(json: values["tokenUsage"] ?? .object([:]))
     }
 
     private func publish() {
@@ -595,6 +604,62 @@ public final class SessionModel {
             _ = builder.removeOptimisticUserMessage(rpcId: rpcId)
         }
         publish()
+    }
+
+    // MARK: 评价 / 分支
+
+    /// 拉一次已有评价。会话打开时调一次即可（评价是低频操作）。
+    func loadFeedbacks() async {
+        do {
+            let items = try await client.messageFeedback(sessionId: sessionId)
+            feedbacks = Dictionary(uniqueKeysWithValues: items.map { ($0.messageId, $0) })
+        } catch {
+            logs.log(.debug, "评价拉取失败：\(error.localizedDescription)")
+        }
+    }
+
+    /// 点赞/点踩。再点一次同一个就是**撤销**（跟桌面端一致）。
+    func toggleFeedback(messageId: String, rating: MessageFeedbackRating) async {
+        let existing = feedbacks[messageId]
+        do {
+            if existing?.rating == rating, let version = existing?.version {
+                _ = try await client.deleteMessageFeedback(
+                    sessionId: sessionId, messageId: messageId, ifVersion: version
+                )
+                feedbacks[messageId] = nil
+            } else {
+                do {
+                    feedbacks[messageId] = try await client.putMessageFeedback(
+                        sessionId: sessionId,
+                        messageId: messageId,
+                        rating: rating,
+                        ifVersion: existing?.version
+                    )
+                } catch let error as DSHClientError where error.isVersionConflict {
+                    // 别人在你之后改过。**重新拉一次再重试**，而不是把错误甩给用户 ——
+                    // 他只是点了个赞。
+                    await loadFeedbacks()
+                    feedbacks[messageId] = try await client.putMessageFeedback(
+                        sessionId: sessionId,
+                        messageId: messageId,
+                        rating: rating,
+                        ifVersion: feedbacks[messageId]?.version
+                    )
+                }
+            }
+        } catch {
+            failureMessage = (error as? DSHClientError)?.displayMessage ?? error.localizedDescription
+        }
+    }
+
+    /// 从某条消息处分叉出一个新会话，返回新会话 id。
+    func fork(atSeq: Int?) async -> String? {
+        do {
+            return try await client.forkSession(sessionId: sessionId, atSeq: atSeq)
+        } catch {
+            failureMessage = (error as? DSHClientError)?.displayMessage ?? error.localizedDescription
+            return nil
+        }
     }
 
     /// 可选的权限档位。

@@ -22,6 +22,10 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SOURCE_DIR = ROOT / "DSHPocket"
+# DSHKit 里也有 `String(localized:)`。它是**静态库**，链接进 App 之后
+# `String(localized:)` 走的就是 App 的目录 —— 不扫它这些文案会漏翻译
+# （英文界面上直接显示中文）。TetherKit 同理。
+EXTRA_SOURCE_DIRS = [ROOT / "DSHKit" / "Sources", ROOT / "TetherKit" / "Sources"]
 CATALOG = SOURCE_DIR / "Resources" / "Localizable.xcstrings"
 SOURCE_LANGUAGE = "zh-Hans"
 
@@ -611,6 +615,23 @@ EN: dict[str, str] = {
         "Anything depending on it stops working immediately. Restarting DSH on your computer restores it.",
     "系统组件，不能关": "System component — can’t be disabled",
     "不可修改": "Not editable",
+    # 输入框：权限 / 上下文 / 统计 / 消息操作
+    "权限：": "Permissions: ",
+    "改这个会话的文件读写与审批档位": "Change this session’s file access and approval preset",
+    "上下文占用 %lld%%": "Context %lld%%",
+    "%lld 轮": "%lld turns",
+    "%lld 步": "%lld steps",
+    "首字 %@": "TTFT %@",
+    "%.0f tok/s": "%.0f tok/s",
+    "缓存 %.0f%%": "Cache %.0f%%",
+    "用量 %@": "%@ tok",
+    "复制": "Copy",
+    "赞": "Good response",
+    "踩": "Bad response",
+    "从这里分支": "Branch from here",
+    # DSHKit 里原本漏掉的
+    "与电脑的连接断了：%@": "Lost the connection to your computer: %@",
+    "连接已关闭": "The connection was closed",
 }
 
 # 哪些插值表达式是整数。判错的后果是英文界面上显示成 `%lld` 字面量，
@@ -707,7 +728,7 @@ def strip_comments(text: str) -> str:
 
 def extract() -> dict[str, str]:
     found: dict[str, str] = {}
-    for path in sorted(SOURCE_DIR.rglob("*.swift")):
+    for path in sorted([p for base in [SOURCE_DIR, *EXTRA_SOURCE_DIRS] for p in base.rglob("*.swift")]):
         text = strip_comments(path.read_text())
         for pattern in EXTRACTION_PATTERNS:
             for match in re.finditer(pattern, text):

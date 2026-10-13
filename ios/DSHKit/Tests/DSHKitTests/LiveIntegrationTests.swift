@@ -566,6 +566,97 @@ final class LiveIntegrationTests: XCTestCase {
         _ = try? await client.archiveSession(sessionId: sessionId)
     }
 
+    /// 消息评价的线上形状是**扁平的**，不是那个带 `item` 的 TS 接口：
+    /// `put({request:{sessionId, messageId, rating, ifVersion}})`。
+    /// `ifVersion` 是必填（没有就传 `null`），漏了会被边界校验拒掉。
+    ///
+    /// 走一遍 put → list → delete，并在最后**删干净**（评价会落进会话日志，
+    /// 不该在用户的历史里留垃圾）。
+    func testMessageFeedbackRoundTrip() async throws {
+        try requireLive()
+        let client = makeClient()
+        let sessions = try await client.listSessions()
+        let target = try XCTUnwrap(
+            sessions.first { !$0.sessionId.hasPrefix("im:") && !$0.isRunning },
+            "需要一个空闲会话"
+        )
+
+        // 找一条真实的助手消息
+        var messageId: String?
+        var seq: Int?
+        try await withTimeout(20) {
+            for try await frame in client.follow(sessionId: target.sessionId, assistantStream: false) {
+                if case .snapshot(let snapshot) = frame {
+                    for event in snapshot.events where event.type == "assistant/message" {
+                        if let id = event.string("data.message.id") { messageId = id; seq = Int(event.seq) }
+                    }
+                    break
+                }
+            }
+        }
+        guard let messageId, let seq else { throw XCTSkip("这个会话里没有助手消息") }
+
+        // put（新建）
+        let saved = try await client.putMessageFeedback(
+            sessionId: target.sessionId, messageId: messageId, rating: .positive, ifVersion: nil
+        )
+        let created = try XCTUnwrap(saved)
+        XCTAssertEqual(created.rating, .positive)
+        XCTAssertFalse(created.version.isEmpty, "要拿到版本，改/删时当 ifVersion 传回去")
+
+        // list 里能看到
+        let listed = try await client.messageFeedback(sessionId: target.sessionId)
+        XCTAssertTrue(listed.contains { $0.messageId == messageId && $0.rating == .positive })
+
+        // 用**旧版本**再改应当被拒（乐观并发控制）。
+        // 注意这是**业务级**拒绝（HTTP 200 + `{ok:false, error:{code}}`），
+        // 所以必须显式识别，否则会以为"保存成功了"。
+        do {
+            _ = try await client.putMessageFeedback(
+                sessionId: target.sessionId, messageId: messageId, rating: .negative, ifVersion: "不存在的版本"
+            )
+            XCTFail("版本对不上时应当被拒，而不是悄悄覆盖")
+        } catch let error as DSHClientError {
+            XCTAssertTrue(error.isVersionConflict, "应当是版本冲突，实际：\(error.displayMessage)")
+        }
+
+        // 改成 negative（带正确版本）
+        let updated = try await client.putMessageFeedback(
+            sessionId: target.sessionId, messageId: messageId, rating: .negative, ifVersion: created.version
+        )
+        XCTAssertEqual(updated?.rating, .negative)
+
+        // 撤销 + 确认清干净
+        _ = try await client.deleteMessageFeedback(
+            sessionId: target.sessionId, messageId: messageId, ifVersion: try XCTUnwrap(updated?.version)
+        )
+        let after = try await client.messageFeedback(sessionId: target.sessionId)
+        XCTAssertFalse(after.contains { $0.messageId == messageId }, "删掉之后不该还在")
+        XCTAssertGreaterThan(seq, 0)
+    }
+
+    /// 分支：`session/fork({sessionId, atSeq?})` → 新会话 id。
+    /// 跑完**归档**掉分出来的那条，别留在用户列表里。
+    func testForkCreatesANewSession() async throws {
+        try requireLive()
+        let client = makeClient()
+        let sessions = try await client.listSessions()
+        let target = try XCTUnwrap(
+            sessions.first { !$0.sessionId.hasPrefix("im:") && $0.asOfSeq > 20 },
+            "需要一个有内容的会话"
+        )
+
+        let forked = try await client.forkSession(sessionId: target.sessionId, atSeq: 20)
+        XCTAssertNotEqual(forked, target.sessionId)
+        XCTAssertTrue(forked.hasPrefix("session-"))
+
+        let all = try await client.listSessions()
+        XCTAssertTrue(all.contains { $0.sessionId == forked }, "分出来的会话应当出现在列表里")
+
+        // 收尾：别留在用户列表里
+        _ = try? await client.archiveSession(sessionId: forked)
+    }
+
     func testModelCatalogAndUnaryErrorShape() async throws {
         try requireLive()
         let client = makeClient()

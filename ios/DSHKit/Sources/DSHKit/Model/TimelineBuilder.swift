@@ -771,6 +771,8 @@ public struct TimelineBuilder: Sendable {
         }
         let message = TimelineItem.AssistantMessage(
             blocks: blocks,
+            usage: event.data["usage"].map(MessageUsage.init(json:)),
+            messageId: event.string("data.message.id"),
             isStreaming: false,
             interrupted: event.data["interrupted"] != nil,
             isSettled: true

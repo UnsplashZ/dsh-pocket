@@ -101,6 +101,12 @@ public final class AppModel {
     /// 主机设置的错误文案。
     var hostSettingsError: String?
 
+    /// 请求打开一个会话（分支之后用）。
+    ///
+    /// 分支出来的会话可能还没进 `sessions`，所以由根视图用
+    /// `sessionSummary(for:cwd:)` 合成一个占位再 push —— 跟"新建会话"同一条路。
+    var pendingOpenSessionId: String?
+
     /// 连接换代导致待处理作废时给用户的一句说明。
     var waterfallAbandonedMessage: String?
 

@@ -61,6 +61,7 @@ struct Composer: View {
     var isFocused: FocusState<Bool>.Binding
     @State private var photoSelection: [PhotosPickerItem] = []
     @State private var showPhotoPicker = false
+    @State private var showPermissionPicker = false
     @State private var showFileImporter = false
     @State private var sendTrigger = 0
     @State private var stopTrigger = 0
@@ -73,53 +74,67 @@ struct Composer: View {
                 attachmentStrip
             }
 
-            HStack(alignment: .bottom, spacing: Token.Spacing.tight) {
-                Menu {
-                    // `PhotosPicker` **不能放在 `Menu` 里** —— 菜单一关，它自己那层
-                    // 呈现就被丢掉了，点了完全没反应（实测）。所以菜单里只置一个标志，
-                    // 真正的 picker 用 `.photosPicker(isPresented:)` 挂在外面。
-                    Button {
-                        showPhotoPicker = true
-                    } label: {
-                        Label("照片", systemImage: "photo.on.rectangle")
-                    }
-                    Button {
-                        showFileImporter = true
-                    } label: {
-                        Label("文件", systemImage: "doc")
-                    }
-                } label: {
-                    CircleGlyph(systemImage: "plus", style: .quiet)
-                }
-                .accessibilityLabel(Text("添加附件"))
-
+            // 布局照桌面端：**输入框占整行**，下面一行放工具
+            //（附件 / 权限 / 上下文占用 / 发送），再下面一行是会话统计。
+            VStack(spacing: Token.Spacing.tight) {
                 TextField("给电脑说点什么…", text: $session.draft, axis: .vertical)
                     .textFieldStyle(.plain)
                     .lineLimit(1...6)
                     .focused(isFocused)
                     .submitLabel(.send)
                     .onSubmit { send() }
-                    .padding(.horizontal, Token.Spacing.compact)
-                    .padding(.vertical, Token.Spacing.tight)
-                    .background(
-                        RoundedRectangle(cornerRadius: Token.Radius.bubble, style: .continuous)
-                            .fill(Color(.secondarySystemBackground))
-                    )
                     .accessibilityLabel(Text("消息"))
 
-                // 同一位置：空闲=发送，运行中=停止
-                Button(action: isRunning ? stop : send) {
-                    CircleGlyph(
-                        systemImage: isRunning ? "stop.fill" : "arrow.up",
-                        style: isRunning ? .destructive : .prominent
-                    )
+                HStack(spacing: Token.Spacing.tight) {
+                    Menu {
+                        // `PhotosPicker` **不能放在 `Menu` 里** —— 菜单一关，它自己那层
+                        // 呈现就被丢掉了，点了完全没反应（实测）。所以菜单里只置一个标志，
+                        // 真正的 picker 用 `.photosPicker(isPresented:)` 挂在外面。
+                        Button {
+                            showPhotoPicker = true
+                        } label: {
+                            Label("照片", systemImage: "photo.on.rectangle")
+                        }
+                        Button {
+                            showFileImporter = true
+                        } label: {
+                            Label("文件", systemImage: "doc")
+                        }
+                    } label: {
+                        CircleGlyph(systemImage: "plus", style: .quiet)
+                    }
+                    .accessibilityLabel(Text("添加附件"))
+
+                    permissionButton
+
+                    Spacer(minLength: Token.Spacing.hairline)
+
+                    contextBar
+
+                    // 同一位置：空闲=发送，运行中=停止
+                    Button(action: isRunning ? stop : send) {
+                        CircleGlyph(
+                            systemImage: isRunning ? "stop.fill" : "arrow.up",
+                            style: isRunning ? .destructive : .prominent
+                        )
+                    }
+                    .disabled(!isRunning && !canSend)
+                    .accessibilityLabel(Text(isRunning ? "停止" : "发送"))
+                    .accessibilityHint(Text(isRunning ? "打断正在跑的这一轮" : "把消息发给电脑"))
                 }
-                .disabled(!isRunning && !canSend)
-                .accessibilityLabel(Text(isRunning ? "停止" : "发送"))
-                .accessibilityHint(Text(isRunning ? "打断正在跑的这一轮" : "把消息发给电脑"))
             }
-            .padding(.horizontal, Token.Spacing.gutter)
-            .padding(.vertical, Token.Spacing.tight)
+            .padding(.horizontal, Token.Spacing.compact)
+            .padding(.vertical, Token.Spacing.compact)
+            .background(
+                RoundedRectangle(cornerRadius: Token.Radius.card, style: .continuous)
+                    .fill(Color(.secondarySystemBackground))
+            )
+            .padding(.horizontal, Token.Spacing.tight)
+
+            statsLine
+        }
+        .sheet(isPresented: $showPermissionPicker) {
+            PermissionPickerSheet(session: session)
         }
         .photosPicker(
             isPresented: $showPhotoPicker,
@@ -161,6 +176,109 @@ struct Composer: View {
             isRunning ? stop() : send()
             return .handled
         }
+    }
+
+    // MARK: 权限档位
+
+    /// 直接在输入框里改权限。
+    ///
+    /// 权限是"这次任务怎么跑"的一部分，跟打字在同一个动作里 —— 桌面端也放在这儿。
+    /// 之前它藏在右上角 `⋯` 菜单里，每次都要点两层。
+    private var permissionButton: some View {
+        Button {
+            showPermissionPicker = true
+        } label: {
+            HStack(spacing: Token.Spacing.hairline) {
+                Image(systemName: PermissionLabel.symbol(session.currentPermission))
+                    .font(.caption)
+                    .foregroundStyle(PermissionLabel.isRisky(session.currentPermission) ? Color.orange : Color.secondary)
+                Text(PermissionLabel.text(session.currentPermission))
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, Token.Spacing.tight)
+            .frame(height: Token.Control.diameter)
+            .background(Color(.tertiarySystemFill), in: Capsule(style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(String(localized: "权限：") + PermissionLabel.text(session.currentPermission)))
+        .accessibilityHint(Text("改这个会话的文件读写与审批档位"))
+    }
+
+    // MARK: 上下文占用
+
+    /// 上下文占用的进度条。
+    ///
+    /// 这个数字是"还能聊多久"的唯一线索 —— 快满的时候模型会开始压缩历史，
+    /// 用户得能提前看到。桌面端把它放在输入框右边。
+    @ViewBuilder
+    private var contextBar: some View {
+        if let pressure = session.contextPressure, pressure.contextWindow > 0 {
+            let ratio = min(1, Double(pressure.pressureTokens) / Double(pressure.contextWindow))
+            HStack(spacing: Token.Spacing.hairline) {
+                Capsule(style: .continuous)
+                    .fill(Color(.tertiarySystemFill))
+                    .frame(width: 44, height: 5)
+                    .overlay(alignment: .leading) {
+                        Capsule(style: .continuous)
+                            .fill(ratio > 0.85 ? Color.orange : Color.accentColor)
+                            .frame(width: max(3, 44 * ratio))
+                    }
+                // `verbatim`：这就是个百分数，不该进本地化目录
+                // （写成 `Text("\(…)")` 会生成一条 key 为 `%lld%` 的条目）。
+                Text(verbatim: "\(Int(ratio * 100))%")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(ratio > 0.85 ? Color.orange : Color.secondary)
+            }
+            .frame(height: Token.Control.diameter)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(Text(String(format: String(localized: "上下文占用 %lld%%"), Int(ratio * 100))))
+            .accessibilityValue(Text(Format.contextPressure(pressure) ?? ""))
+        }
+    }
+
+    // MARK: 会话统计
+
+    /// 输入框下面那行：轮数 / 步数 / 首字延迟 / 解码速度 / 缓存命中。
+    ///
+    /// 空会话不显示 —— 一排 0 只会占地方。
+    @ViewBuilder
+    private var statsLine: some View {
+        let stats = session.sessionStats
+        if !stats.isEmpty {
+            HStack(spacing: Token.Spacing.hairline) {
+                Text(statTexts(stats).joined(separator: " · "))
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, Token.Spacing.gutter)
+            .padding(.top, Token.Spacing.hairline)
+            .padding(.bottom, Token.Spacing.tight)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(Text(statTexts(stats).joined(separator: "，")))
+        }
+    }
+
+    private func statTexts(_ stats: SessionStats) -> [String] {
+        var parts: [String] = []
+        parts.append(String(format: String(localized: "%lld 轮"), stats.turns))
+        parts.append(String(format: String(localized: "%lld 步"), stats.steps))
+        if let ttft = stats.averageTimeToFirstToken {
+            parts.append(String(format: String(localized: "首字 %@"), String(format: "%.1fs", ttft)))
+        }
+        if let speed = stats.tokensPerSecond {
+            parts.append(String(format: String(localized: "%.0f tok/s"), speed))
+        }
+        if let cache = session.tokenUsage.cacheHitRate {
+            parts.append(String(format: String(localized: "缓存 %.0f%%"), cache * 100))
+        }
+        return parts
     }
 
     private var canSend: Bool {

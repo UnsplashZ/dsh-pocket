@@ -270,6 +270,70 @@ final class ProtocolContractTests: XCTestCase {
         XCTAssertEqual(plugins[3].statusLabel, String(localized: "已停用"))
     }
 
+    // MARK: 用量 / 统计
+
+    /// 缓存命中率的**分母是提示词总量**，不是 `total`。
+    ///
+    /// 用 `total`（含输出）算的话比例会被输出长度稀释，跟桌面端显示的对不上。
+    func testCacheHitRateUsesPromptTokensAsDenominator() throws {
+        let usage = TokenUsage(json: Fixture.json(#"""
+        {"uncachedInputTokens":1000,"outputTokens":9000,"cacheReadTokens":9000,"cacheWriteTokens":0}
+        """#))
+        // 提示词 = 1000 + 9000 = 10000，命中 9000 → 90%
+        XCTAssertEqual(try XCTUnwrap(usage.cacheHitRate), 0.9, accuracy: 0.0001)
+        XCTAssertEqual(usage.total, 19000)
+
+        XCTAssertNil(TokenUsage(json: .object([:])).cacheHitRate, "没有提示词时不该返回 0 冒充")
+    }
+
+    /// 统计里的 TTFT 是**累计值**，要除以步数；解码速度要按毫秒折算。
+    func testSessionStatsDerivesAverageTTFTAndThroughput() throws {
+        let stats = SessionStats(json: Fixture.json(#"""
+        {"turns":15,"steps":283,"llmMs":21711045,"toolMs":6855361,
+         "ttftMs":12824118,"ttftSteps":1107,"decodeMs":8395190,"decodeTokens":820461}
+        """#))
+        XCTAssertEqual(stats.turns, 15)
+        XCTAssertEqual(stats.steps, 283)
+        XCTAssertEqual(try XCTUnwrap(stats.averageTimeToFirstToken), 12824118.0 / 1107 / 1000, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(stats.tokensPerSecond), 820461.0 / (8395190.0 / 1000), accuracy: 0.01)
+
+        XCTAssertTrue(SessionStats(json: .object([:])).isEmpty)
+        XCTAssertNil(SessionStats(json: .object([:])).averageTimeToFirstToken, "没有步数时不该除零")
+    }
+
+    /// 单条消息的用量从 `assistant/message` 的 `data.usage` 解出来，
+    /// 而且**消息 id 也要带上** —— 评价（点赞点踩）按它索引。
+    func testAssistantMessageCarriesUsageAndMessageId() throws {
+        var builder = TimelineBuilder()
+        _ = builder.apply(try Fixture.event("""
+        {"type":"assistant/message","seq":3,"time":1791777000000,"data":{"turn":1,"step":1,
+         "message":{"role":"assistant","id":"msg-abc","content":[{"type":"text","text":"你好"}]},
+         "usage":{"inputTokens":1959,"outputTokens":223,"totalTokens":592262,"cacheReadTokens":590080}},"surfaceOp":"append"}
+        """))
+        let message = try XCTUnwrap(builder.items.compactMap { item -> TimelineItem.AssistantMessage? in
+            if case .assistantMessage(let value) = item.kind { return value }
+            return nil
+        }.first)
+        XCTAssertEqual(message.messageId, "msg-abc", "评价要靠它索引")
+        XCTAssertEqual(message.usage?.totalTokens, 592262)
+        // 分母 = 未命中输入 1959 + 命中 590080 = 592039
+        XCTAssertEqual(try XCTUnwrap(message.usage?.cacheHitRate), 590080.0 / 592039.0, accuracy: 0.0001)
+    }
+
+    // MARK: 消息评价
+
+    func testMessageFeedbackParsesRatingAndVersion() throws {
+        let item = MessageFeedback(json: Fixture.json(#"""
+        {"messageId":"m1","rating":"negative","version":"v-1","createdAt":1,"updatedAt":2}
+        """#))
+        XCTAssertEqual(item.messageId, "m1")
+        XCTAssertEqual(item.rating, .negative)
+        XCTAssertEqual(item.version, "v-1", "改/删时要把版本当 ifVersion 传回去")
+
+        XCTAssertEqual(MessageFeedbackRating.positive.symbol, "hand.thumbsup")
+        XCTAssertEqual(MessageFeedbackRating.negative.symbol, "hand.thumbsdown")
+    }
+
     // MARK: 插件包
 
     /// `meta.title` / `meta.description` **两种形态都存在**：

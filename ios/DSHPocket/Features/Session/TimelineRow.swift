@@ -46,7 +46,9 @@ struct TimelineRow: View {
             // 轮次结束之后思考过程要收起来（除非用户手动展开）。
             AssistantCard(
                 message: message,
+                session: session,
                 time: item.time,
+                seq: item.seq,
                 isTurnComplete: item.turn.map { session.completedTurns.contains($0) } ?? false
             )
 
@@ -422,7 +424,11 @@ struct TurnGroupView: View {
 
 struct AssistantCard: View {
     let message: TimelineItem.AssistantMessage
+    /// 复制/点赞/分支都要它。
+    let session: SessionModel
     let time: Date
+    /// 这条消息在日志里的 seq —— 分支要按它切。
+    var seq: Double = 0
     /// 这一轮跑完了没有。决定了思考过程是"边跑边看"还是"收起来"。
     var isTurnComplete: Bool = false
 
@@ -434,6 +440,7 @@ struct AssistantCard: View {
     /// 而推理内容一次点击就能看到。设置里的"默认展开"可以把它变成常开。
     @State private var reasoningRevealed = false
     @State private var hasAppliedDefault = false
+    @State private var copyFeedback = 0
 
     private var hasReasoning: Bool {
         message.blocks.contains { if case .reasoning(let text) = $0 {
@@ -499,7 +506,8 @@ struct AssistantCard: View {
                             .buttonStyle(.plain)
                             .accessibilityHint(Text("展开模型的推理过程"))
                         }
-                        Spacer(minLength: 0)
+                        Spacer(minLength: Token.Spacing.hairline)
+                        actionRow
                         Text(Format.time(time))
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
@@ -509,6 +517,78 @@ struct AssistantCard: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(String(localized: "助手回复")))
+    }
+
+    /// 一条消息能做的事：复制、点赞点踩、从这里分支、看用量。
+    ///
+    /// 放在页脚跟时间同一行 —— 桌面上也是这么摆的：这些是**回看时**才需要的动作，
+    /// 不该占据正文的注意力。
+    @ViewBuilder
+    private var actionRow: some View {
+        if message.hasRenderableContent {
+            HStack(spacing: Token.Spacing.compact) {
+                actionIcon("doc.on.doc", label: "复制") {
+                    UIPasteboard.general.string = message.plainText
+                    copyFeedback += 1
+                }
+                if !messageId.isEmpty {
+                    actionIcon(
+                    feedback == .positive ? "hand.thumbsup.fill" : "hand.thumbsup",
+                    label: "赞",
+                    tint: feedback == .positive ? .accentColor : nil
+                    ) {
+                        Task { await session.toggleFeedback(messageId: messageId, rating: .positive) }
+                    }
+                    actionIcon(
+                    feedback == .negative ? "hand.thumbsdown.fill" : "hand.thumbsdown",
+                    label: "踩",
+                    tint: feedback == .negative ? .orange : nil
+                    ) {
+                        Task { await session.toggleFeedback(messageId: messageId, rating: .negative) }
+                    }
+                }
+                actionIcon("arrow.triangle.branch", label: "从这里分支") {
+                    Task {
+                        guard let id = await session.fork(atSeq: Int(seq)) else { return }
+                        await model.refreshSessions()
+                        model.pendingOpenSessionId = id
+                    }
+                }
+                if let usage = message.usage, usage.totalTokens > 0 {
+                    Text(String(format: String(localized: "用量 %@"), Format.tokens(usage.totalTokens) ?? ""))
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .sensoryFeedback(.success, trigger: copyFeedback)
+        }
+    }
+
+    private func actionIcon(
+        _ symbol: String,
+        label: String,
+        tint: Color? = nil,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.caption2)
+                .foregroundStyle(tint ?? Color.secondary)
+                // 图标小，但点击区不能小 —— 用透明外框补齐 44pt。
+                .frame(width: Token.minimumHitTarget, height: Token.minimumHitTarget)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(label))
+    }
+
+    /// 这条消息在日志里的 id —— 评价按它索引。
+    /// 拿不到就没有评价入口（宁可不给，也不要给一个点了报错的按钮）。
+    private var messageId: String { message.messageId ?? "" }
+
+    private var feedback: MessageFeedbackRating? {
+        guard !messageId.isEmpty else { return nil }
+        return session.feedbacks[messageId]?.rating
     }
 
     /// 轮次结束、用户手动翻出来之后的推理内容。

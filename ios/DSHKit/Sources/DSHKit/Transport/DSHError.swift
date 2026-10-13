@@ -79,6 +79,15 @@ public enum DSHClientError: Error, Sendable {
         }
     }
 
+    /// 乐观并发冲突（`version-conflict`）。
+    ///
+    /// 调用方通常应当**重新拉取再重试一次**，而不是把错误甩给用户 ——
+    /// 用户只是点了个赞，不该看到"版本冲突"这种词。
+    public var isVersionConflict: Bool {
+        if case .remote(let error) = self { return error.code == "version-conflict" }
+        return false
+    }
+
     /// 给 UI 用的稳定分类，避免把 message 当逻辑用。
     public var kind: Kind {
         switch self {

@@ -130,13 +130,27 @@ extension TimelineItem {
 
     public struct AssistantMessage: Sendable, Hashable, Codable {
         public var blocks: [AssistantBlock]
+        /// 这条消息的用量（`assistant/message` 的 `data.usage`）。
+        public var usage: MessageUsage?
+        /// 日志里这条消息的 id（`data.message.id`）。
+        /// **评价（点赞点踩）按它索引**，不是 seq、也不是时间线条目的 id。
+        public var messageId: String?
         public var isStreaming: Bool
         public var interrupted: Bool
         /// 实时块与持久事件交接后置为 true（用于诊断，也方便测试断言）。
         public var isSettled: Bool
 
-        public init(blocks: [AssistantBlock], isStreaming: Bool = false, interrupted: Bool = false, isSettled: Bool = true) {
+        public init(
+            blocks: [AssistantBlock],
+            usage: MessageUsage? = nil,
+            messageId: String? = nil,
+            isStreaming: Bool = false,
+            interrupted: Bool = false,
+            isSettled: Bool = true
+        ) {
             self.blocks = blocks
+            self.usage = usage
+            self.messageId = messageId
             self.isStreaming = isStreaming
             self.interrupted = interrupted
             self.isSettled = isSettled
