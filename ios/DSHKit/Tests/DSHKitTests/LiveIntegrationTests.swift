@@ -90,10 +90,11 @@ final class LiveIntegrationTests: XCTestCase {
         try requireLive()
         let client = makeClient()
         let sessions = try await client.listSessions()
+        // 要挑**足够长**的会话：短会话一页就到底，测不出"往前翻"。
         let target = try XCTUnwrap(
-            sessions.filter { !$0.sessionId.hasPrefix("im:") && $0.asOfSeq > 40 }
-                .min { $0.asOfSeq < $1.asOfSeq },
-            "需要一个 seq>40 的会话"
+            sessions.filter { !$0.sessionId.hasPrefix("im:") && $0.asOfSeq > 300 }
+                .max { $0.asOfSeq < $1.asOfSeq },
+            "需要一个 seq>300 的会话"
         )
 
         var cursor = -1
@@ -109,6 +110,26 @@ final class LiveIntegrationTests: XCTestCase {
 
         let page = try await client.page(sessionId: target.sessionId, throughSeq: cursor, maxMessages: 20)
         XCTAssertFalse(page.events.isEmpty, "向上补一页应该拿到事件")
+
+        // **真正往前翻**：返回体里没有 `cursor`，所以不能指望"用返回的游标再翻一页"。
+        // 要把手里最老的 seq 传进 `beforeSeq`。不这么做的话游标永远不前进，
+        // 反复点只会拿回同一页 —— 去重之后等于没动（「载入更早的内容」点了没反应）。
+        let oldest = try XCTUnwrap(page.events.map(\.seq).min())
+        let earlier = try await client.page(
+            sessionId: target.sessionId,
+            throughSeq: cursor,
+            beforeSeq: Int(oldest),
+            maxMessages: 20
+        )
+        XCTAssertFalse(earlier.events.isEmpty, "再往前一页也要拿得到")
+        XCTAssertLessThan(
+            try XCTUnwrap(earlier.events.map(\.seq).max()), oldest,
+            "`beforeSeq` 必须真的往回翻，而不是又给一遍同一页"
+        )
+        XCTAssertTrue(
+            Set(page.events.map(\.seq)).isDisjoint(with: Set(earlier.events.map(\.seq))),
+            "两页不该有重叠"
+        )
         let seqs = page.events.map(\.seq)
         XCTAssertEqual(seqs, seqs.sorted(), "页内必须按 seq 升序")
         XCTAssertEqual(Set(seqs).count, seqs.count, "页内不能有重复 seq")

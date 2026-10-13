@@ -70,7 +70,11 @@ public actor DSHClient {
     // MARK: - 会话流
 
     /// `session/follow`。首帧恒为 `snapshot`，其后是 `event` 与（可选）`assistant-stream`。
-    public nonisolated func follow(sessionId: String, assistantStream: Bool = true) -> AsyncThrowingStream<SessionFollowFrame, any Error> {
+    public nonisolated func follow(
+        sessionId: String,
+        assistantStream: Bool = true,
+        maxMessages: Int? = 50
+    ) -> AsyncThrowingStream<SessionFollowFrame, any Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 // `assistantStream` 在描述符里是字面量 `true`：**传 false 会被边界校验拒掉**
@@ -83,6 +87,10 @@ public actor DSHClient {
                     ])
                 ]
                 if assistantStream { request["assistantStream"] = .bool(true) }
+                // **必须绑定量**：不传的话宿主把整份日志一次性推回来，
+                // 大会话又慢又占内存，而且 `hasMore` 永远为 false ——
+                // 「载入更早的内容」就成了一个点了没反应的按钮（实测）。
+                if let maxMessages { request["maxMessages"] = .number(Double(max(1, maxMessages))) }
 
                 let stream = await self.mux.open(
                     endpoint: "session/follow",
@@ -143,6 +151,12 @@ public actor DSHClient {
     }
 
     /// `session/page`。**必须带 `throughSeq`**（取自 follow 快照的 `cursor`）。
+    /// 向上补一页历史。
+    ///
+    /// **`beforeSeq` 才是"往前翻"的开关。** 返回体里**没有** `cursor` 字段
+    /// （实测：`cursor` 是 undefined），所以指望"用返回的游标再翻一页"是不成立的 ——
+    /// 游标永远不前进，反复点只会拿回同一页，去重之后等于没动。
+    /// 正确的做法是把**手里最老的那条 seq** 传进 `beforeSeq`。
     public func page(
         sessionId: String,
         throughSeq: Int,

@@ -92,6 +92,20 @@ struct SessionView: View {
                     }
 
                     if session.hasMoreHistory {
+                        // 顶部哨兵：**往上滑到顶就自动补**，不用非得点按钮。
+                        // 用 GeometryReader 报坐标（iOS 17 兼容），
+                        // 不用 `onScrollGeometryChange`（那是 iOS 18+）。
+                        Color.clear
+                            .frame(height: 1)
+                            .background(
+                                GeometryReader { geometry in
+                                    Color.clear.preference(
+                                        key: TimelineTopOffsetKey.self,
+                                        value: geometry.frame(in: .named(Self.timelineSpace)).minY
+                                    )
+                                }
+                            )
+
                         historyLoader(session)
                     }
 
@@ -177,8 +191,36 @@ struct SessionView: View {
                 guard let newValue else { return }
                 scroll(to: newValue, proxy: proxy)
             }
+            // 补完历史：滚到**新进来的第一条**。
+            // 不做这一步的话，新内容全插在视口上方，屏幕上毫无变化 ——
+            // 用户会以为"点了没反应"（实测就是）。
+            .onChange(of: session.historyScrollTicket) { _, _ in
+                guard let target = session.historyScrollTarget else { return }
+                // 补历史时用户本来就在往上翻，所以**不要**恢复贴底。
+                isFollowingBottom = false
+                withAnimation(.default) { proxy.scrollTo(target, anchor: .top) }
+            }
+            .task {
+                #if DEBUG
+                // 调试用：`defaults write cc.zexa.dshpocket DSHLoadEarlier -bool YES`
+                // 打开后延迟几秒自动补一页历史，便于核对"补完会不会滚到新内容"。
+                if UserDefaults.standard.bool(forKey: "DSHLoadEarlier") {
+                    try? await Task.sleep(for: .seconds(6))
+                    await session.loadOlderHistoryIfNeeded()
+                }
+                #endif
+            }
+            .coordinateSpace(name: Self.timelineSpace)
+            .onPreferenceChange(TimelineTopOffsetKey.self) { offset in
+                // 顶部哨兵进入视口（minY 接近 0 或为正）→ 该补了。
+                guard offset > -120 else { return }
+                Task { await session.loadOlderHistoryIfNeeded() }
+            }
         }
     }
+
+    /// 滚动坐标空间的名字（顶部哨兵用它算自己在视口里的位置）。
+    private static let timelineSpace = "dsh-timeline"
 
     // MARK: 局部
 
@@ -399,5 +441,14 @@ struct SessionView: View {
                 Label("会话操作", systemImage: "ellipsis.circle")
             }
         }
+    }
+}
+
+
+/// 时间线顶部哨兵在视口里的位置。用来做"上滑到底自动补历史"。
+private struct TimelineTopOffsetKey: PreferenceKey {
+    static let defaultValue: CGFloat = .greatestFiniteMagnitude
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = min(value, nextValue())
     }
 }

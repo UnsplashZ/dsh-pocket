@@ -350,6 +350,13 @@ public final class SessionModel {
     /// 所以由模型显式发一个"滚到底"的信号。
     private(set) var scrollToBottomTicket = 0
 
+    /// 补完历史后要滚到哪一条。视图观察 `historyScrollTicket` 做一次 `scrollTo`。
+    ///
+    /// 没有它的话，补进来的内容全在视口**上方**，屏幕上一点变化都没有 ——
+    /// 用户会以为按钮坏了（实测就是）。
+    private(set) var historyScrollTarget: String?
+    private(set) var historyScrollTicket = 0
+
     func requestScrollToBottom() {
         scrollToBottomTicket &+= 1
     }
@@ -372,21 +379,41 @@ public final class SessionModel {
 
     // MARK: 补历史
 
+    /// 向上补一页历史。
+    ///
+    /// 两个曾经让它"点了没反应"的坑：
+    ///   1. 用返回的游标翻页 —— 返回体里**没有 `cursor`**，游标永远不前进，
+    ///      反复点只会拿回同一页（去重后等于没动）。现在用**手里最老的 seq** 当 `beforeSeq`。
+    ///   2. 新内容插在**视口上方**而滚动位置不动 —— 屏幕上什么都不会变。
+    ///      所以补完要给出一个滚动目标（`historyScrollTarget`）。
     func loadOlderHistoryIfNeeded() async {
         guard hasMoreHistory, !isLoadingHistory else { return }
         isLoadingHistory = true
         defer { isLoadingHistory = false }
-        let through = builder.cursor
-        guard through > 0 else { return }
+
+        guard let oldest = builder.items.first?.seq, oldest > 0 else {
+            hasMoreHistory = false
+            return
+        }
         do {
-            let page = try await client.page(sessionId: sessionId, throughSeq: through, maxMessages: 50)
+            let page = try await client.page(
+                sessionId: sessionId,
+                throughSeq: builder.cursor,
+                beforeSeq: Int(oldest),
+                maxMessages: 50
+            )
             guard !page.events.isEmpty else {
                 hasMoreHistory = false
                 return
             }
-            _ = builder.prepend(page: page.events)
+            let delta = builder.prepend(page: page.events)
             hasMoreHistory = page.hasMore
             publish()
+            // 让视图滚到新内容的第一条 —— 否则它插在视口上方，看起来什么都没发生。
+            if let first = delta.inserted.min(by: { $0.seq < $1.seq }) {
+                historyScrollTarget = first.id
+                historyScrollTicket &+= 1
+            }
         } catch {
             failureMessage = (error as? DSHClientError)?.displayMessage ?? error.localizedDescription
             logs.log(.warning, "补历史失败：\(failureMessage ?? "")")
