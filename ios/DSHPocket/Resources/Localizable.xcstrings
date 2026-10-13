@@ -2146,6 +2146,17 @@
         }
       }
     },
+    "待办 %lld/%lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "To-dos %lld/%lld"
+          }
+        }
+      }
+    },
     "待处理": {
       "extractionState": "manual",
       "localizations": {

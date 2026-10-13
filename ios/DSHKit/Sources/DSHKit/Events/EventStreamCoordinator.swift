@@ -217,9 +217,16 @@ public actor EventStreamCoordinator {
     private func failPendingWaterfalls() async {
         let outstanding = pending
         pending.removeAll()
-        for request in outstanding.values {
-            await answer(request, outcome: Self.safeFallback(for: request))
-        }
+        // **绝不代替用户应答。**
+        //
+        // 之前这里会对每条挂起的请求发一个"安全兜底"（审批→unavailable、
+        // 问题→默认选项）—— 用户的原话："网络中断等情况不应该直接触发问题回复"。
+        // 断线是**客户端**的故障，不该替用户做决定：审批会变成"拒绝"，
+        // 选择题会变成"选了默认那个"，而用户根本没看见。
+        //
+        // 正确做法是**什么都不发**：宿主的瀑布流还在等，界面把卡片标成
+        // "这里已经不能回答了"；重连之后宿主会重放（新的 eventId），
+        // 那时用户还能正常答。
         if !outstanding.isEmpty, let abandonmentHandler {
             await abandonmentHandler(Array(outstanding.values))
         }

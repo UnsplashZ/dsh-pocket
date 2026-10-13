@@ -537,6 +537,7 @@ EN: dict[str, str] = {
     "这台电脑没有开启会话搜索索引（session-query 的 openAt 被设成了 never）。":
         "This computer hasn’t enabled the session search index (session-query’s openAt is set to never).",
     "同一工作区": "Same workspace",
+    "待办 %lld/%lld": "To-dos %lld/%lld",
     "目录": "Folder",
     "插队给这一轮": "Steer into this turn",
     # 连接失败的可执行提示
@@ -850,6 +851,7 @@ EN: dict[str, str] = {
     "这台电脑没有开启会话搜索索引（session-query 的 openAt 被设成了 never）。":
         "This computer hasn’t enabled the session search index (session-query’s openAt is set to never).",
     "同一工作区": "Same workspace",
+    "待办 %lld/%lld": "To-dos %lld/%lld",
     "目录": "Folder",
     "删除": "Delete",
 }

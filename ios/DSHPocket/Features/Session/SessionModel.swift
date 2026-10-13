@@ -544,12 +544,21 @@ public final class SessionModel {
         for attachment in snapshotAttachments where !attachment.isImage {
             fileRefs.append(TimelineItem.FileRef(attachmentId: "pending-\(attachment.id)", name: attachment.name))
         }
-        _ = builder.insertOptimisticUserMessage(text: text, images: imageRefs, files: fileRefs, rpcId: rpcId)
+        // **跑着的时候不要乐观插入。**
+        //
+        // 用户："发消息排队时也应该直接去排队，而不是先加入对话框，然后再进入排队。"
+        // 乐观气泡是给"立刻要发出去"用的；排队的话宿主会用
+        // `agent/inbox/spliced` 把它放进队列区，多插一条只会让人看到它
+        // 先出现在时间线上、再跳进队列。
+        let willQueue = isTurnRunning
+        if !willQueue {
+            _ = builder.insertOptimisticUserMessage(text: text, images: imageRefs, files: fileRefs, rpcId: rpcId)
+            isTurnRunning = true
+        }
         draft = ""
         attachments = []
-        isTurnRunning = true
         publish()
-        requestScrollToBottom()
+        if !willQueue { requestScrollToBottom() }
 
         do {
             // 附件：图片**内联 base64** 直接随 prompt 走；文件必须先上传拿 receiptId。

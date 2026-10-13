@@ -65,6 +65,7 @@ struct Composer: View {
     /// 排队面板默认**展开** —— 它出现在屏幕上就说明"有东西在等"，
     /// 这时候收起只会让人多点一下。
     @State private var isQueueExpanded = true
+    @State private var isTodoExpanded = false
     @State private var referenceFiles: [FileReferenceCandidate] = []
     @State private var referenceSessions: [SessionReferenceCandidate] = []
     @State private var referenceTask: Task<Void, Never>?
@@ -85,6 +86,10 @@ struct Composer: View {
 
             // `/` 命令 与 `@` 引用：都做成输入框上方的候选条。
             suggestions
+
+            // 待办在**输入框和排队消息上方**（照桌面端的排布）。
+            // 它回答的是"现在进行到哪了"，放在时间线里会被滚走。
+            todoPanel
 
             // 排队消息是**输入框上方一块可展开的记录**，不是摊在时间线末尾。
             // 桌面端就是这样：它属于"我准备发什么"，不属于"已经聊了什么"。
@@ -400,6 +405,90 @@ struct Composer: View {
         session.draft = text + "@" + value + " "
         referenceFiles = []
         referenceSessions = []
+    }
+
+    // MARK: 待办
+
+    /// 当前待办。
+    ///
+    /// 用户："任务待办应该参考 desktop，在对话框和排队消息上方展示。"
+    /// 放在时间线里会被滚走 —— 而它恰恰是"现在进行到哪了"的答案。
+    @ViewBuilder
+    private var todoPanel: some View {
+        let entries = session.todos
+        if !entries.isEmpty {
+            let done = entries.filter { $0.status == .completed }.count
+            VStack(spacing: 0) {
+                Button {
+                    withAnimation(.snappy) { isTodoExpanded.toggle() }
+                } label: {
+                    HStack(spacing: Token.Spacing.tight) {
+                        Image(systemName: "checklist")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(String(format: String(localized: "待办 %lld/%lld"), done, entries.count))
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 0)
+                        // 进行中的那条**收起时也要看得见** —— 那是最该知道的一条。
+                        if let active = entries.first(where: { $0.status == .inProgress }) {
+                            Text(active.text)
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                        }
+                        Image(systemName: isTodoExpanded ? "chevron.down" : "chevron.up")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.horizontal, Token.Spacing.gutter)
+                    .frame(height: 36)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(String(format: String(localized: "待办 %lld/%lld"), done, entries.count)))
+
+                if isTodoExpanded {
+                    Divider().padding(.leading, Token.Spacing.gutter)
+                    ForEach(entries) { entry in
+                        HStack(alignment: .top, spacing: Token.Spacing.tight) {
+                            Image(systemName: symbol(for: entry.status))
+                                .font(.caption2)
+                                .foregroundStyle(tint(for: entry.status))
+                                .frame(width: 16)
+                            Text(entry.text)
+                                .font(.footnote)
+                                .foregroundStyle(entry.status == .completed ? .secondary : .primary)
+                                .strikethrough(entry.status == .completed)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, Token.Spacing.gutter)
+                        .padding(.vertical, 3)
+                    }
+                }
+            }
+            .background(.bar)
+            .overlay(alignment: .top) { Rectangle().fill(Color(.separator)).frame(height: 0.5) }
+            .overlay(alignment: .bottom) { Rectangle().fill(Color(.separator)).frame(height: 0.5) }
+        }
+    }
+
+    private func symbol(for status: TimelineItem.TodoEntry.Status) -> String {
+        switch status {
+        case .completed: return "checkmark.circle.fill"
+        case .inProgress: return "circle.dotted"
+        case .pending: return "circle"
+        }
+    }
+
+    private func tint(for status: TimelineItem.TodoEntry.Status) -> Color {
+        switch status {
+        case .completed: return .secondary
+        case .inProgress: return .accentColor
+        // `Color.tertiary` 不是 `Color`（它是 `some ShapeStyle`），用具体的灰。
+        case .pending: return Color(.tertiaryLabel)
+        }
     }
 
     // MARK: 排队消息

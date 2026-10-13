@@ -65,8 +65,11 @@ struct TimelineRow: View {
                 ToolRow(call: call)
             }
 
-        case .todo(let list):
-            TodoCard(list: list)
+        case .todo:
+            // 待办**不在时间线里**了 —— 挪到输入框上方那块常驻面板
+            // （见 Composer.todoPanel）。放在这里会被滚走，
+            // 而它恰恰是"现在进行到哪了"的答案。
+            EmptyView()
 
         case .approval(let approval):
             ApprovalCard(approval: approval, item: item, pendingArguments: pendingArguments(for: approval))
