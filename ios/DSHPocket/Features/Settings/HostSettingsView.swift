@@ -13,10 +13,10 @@ struct HostSettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
 
-    @State private var query = ""
     @State private var showModelPicker = false
-    @State private var pendingDisable: HostPlugin?
-    @State private var workingPluginId: String?
+    @State private var showAllPlugins = false
+    @State private var pendingDisableBundle: HostBundle?
+    @State private var workingBundleName: String?
     @State private var errorMessage: String?
 
     var body: some View {
@@ -29,16 +29,28 @@ struct HostSettingsView: View {
                     }
                 } else {
                     modelSection
-                    pluginsSection
+                    bundlesSection
+                    // 一级页只放"包"。包里的单个插件（本机 202 条）挪到二级页，
+                    // 那里有搜索 —— 平铺在一级页完全看不清。
+                    Section {
+                        Button {
+                            showAllPlugins = true
+                        } label: {
+                            LabeledContent {
+                                Text(String(model.hostPlugins.count))
+                                    .foregroundStyle(.secondary)
+                            } label: {
+                                Label("全部插件", systemImage: "list.bullet.rectangle")
+                            }
+                        }
+                        .disabled(model.hostPlugins.isEmpty)
+                    } footer: {
+                        Text("包里面的单个插件。平时不用管，排查问题时才需要看。")
+                    }
                 }
             }
             .navigationTitle("电脑设置")
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(
-                text: $query,
-                placement: .navigationBarDrawer(displayMode: .always),
-                prompt: Text("搜索插件")
-            )
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("完成") { dismiss() }
@@ -52,18 +64,21 @@ struct HostSettingsView: View {
             .sheet(isPresented: $showModelPicker) {
                 DefaultModelPickerSheet()
             }
+            .sheet(isPresented: $showAllPlugins) {
+                PluginDetailView()
+            }
             .confirmationDialog(
-                "停用这个插件？",
-                isPresented: Binding(get: { pendingDisable != nil }, set: { if !$0 { pendingDisable = nil } }),
+                "停用这个插件包？",
+                isPresented: Binding(get: { pendingDisableBundle != nil }, set: { if !$0 { pendingDisableBundle = nil } }),
                 titleVisibility: .visible
             ) {
                 Button("停用", role: .destructive) {
-                    if let plugin = pendingDisable { toggle(plugin, to: false) }
-                    pendingDisable = nil
+                    if let bundle = pendingDisableBundle { toggle(bundle, to: false) }
+                    pendingDisableBundle = nil
                 }
-                Button("取消", role: .cancel) { pendingDisable = nil }
+                Button("取消", role: .cancel) { pendingDisableBundle = nil }
             } message: {
-                Text("停用后，依赖它的功能会立刻失效（比如 IM 插件停掉之后频道会话就不再更新）。在电脑上重启 DSH 也能恢复。")
+                Text("停用后，这个包里提供的功能会立刻失效（比如 IM Connect 停掉之后频道会话就不再更新）。在电脑上重启 DSH 也能恢复。")
             }
             .alert("改不了", isPresented: Binding(
                 get: { errorMessage != nil },
@@ -116,39 +131,218 @@ struct HostSettingsView: View {
         return provider.isEmpty ? model : "\(provider) / \(model)"
     }
 
-    // MARK: 插件
+    // MARK: 插件（包级别）
 
+    /// 只展示**包**，不展示包里的单个插件。
+    ///
+    /// `listPlugins` 在本机是 202 条（`dsh-base` 一个包就 94 行），平铺出来完全看不清。
+    /// 桌面端的「插件」页展示的就是这一层（本机 17 个包），每个带人类可读的标题与说明。
     @ViewBuilder
-    private var pluginsSection: some View {
-        if model.hostPlugins.isEmpty {
+    private var bundlesSection: some View {
+        if model.hostBundles.isEmpty {
             Section {
-                Text("没有读到插件清单。")
+                Text(model.connection.isConnected
+                     ? String(localized: "正在读取插件包…")
+                     : String(localized: "先连上电脑才能改这些。"))
                     .foregroundStyle(.secondary)
             } header: {
                 Text("插件")
             }
         } else {
-            Section {
-                ForEach(enabledPlugins) { plugin in
-                    pluginRow(plugin)
-                }
-            } header: {
-                Text("已启用 · \(enabledPlugins.count)")
-            }
-
-            if !disabledPlugins.isEmpty {
+            if !officialBundles.isEmpty {
                 Section {
-                    ForEach(disabledPlugins) { plugin in
-                        pluginRow(plugin)
+                    ForEach(officialBundles) { bundle in
+                        bundleRow(bundle)
                     }
                 } header: {
-                    Text("已停用 · \(disabledPlugins.count)")
+                    Text(String(format: String(localized: "官方 · %lld"), officialBundles.count))
+                }
+            }
+            if !installedBundles.isEmpty {
+                Section {
+                    ForEach(installedBundles) { bundle in
+                        bundleRow(bundle)
+                    }
+                } header: {
+                    Text(String(format: String(localized: "已安装 · %lld"), installedBundles.count))
+                }
+            }
+            if !systemBundles.isEmpty {
+                Section {
+                    ForEach(systemBundles) { bundle in
+                        bundleRow(bundle)
+                    }
+                } header: {
+                    Text("系统")
+                } footer: {
+                    Text("这些是组成 DSH 本身的层，不能单独关掉。")
                 }
             }
         }
     }
 
-    private func pluginRow(_ plugin: HostPlugin) -> some View {
+    private func bundleRow(_ bundle: HostBundle) -> some View {
+        HStack(alignment: .top, spacing: Token.Spacing.tight) {
+            Image(systemName: bundle.isOfficial ? "shippingbox" : "puzzlepiece.extension")
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .frame(width: 24)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: Token.Spacing.hairline) {
+                    Text(bundle.title)
+                        .font(.body)
+                        .lineLimit(1)
+                    if bundle.optional {
+                        Text("实验性")
+                            .font(.caption2)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Color(.tertiarySystemFill), in: Capsule())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                // 说明是这一层最有价值的东西 —— 标题之外得知道它是干嘛的。
+                if let summary = bundle.summary, !summary.isEmpty {
+                    Text(summary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if bundle.title != bundle.name {
+                    Text(bundle.name)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
+            Spacer(minLength: Token.Spacing.tight)
+
+            if workingBundleName == bundle.name {
+                ProgressView().controlSize(.small)
+            } else if bundle.isToggleable {
+                Toggle("", isOn: Binding(
+                    get: { bundle.enabled },
+                    set: { newValue in
+                        // 停用比启用危险得多（可能把正在用的能力掐掉），所以要确认；
+                        // 启用是"恢复"，直接生效。
+                        if newValue { toggle(bundle, to: true) } else { pendingDisableBundle = bundle }
+                    }
+                ))
+                .labelsHidden()
+                .accessibilityLabel(Text(bundle.title))
+            } else {
+                Image(systemName: "lock")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .accessibilityLabel(Text(bundle.readOnlyExplanation ?? String(localized: "不可修改")))
+            }
+        }
+        .frame(minHeight: Token.minimumHitTarget)
+    }
+
+    /// 官方（随应用分发）、可选。
+    private var officialBundles: [HostBundle] {
+        model.hostBundles
+            .filter { $0.isOfficial && $0.optional }
+            .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+    }
+
+    /// 用户自己装的。
+    private var installedBundles: [HostBundle] {
+        model.hostBundles
+            .filter { !$0.isOfficial && $0.installed }
+            .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+    }
+
+    /// 组成 DSH 本身的层，以及别的不可开关的包。
+    private var systemBundles: [HostBundle] {
+        model.hostBundles
+            .filter { !$0.isToggleable || (!$0.optional && !$0.installed) }
+            .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+    }
+
+    private func toggle(_ bundle: HostBundle, to enabled: Bool) {
+        workingBundleName = bundle.name
+        Task {
+            errorMessage = await model.setBundleEnabled(name: bundle.name, enabled: enabled)
+            workingBundleName = nil
+        }
+    }
+}
+
+/// 二级页：**全部插件**（包里的单个插件）。
+///
+/// 一级页只展示包（17 个）。这一层有 202 条，只有按需查阅才有意义，
+/// 所以单独一页 + 搜索，不挤在一级页里。
+struct PluginDetailView: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var query = ""
+    @State private var pendingDisable: HostPlugin?
+    @State private var workingPluginId: String?
+    @State private var errorMessage: String?
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(enabledPlugins) { plugin in
+                        row(plugin)
+                    }
+                } header: {
+                    Text(String(format: String(localized: "已启用 · %lld"), enabledPlugins.count))
+                }
+
+                if !disabledPlugins.isEmpty {
+                    Section {
+                        ForEach(disabledPlugins) { plugin in
+                            row(plugin)
+                        }
+                    } header: {
+                        Text(String(format: String(localized: "已停用 · %lld"), disabledPlugins.count))
+                    }
+                }
+            }
+            .navigationTitle("全部插件")
+            .navigationBarTitleDisplayMode(.inline)
+            .searchable(
+                text: $query,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: Text("搜索插件")
+            )
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") { dismiss() }
+                }
+            }
+            .confirmationDialog(
+                "停用这个插件？",
+                isPresented: Binding(get: { pendingDisable != nil }, set: { if !$0 { pendingDisable = nil } }),
+                titleVisibility: .visible
+            ) {
+                Button("停用", role: .destructive) {
+                    if let plugin = pendingDisable { toggle(plugin, to: false) }
+                    pendingDisable = nil
+                }
+                Button("取消", role: .cancel) { pendingDisable = nil }
+            } message: {
+                Text("停用后，依赖它的功能会立刻失效。在电脑上重启 DSH 也能恢复。")
+            }
+            .alert("改不了", isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )) {
+                Button("知道了", role: .cancel) { errorMessage = nil }
+            } message: {
+                Text(errorMessage ?? "")
+            }
+        }
+    }
+
+    private func row(_ plugin: HostPlugin) -> some View {
         HStack(alignment: .top, spacing: Token.Spacing.tight) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(plugin.title)
@@ -176,16 +370,12 @@ struct HostSettingsView: View {
                 Toggle("", isOn: Binding(
                     get: { plugin.enabled },
                     set: { newValue in
-                        // 停用比启用危险得多（可能把正在用的能力掐掉），所以停用要确认；
-                        // 启用是"恢复"，直接生效。
                         if newValue { toggle(plugin, to: true) } else { pendingDisable = plugin }
                     }
                 ))
                 .labelsHidden()
                 .accessibilityLabel(Text(plugin.title))
-                .accessibilityHint(Text(plugin.enabled ? "停用这个插件" : "启用这个插件"))
             } else {
-                // 不能开关的要说明为什么，而不是摆一个灰开关让人猜。
                 Image(systemName: "lock")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
@@ -203,7 +393,7 @@ struct HostSettingsView: View {
         }
     }
 
-    private var filteredPlugins: [HostPlugin] {
+    private var filtered: [HostPlugin] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return model.hostPlugins }
         return model.hostPlugins.filter {
@@ -214,11 +404,11 @@ struct HostSettingsView: View {
     }
 
     private var enabledPlugins: [HostPlugin] {
-        filteredPlugins.filter(\.enabled).sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        filtered.filter(\.enabled).sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
     }
 
     private var disabledPlugins: [HostPlugin] {
-        filteredPlugins.filter { !$0.enabled }.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        filtered.filter { !$0.enabled }.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
     }
 }
 

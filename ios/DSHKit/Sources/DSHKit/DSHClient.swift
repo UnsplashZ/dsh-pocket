@@ -420,6 +420,28 @@ public actor DSHClient {
         ])
     }
 
+    // MARK: - 主机插件包
+
+    /// 主机上的插件**包**清单。
+    ///
+    /// 界面展示这一层：`listPlugins` 是包里的单个插件（本机 202 条），
+    /// 平铺出来没法看；这里是包（本机 17 条），每个带人类可读的标题与说明。
+    public func listBundles() async throws -> [HostBundle] {
+        let value = try await rpc.call(method: "pluginManager/listBundles", payload: ["args": .object([:])])
+        return (value.arrayValue ?? []).map(HostBundle.init(json:))
+    }
+
+    /// 开关一个插件包。`name` 用包的 `name`。
+    @discardableResult
+    public func setBundleEnabled(name: String, enabled: Bool) async throws -> JSONValue {
+        try await rpc.call(method: "pluginManager/setBundleEnabled", payload: [
+            "args": .object([
+                "name": .string(name),
+                "enabled": .bool(enabled),
+            ])
+        ])
+    }
+
     // MARK: - 主机设置
 
     /// 读取主机的设置命名空间（`settings/describe`）。

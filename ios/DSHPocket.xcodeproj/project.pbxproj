@@ -10,6 +10,7 @@
 		07D4AFEDDD493F17EDB21685 /* DSHPocketApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 924598A2E62CF91E30377D87 /* DSHPocketApp.swift */; };
 		1124AFA07CF308417A5A1867 /* SessionCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD212F40CEBB2E882DB37AE2 /* SessionCacheTests.swift */; };
 		122EA2D82CF1FAF439A5C61E /* TimelineItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 332E9727DA5B522FCF725E72 /* TimelineItem.swift */; };
+		15DACF3340A6F41D53E0005F /* HostBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 836591110B5A4AC8A0E97A47 /* HostBundle.swift */; };
 		175ACEDFC12D7C260D7A9529 /* MarkdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5363D3D5D59ADA73D62643C /* MarkdownView.swift */; };
 		180EF74A2CCF87F7403C8622 /* PermissionPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26456AC49423F3B6A1F97ACE /* PermissionPreset.swift */; };
 		1F3BC6A32A38E2FFA850E0A9 /* LocalProxyServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57FD4C43AD3A7045506EDF86 /* LocalProxyServer.swift */; };
@@ -187,6 +188,7 @@
 		7C5A7DC6BEFF48AE77F6319B /* HostCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostCoordinator.swift; sourceTree = "<group>"; };
 		7D76E6059B978ABEE1B99C48 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		8228B8138EE7502853E22F63 /* DiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsView.swift; sourceTree = "<group>"; };
+		836591110B5A4AC8A0E97A47 /* HostBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostBundle.swift; sourceTree = "<group>"; };
 		890CF718E11E93024E730F42 /* TimelineTurn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineTurn.swift; sourceTree = "<group>"; };
 		924598A2E62CF91E30377D87 /* DSHPocketApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSHPocketApp.swift; sourceTree = "<group>"; };
 		96B6F17E1CE1FA88D208E4B8 /* SessionRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRow.swift; sourceTree = "<group>"; };
@@ -294,6 +296,7 @@
 		1AFAB05C8488909ABC1473FA /* Model */ = {
 			isa = PBXGroup;
 			children = (
+				836591110B5A4AC8A0E97A47 /* HostBundle.swift */,
 				CBD739A226633E29134DDDE5 /* HostPlugin.swift */,
 				33BA4D73DF3106AB6973C28A /* ModelCatalog.swift */,
 				26456AC49423F3B6A1F97ACE /* PermissionPreset.swift */,
@@ -720,6 +723,7 @@
 				A4C4DA46B5DCBB456010BE0A /* DSHError.swift in Sources */,
 				44599F8D0882CE97D7645F7A /* DSHLog.swift in Sources */,
 				752B2C890AE4EA28F18A1D09 /* EventStreamCoordinator.swift in Sources */,
+				15DACF3340A6F41D53E0005F /* HostBundle.swift in Sources */,
 				2F2037A1772AE4F088992348 /* HostEvent.swift in Sources */,
 				7D1604DE7CF072C44796FD1E /* HostPlugin.swift in Sources */,
 				9841EB1AD4F981BAEAC319B4 /* HostProvider.swift in Sources */,

@@ -536,13 +536,24 @@
         }
       }
     },
-    "停用后，依赖它的功能会立刻失效（比如 IM 插件停掉之后频道会话就不再更新）。在电脑上重启 DSH 也能恢复。": {
+    "停用后，依赖它的功能会立刻失效。在电脑上重启 DSH 也能恢复。": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Anything depending on it stops working immediately (disable the IM plugin and channel sessions stop updating). Restarting DSH on your computer restores it."
+            "value": "Anything depending on it stops working immediately. Restarting DSH on your computer restores it."
+          }
+        }
+      }
+    },
+    "停用后，这个包里提供的功能会立刻失效（比如 IM Connect 停掉之后频道会话就不再更新）。在电脑上重启 DSH 也能恢复。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Everything this bundle provides stops working immediately (disable IM Connect and channel sessions stop updating). Restarting DSH on your computer restores it."
           }
         }
       }
@@ -587,6 +598,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "All workspaces"
+          }
+        }
+      }
+    },
+    "全部插件": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All plugins"
           }
         }
       }
@@ -741,6 +763,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Assistant reply"
+          }
+        }
+      }
+    },
+    "包里面的单个插件。平时不用管，排查问题时才需要看。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The individual plugins inside each bundle. You rarely need these — only when troubleshooting."
           }
         }
       }
@@ -1076,6 +1109,28 @@
         }
       }
     },
+    "官方 · %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Official · %lld"
+          }
+        }
+      }
+    },
+    "实验性": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Experimental"
+          }
+        }
+      }
+    },
     "审批在你的手机上决定": {
       "extractionState": "manual",
       "localizations": {
@@ -1245,12 +1300,6 @@
             "state": "translated",
             "value": "Disabled · %lld"
           }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已停用 · %lld"
-          }
         }
       }
     },
@@ -1273,12 +1322,6 @@
             "state": "translated",
             "value": "Enabled · %lld"
           }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已启用 · %lld"
-          }
         }
       }
     },
@@ -1289,6 +1332,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Always allowed"
+          }
+        }
+      }
+    },
+    "已安装 · %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installed · %lld"
           }
         }
       }
@@ -2324,6 +2378,17 @@
         }
       }
     },
+    "正在读取插件包…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading plugin bundles…"
+          }
+        }
+      }
+    },
     "正在运行": {
       "extractionState": "manual",
       "localizations": {
@@ -2408,17 +2473,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "No snapshot received"
-          }
-        }
-      }
-    },
-    "没有读到插件清单。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Couldn’t read the plugin list."
           }
         }
       }
@@ -2975,6 +3029,17 @@
         }
       }
     },
+    "系统": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System"
+          }
+        }
+      }
+    },
     "给电脑说点什么…": {
       "extractionState": "manual",
       "localizations": {
@@ -3346,6 +3411,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "This folder is empty"
+          }
+        }
+      }
+    },
+    "这些是组成 DSH 本身的层，不能单独关掉。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "These are the layers DSH itself is made of — they can’t be turned off individually."
           }
         }
       }

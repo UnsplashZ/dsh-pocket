@@ -594,6 +594,23 @@ EN: dict[str, str] = {
     "%lld 步": "%lld steps",
     "展开这一轮的过程": "Expand this turn’s steps",
     "收起这一轮的过程": "Collapse this turn’s steps",
+    # 插件包
+    "官方 · %lld": "Official · %lld",
+    "已安装 · %lld": "Installed · %lld",
+    "系统": "System",
+    "实验性": "Experimental",
+    "正在读取插件包…": "Loading plugin bundles…",
+    "这些是组成 DSH 本身的层，不能单独关掉。": "These are the layers DSH itself is made of — they can’t be turned off individually.",
+    "全部插件": "All plugins",
+    "包里面的单个插件。平时不用管，排查问题时才需要看。":
+        "The individual plugins inside each bundle. You rarely need these — only when troubleshooting.",
+    "停用这个插件包？": "Disable this plugin bundle?",
+    "停用后，这个包里提供的功能会立刻失效（比如 IM Connect 停掉之后频道会话就不再更新）。在电脑上重启 DSH 也能恢复。":
+        "Everything this bundle provides stops working immediately (disable IM Connect and channel sessions stop updating). Restarting DSH on your computer restores it.",
+    "停用后，依赖它的功能会立刻失效。在电脑上重启 DSH 也能恢复。":
+        "Anything depending on it stops working immediately. Restarting DSH on your computer restores it.",
+    "系统组件，不能关": "System component — can’t be disabled",
+    "不可修改": "Not editable",
 }
 
 # 哪些插值表达式是整数。判错的后果是英文界面上显示成 `%lld` 字面量，

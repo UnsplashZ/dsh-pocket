@@ -59,8 +59,13 @@ public final class AppModel {
     /// 已归档的会话 ID。**只有 `workspace/follow` 会告诉你这个** —— `session/list` 里没有。
     private(set) var archivedSessionIds: Set<String> = []
     private(set) var pinnedSessionIds: Set<String> = []
-    /// 主机上的插件清单。用来决定某些入口要不要显示（比如"频道"）。
+    /// 主机上的插件清单（**单个插件**，本机 202 条）。
+    ///
+    /// 界面上不直接平铺这一层 —— 那是包**里面**的东西，铺出来没法看。
+    /// 它的用处是判断某些入口要不要显示（比如"频道"），以及二级页里按需查阅。
     private(set) var hostPlugins: [HostPlugin] = []
+    /// 主机上的插件**包**（本机 17 条）。设置页展示的是这一层，跟桌面端一致。
+    private(set) var hostBundles: [HostBundle] = []
     /// 主机设置（`settings/describe`）。
     private(set) var hostSettings: SettingsSnapshot?
     private(set) var isLoadingHostSettings = false
@@ -602,6 +607,24 @@ public final class AppModel {
         } catch {
             // 拉不到就当没有 —— 这时频道入口会退回"有 im: 会话才显示"。
             logs.log(.debug, "插件清单拉取失败：\(error.localizedDescription)")
+        }
+        do {
+            hostBundles = try await client.listBundles()
+            logs.log(.info, "主机插件包 \(hostBundles.count) 个")
+        } catch {
+            logs.log(.debug, "插件包拉取失败：\(error.localizedDescription)")
+        }
+    }
+
+    /// 开关一个插件包。
+    func setBundleEnabled(name: String, enabled: Bool) async -> String? {
+        do {
+            try await client.setBundleEnabled(name: name, enabled: enabled)
+            await refreshHostPlugins()
+            logs.log(.info, "插件包 \(name) → \(enabled ? "启用" : "停用")")
+            return nil
+        } catch {
+            return (error as? DSHClientError)?.displayMessage ?? error.localizedDescription
         }
     }
 

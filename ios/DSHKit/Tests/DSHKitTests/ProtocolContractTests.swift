@@ -270,6 +270,47 @@ final class ProtocolContractTests: XCTestCase {
         XCTAssertEqual(plugins[3].statusLabel, String(localized: "已停用"))
     }
 
+    // MARK: 插件包
+
+    /// `meta.title` / `meta.description` **两种形态都存在**：
+    /// 纯字符串（`dshmarket`）和本地化字典（`dsh-context` 的 `{en, zh}`）。
+    /// 只认一种的话，另一半包的标题会退化成模块名 —— 界面上看起来"没翻译"。
+    func testBundleParsesBothPlainAndLocalizedMeta() throws {
+        let bundles = [
+            Fixture.json(#"""
+            {"name":"dshmarket","version":"1.66.17","enabled":true,"installed":true,"optional":false,
+             "removable":true,"rows":[{}],
+             "meta":{"title":"插件市场","description":"逛一逛，点一下，装好。"}}
+            """#),
+            Fixture.json(#"""
+            {"name":"@deepseek-ai/dsh-experimental-auto-review","enabled":false,"optional":true,"installed":false,
+             "rows":[{},{}],
+             "meta":{"title":{"en":"Auto review","zh":"自动授权审查"},
+                     "description":{"en":"Automatic review mode.","zh":"提供自动审查权限模式。"}}}
+            """#),
+            Fixture.json(#"""
+            {"name":"@deepseek-ai/dsh-base","enabled":true,"installed":false,"optional":false,
+             "readOnlyReason":"management-required","rows":[{},{},{}]}
+            """#),
+        ].map(HostBundle.init(json:))
+
+        XCTAssertEqual(bundles[0].title, "插件市场", "纯字符串形态")
+        XCTAssertEqual(bundles[0].summary, "逛一逛，点一下，装好。")
+        XCTAssertTrue(bundles[0].installed)
+        XCTAssertTrue(bundles[0].isToggleable)
+
+        XCTAssertEqual(bundles[1].title, "自动授权审查", "本地化字典形态要按语言选")
+        XCTAssertEqual(bundles[1].summary, "提供自动审查权限模式。")
+        XCTAssertTrue(bundles[1].optional, "官方可选包 → 界面上标「实验性」")
+        XCTAssertTrue(bundles[1].isOfficial)
+
+        // 没有 meta 时退回模块名，不能是空标题
+        XCTAssertEqual(bundles[2].title, "@deepseek-ai/dsh-base")
+        XCTAssertEqual(bundles[2].rowCount, 3)
+        XCTAssertFalse(bundles[2].isToggleable)
+        XCTAssertNotNil(bundles[2].readOnlyExplanation)
+    }
+
     // MARK: 主机设置
 
     func testSettingsSnapshotParsesNamespacesAndOverrideFlag() throws {
