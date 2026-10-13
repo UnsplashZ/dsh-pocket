@@ -428,6 +428,14 @@ public struct QueuedMessage: Sendable, Hashable, Identifiable {
     public var imageCount: Int
     public var fileCount: Int
 
+    public init(id: String, text: String, rpcId: String?, imageCount: Int, fileCount: Int) {
+        self.id = id
+        self.text = text
+        self.rpcId = rpcId
+        self.imageCount = imageCount
+        self.fileCount = fileCount
+    }
+
     public init(json: JSONValue) {
         self.id = json.string("id") ?? UUID().uuidString
         let content = json.array("content") ?? []

@@ -150,7 +150,9 @@ struct FilesSheet: View {
         isLoading = true
         defer { isLoading = false }
         do {
-            entries = try await model.client.listFiles(scopeId: scopeId, path: path.isEmpty ? nil : path)
+            // **根目录要传 `.`，不能省略 `path`** —— 服务端把 `path` 当必填，
+            // 省略会被拒：`missing "path"`（实测，工作区文件点开就是这样读不着东西）。
+            entries = try await model.client.listFiles(scopeId: scopeId, path: path.isEmpty ? "." : path)
                 .sorted { lhs, rhs in
                     if lhs.isDirectory != rhs.isDirectory { return lhs.isDirectory }
                     return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending

@@ -54,6 +54,8 @@ public final class SessionModel {
     private(set) var modelSelection: ModelSelection?
     /// 这个会话当前的文件读写/审批档位（`projections.permissions.currentValue`）。
     private(set) var currentPermission: String?
+    /// 从主机拉到的权限档位清单（含说明）。空的时候用内置三个兜底。
+    private(set) var permissionPresetOptions: [PermissionPreset] = []
     /// 排队中的消息（`projections.inbox`）。
     ///
     /// 队列**不在会话日志里** —— 实测：轮次跑着的时候发一条，日志里一条 `user/message`
@@ -152,6 +154,10 @@ public final class SessionModel {
         await subscribe()
         // 评价是低频操作，打开时拉一次就够（之后本地维护）。
         await loadFeedbacks()
+        // 权限档位也一样：拉一次，悬浮窗直接用。
+        if let catalog = try? await client.permissionPresets() {
+            permissionPresetOptions = catalog.options
+        }
     }
 
     func close() {
@@ -369,10 +375,9 @@ public final class SessionModel {
         if let value = values.string("permissions.currentValue") ?? values["permissions"]?.string("currentValue") {
             currentPermission = value
         }
-        let inbox = InboxState(json: values["inbox"] ?? .object([:]))
-        if inbox.total != queuedMessages.count || inbox.nextTurn.map(\.id) != queuedMessages.map(\.id) {
-            publishQueuedMessages(inbox)
-        }
+        // 队列**不从这里读** —— 投影只在快照时更新一次，
+        // 电脑上删掉排队任务后手机要退出会话才消失（实测）。
+        // 它由 `publish()` 从日志推导，见 `publishQueuedMessages()`。
         if let raw = values["modelSelection"] {
             // 嵌套形状：`{lastUsed: {...}, next: {...}}`。当扁平读会永远拿到空值。
             let chosen = raw["next"] ?? raw["lastUsed"] ?? raw
@@ -400,6 +405,7 @@ public final class SessionModel {
             return nil
         })
         timelineBlocks = builder.timelineBlocks(showRawEvents: settings.showRawEvents)
+        publishQueuedMessages()
     }
 
     /// 每次"应该滚到底"时自增。View 观察它做一次 `scrollTo`。
@@ -620,18 +626,19 @@ public final class SessionModel {
         modelSelection = ModelSelection(provider: provider, model: model, reasoningEffort: reasoningEffort)
     }
 
-    /// 队列变了：更新列表，并把已经被队列接管的乐观插入撤掉。
+    /// 队列变了：**从日志推导**，并把已经被队列接管的乐观插入撤掉。
     ///
     /// 不撤的话同一句话会显示两遍 —— 一遍是"发送中…"的乐观气泡，
     /// 一遍是"排队中"的队列项。
-    private func publishQueuedMessages(_ inbox: InboxState) {
-        queuedMessages = inbox.nextTurn + inbox.nextStep
+    private func publishQueuedMessages() {
+        queuedMessages = builder.queuedMessages
         let queuedRpcIds = Set(queuedMessages.compactMap(\.rpcId))
         guard !queuedRpcIds.isEmpty else { return }
+        var removed = false
         for rpcId in queuedRpcIds {
-            _ = builder.removeOptimisticUserMessage(rpcId: rpcId)
+            if !builder.removeOptimisticUserMessage(rpcId: rpcId).removedIds.isEmpty { removed = true }
         }
-        publish()
+        if removed { publish() }
     }
 
     // MARK: 评价 / 分支
@@ -700,6 +707,17 @@ public final class SessionModel {
         try await client.permissionPresets()
     }
 
+    /// 悬浮窗要用的三选一。
+    ///
+    /// 拉不到清单时**退回硬编码的三个** —— 这三个是 DSH 内置的档位名，
+    /// 比"悬浮窗空白"强（拉不到通常只是那一瞬间的网络问题）。
+    var permissionOptions: [PermissionPreset] {
+        if !permissionPresetOptions.isEmpty { return permissionPresetOptions }
+        return ["read-only", "workspace-write", "danger-full-access"].map {
+            PermissionPreset(value: $0, name: $0)
+        }
+    }
+
     /// 切换权限档位。走斜杠命令 `/permission <preset>` ——
     /// 这是 DSH 客户端协议里唯一能改当前会话权限的入口。
     func selectPermissionPreset(_ preset: String) async throws {
@@ -711,6 +729,18 @@ public final class SessionModel {
             ))
         }
         currentPermission = preset
+    }
+
+    /// 切换权限档位并把失败记下来。
+    ///
+    /// 悬浮窗里直接点选，没有地方展示错误 —— 所以在这里兜住，
+    /// 写进 `failureMessage`（会话顶部的状态条会显示）。
+    func applyPermissionPreset(_ preset: String) async {
+        do {
+            try await selectPermissionPreset(preset)
+        } catch {
+            failureMessage = (error as? DSHClientError)?.displayMessage ?? error.localizedDescription
+        }
     }
 
     /// 模型清单。**失败要抛出去**，让模型页能显示"读不到 + 重试"，

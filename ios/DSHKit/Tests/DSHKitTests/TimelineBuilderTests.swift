@@ -609,6 +609,30 @@ final class TimelineBuilderTests: XCTestCase {
         XCTAssertTrue(durable[0].isConversational, "而且要能渲染出来")
     }
 
+    /// 排队中的消息**从日志推导**，不读投影。
+    ///
+    /// `applyInbox` 本来就在维护这些项（`agent/inbox/spliced` 的 `inserted` 建项、
+    /// 被消化时标 shadowed），所以队列一变就跟着变。
+    ///
+    /// 之前渲染的是 `projections.inbox` —— 那个**只在快照时更新一次**，
+    /// 于是在电脑上删掉排队任务之后，手机上要退出会话再进来才会消失（实测）。
+    func testQueuedMessagesFollowTheLogNotTheProjection() throws {
+        var builder = TimelineBuilder()
+        _ = builder.apply(try Fixture.event("""
+        {"type":"agent/inbox/spliced","seq":1,"time":1791777000000,"data":{"inserted":[{"content":[{"type":"text","text":"排队一"}],"source":{"kind":"user","rpcId":"r1"},"role":"user","id":"m1"}]},"surfaceOp":null}
+        """))
+        _ = builder.apply(try Fixture.event("""
+        {"type":"agent/inbox/spliced","seq":2,"time":1791777000000,"data":{"inserted":[{"content":[{"type":"text","text":"排队二"}],"source":{"kind":"user","rpcId":"r2"},"role":"user","id":"m2"}]},"surfaceOp":null}
+        """))
+        XCTAssertEqual(builder.queuedMessages.map(\.text), ["排队一", "排队二"])
+
+        // 电脑上把队列清掉（`removedCount`）→ 本地**立刻**跟着清
+        _ = builder.apply(try Fixture.event("""
+        {"type":"agent/inbox/spliced","seq":3,"time":1791777000000,"data":{"removedCount":2,"outcome":"claimed"},"surfaceOp":null}
+        """))
+        XCTAssertTrue(builder.queuedMessages.isEmpty, "电脑删掉排队任务后本地要立刻消失，不能等重进会话")
+    }
+
     // MARK: 落盘 / 续拉
 
     /// 折叠状态必须能**原样**往返 —— 恢复之后还能继续增量折叠，而不是只能画。

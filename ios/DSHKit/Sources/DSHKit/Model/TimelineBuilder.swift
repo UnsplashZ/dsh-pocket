@@ -203,6 +203,35 @@ public struct TimelineBuilder: Sendable {
         return false
     }
 
+    /// 排队中的消息。
+    ///
+    /// **从日志推导，不是读投影。** `applyInbox` 本来就在维护这些项
+    /// （`agent/inbox/spliced` 的 `inserted` 建项、被消化时标 shadowed），
+    /// 所以队列一变这里就跟着变。
+    ///
+    /// 之前渲染的是 `projections.inbox` —— 那个**只在快照时更新一次**，
+    /// 于是在电脑上删掉排队任务之后，手机上要退出会话再进来才会消失（实测）。
+    public var queuedMessages: [QueuedMessage] {
+        items
+            .filter { item in
+                guard !item.isShadowed, case .userMessage(let message) = item.kind else { return false }
+                return message.isPending
+            }
+            .sorted { $0.seq < $1.seq }
+            .map { item in
+                guard case .userMessage(let message) = item.kind else {
+                    return QueuedMessage(json: .object([:]))
+                }
+                return QueuedMessage(
+                    id: item.id,
+                    text: message.text,
+                    rpcId: message.rpcId,
+                    imageCount: message.images.count,
+                    fileCount: message.files.count
+                )
+            }
+    }
+
     public var conversationalItems: [TimelineItem] {
         items.filter(\.isConversational)
     }

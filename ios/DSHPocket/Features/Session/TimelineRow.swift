@@ -11,6 +11,9 @@ import SwiftUI
 struct TimelineRow: View {
     let item: TimelineItem
     let session: SessionModel
+    /// 这一轮里"哪一条"该显示操作行（传 `turn.headline?.id`）。
+    /// `nil` = 都不显示（还在跑的轮次）。
+    var actionsFor: String? = nil
 
     /// 找到这条审批对应工具调用的参数。
     ///
@@ -49,6 +52,7 @@ struct TimelineRow: View {
                 session: session,
                 time: item.time,
                 seq: item.seq,
+                showsActions: actionsFor == item.id,
                 isTurnComplete: item.turn.map { session.completedTurns.contains($0) } ?? false
             )
 
@@ -468,14 +472,15 @@ struct TurnGroupView: View {
 
                 // 收起 = 用户消息 + 结论；展开 = 全过程，**都按时间顺序**。
                 ForEach(isExpanded ? turn.expandedItems : turn.collapsedItems) { item in
-                    TimelineRow(item: item, session: session)
+                    TimelineRow(item: item, session: session, actionsFor: turn.headline?.id)
                         .padding(.horizontal, Token.Spacing.gutter)
                         .id(item.id)
                 }
             } else {
-                // 跑着：全展开，实时看得到。
+                // 跑着：全展开，实时看得到。**不给操作行** ——
+                // 还没出最终结果，复制/点赞都没有对象。
                 ForEach(bodyItems) { item in
-                    TimelineRow(item: item, session: session)
+                    TimelineRow(item: item, session: session, actionsFor: nil)
                         .padding(.horizontal, Token.Spacing.gutter)
                         .id(item.id)
                 }
@@ -540,6 +545,11 @@ struct AssistantCard: View {
     let time: Date
     /// 这条消息在日志里的 seq —— 分支要按它切。
     var seq: Double = 0
+    /// 要不要显示操作行（复制/点赞/分支/用量）。
+    ///
+    /// **只有"轮次结束时的最终那条"才显示**：中间那些过场消息上也挂一排按钮
+    /// 会把正文淹掉，而且它们本来就会随轮次一起收起来。
+    var showsActions: Bool = false
     /// 这一轮跑完了没有。决定了思考过程是"边跑边看"还是"收起来"。
     var isTurnComplete: Bool = false
 
@@ -617,11 +627,16 @@ struct AssistantCard: View {
                             .buttonStyle(.plain)
                             .accessibilityHint(Text("展开模型的推理过程"))
                         }
-                        Spacer(minLength: Token.Spacing.hairline)
-                        actionRow
+                        Spacer(minLength: 0)
                         Text(Format.time(time))
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
+                    }
+
+                    // 操作行**单独一行、左对齐** —— 挤在时间旁边会被推到中间，
+                    // 看起来像居中的一排图标（用户："你这个居中对齐好丑"）。
+                    if showsActions {
+                        actionRow
                     }
                 }
             }
@@ -637,7 +652,7 @@ struct AssistantCard: View {
     @ViewBuilder
     private var actionRow: some View {
         if message.hasRenderableContent {
-            HStack(spacing: Token.Spacing.compact) {
+            HStack(spacing: Token.Spacing.tight) {
                 actionIcon("doc.on.doc", label: "复制") {
                     UIPasteboard.general.string = message.plainText
                     copyFeedback += 1

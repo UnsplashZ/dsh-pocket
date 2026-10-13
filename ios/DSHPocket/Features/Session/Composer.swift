@@ -83,6 +83,13 @@ struct Composer: View {
                     .focused(isFocused)
                     .submitLabel(.send)
                     .onSubmit { send() }
+                    // 去掉外层卡片之后，输入框要自己有底 —— 否则文字直接贴在 bar 上。
+                    .padding(.horizontal, Token.Spacing.compact)
+                    .padding(.vertical, Token.Spacing.tight)
+                    .background(
+                        RoundedRectangle(cornerRadius: Token.Radius.bubble, style: .continuous)
+                            .fill(Color(.secondarySystemBackground))
+                    )
                     .accessibilityLabel(Text("消息"))
 
                 HStack(spacing: Token.Spacing.tight) {
@@ -116,66 +123,22 @@ struct Composer: View {
                         contextBar
                     }
 
-                    if isRunning {
-                        // 跑着的时候有三个不同的动作，别再挤成一个按钮：
-                        //   · **排队** —— 排到下一轮（最常用，给文字标签）
-                        //   · **插队** —— 插进正在跑的这一轮（`mode: 'steer'`）
-                        //   · **停止** —— 打断整轮（`session/cancel`）
-                        Button { Task { await session.send(mode: .queue) } } label: {
-                            HStack(spacing: Token.Spacing.hairline) {
-                                Image(systemName: "arrow.up")
-                                    .font(.system(size: Token.Control.glyph - 3, weight: .semibold))
-                                Text("排队")
-                                    .font(.caption.weight(.semibold))
-                            }
-                            .foregroundStyle(canSend ? .white : Color.secondary)
-                            .padding(.horizontal, Token.Spacing.tight)
-                            .frame(height: Token.Control.diameter)
-                            .background(
-                                canSend ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color(.tertiarySystemFill)),
-                                in: Capsule(style: .continuous)
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(!canSend)
-                        .accessibilityLabel(Text("追加排队"))
-                        .accessibilityHint(Text("等这一轮跑完再发出去"))
-
-                        Button { Task { await session.send(mode: .steer) } } label: {
-                            CircleGlyph(systemImage: "bolt.fill", style: .quiet)
-                        }
-                        .disabled(!canSend)
-                        .opacity(canSend ? 1 : 0.5)
-                        .accessibilityLabel(Text("立刻插队"))
-                        .accessibilityHint(Text("插进正在跑的这一轮，不再等它跑完"))
-
-                        Button(action: stop) {
-                            CircleGlyph(systemImage: "stop.fill", style: .destructive)
-                        }
-                        .accessibilityLabel(Text("停止"))
-                        .accessibilityHint(Text("打断正在跑的这一轮"))
-                    } else {
-                        Button { Task { await session.send(mode: .queue) } } label: {
-                            CircleGlyph(systemImage: "arrow.up", style: .prominent)
-                        }
-                        .disabled(!canSend)
-                        .accessibilityLabel(Text("发送"))
-                        .accessibilityHint(Text("把消息发给电脑"))
-                    }
+                    actionButtons
                 }
             }
-            .padding(.horizontal, Token.Spacing.compact)
-            .padding(.vertical, Token.Spacing.compact)
-            .background(
-                RoundedRectangle(cornerRadius: Token.Radius.card, style: .continuous)
-                    .fill(Color(.secondarySystemBackground))
-            )
-            .padding(.horizontal, Token.Spacing.tight)
+            // **不要卡片底色。** 加了权限/上下文/统计之后，卡片只占中间一块，
+            // 四周露出 bar 材质，看起来就是"颜色不连贯"（用户反馈）。
+            // 输入区本来就是一条完整的 bar 表面，保持它 ——
+            // 输入框自己那层浅底已经够区分了。
+            .padding(.horizontal, Token.Spacing.gutter)
+            .padding(.vertical, Token.Spacing.tight)
 
             statsLine
         }
-        .sheet(isPresented: $showPermissionPicker) {
-            PermissionPickerSheet(session: session)
+        .popover(isPresented: $showPermissionPicker) {
+            // 三个选项 + 一个勾，用不着一整页 sheet。
+            PermissionPopover(session: session)
+                .presentationCompactAdaptation(.popover)
         }
         .photosPicker(
             isPresented: $showPhotoPicker,
@@ -217,6 +180,70 @@ struct Composer: View {
             isRunning ? stop() : send()
             return .handled
         }
+    }
+
+    /// 发送区右侧的按钮。
+    ///
+    /// 抽出来是为了**压住类型检查的复杂度** —— 这些按钮加上权限胶囊、
+    /// 上下文条全塞在一个 `HStack` 里时，编译器会直接放弃
+    /// （`unable to type-check this expression in reasonable time`）。
+    @ViewBuilder
+    private var actionButtons: some View {
+        if isRunning {
+            queueButton
+            steerButton
+            stopButton
+        } else {
+            sendButton
+        }
+    }
+
+    private var queueButton: some View {
+        Button { Task { await session.send(mode: .queue) } } label: {
+            HStack(spacing: Token.Spacing.hairline) {
+                Image(systemName: "arrow.up")
+                    .font(.system(size: Token.Control.glyph - 3, weight: .semibold))
+                Text("排队").font(.caption.weight(.semibold))
+            }
+            .foregroundStyle(canSend ? Color.white : Color.secondary)
+            .padding(.horizontal, Token.Spacing.tight)
+            .frame(height: Token.Control.diameter)
+            .background(
+                canSend ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color(.tertiarySystemFill)),
+                in: Capsule(style: .continuous)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(!canSend)
+        .accessibilityLabel(Text("追加排队"))
+        .accessibilityHint(Text("等这一轮跑完再发出去"))
+    }
+
+    private var steerButton: some View {
+        Button { Task { await session.send(mode: .steer) } } label: {
+            CircleGlyph(systemImage: "bolt.fill", style: .quiet)
+        }
+        .disabled(!canSend)
+        .opacity(canSend ? 1 : 0.5)
+        .accessibilityLabel(Text("立刻插队"))
+        .accessibilityHint(Text("插进正在跑的这一轮，不再等它跑完"))
+    }
+
+    private var stopButton: some View {
+        Button(action: stop) {
+            CircleGlyph(systemImage: "stop.fill", style: .destructive)
+        }
+        .accessibilityLabel(Text("停止"))
+        .accessibilityHint(Text("打断正在跑的这一轮"))
+    }
+
+    private var sendButton: some View {
+        Button { Task { await session.send(mode: .queue) } } label: {
+            CircleGlyph(systemImage: "arrow.up", style: .prominent)
+        }
+        .disabled(!canSend)
+        .accessibilityLabel(Text("发送"))
+        .accessibilityHint(Text("把消息发给电脑"))
     }
 
     // MARK: 权限档位

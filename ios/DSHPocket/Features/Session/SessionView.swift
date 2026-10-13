@@ -20,6 +20,7 @@ struct SessionView: View {
     @State private var renameText = ""
     @State private var showModelPicker = false
     @State private var showPermissionPicker = false
+    @State private var showPermissionSheetForDebug = false
     @State private var showShadowed = false
     @FocusState private var composerFocused: Bool
     @State private var isFollowingBottom = true
@@ -45,7 +46,7 @@ struct SessionView: View {
             #if DEBUG
             // 调试用：`defaults write cc.zexa.dshpocket DSHShowModelPicker -bool YES`
             if UserDefaults.standard.bool(forKey: "DSHShowModelPicker") { showModelPicker = true }
-            if UserDefaults.standard.bool(forKey: "DSHShowPermissionPicker") { showPermissionPicker = true }
+            if UserDefaults.standard.bool(forKey: "DSHShowPermissionPicker") { showPermissionSheetForDebug = true }
             #endif
             if session == nil {
                 let created = SessionModel(
@@ -70,11 +71,30 @@ struct SessionView: View {
                 ModelPickerSheet(session: session)
             }
         }
-        .sheet(isPresented: $showPermissionPicker) {
+        .popover(isPresented: $showPermissionPicker) {
             if let session {
-                PermissionPickerSheet(session: session)
+                PermissionPopover(session: session)
+                    // iPhone 上默认会摊成 sheet，显式要求真正的 popover。
+                    .presentationCompactAdaptation(.popover)
             }
         }
+        #if DEBUG
+        // 调试用：`.task` 里设状态**弹不出 popover**（它需要锚点已经布局好），
+        // 所以另开一个 sheet 路径，只为了核对内容渲染。
+        .sheet(isPresented: $showPermissionSheetForDebug) {
+            if let session {
+                NavigationStack {
+                    VStack {
+                        PermissionPopover(session: session)
+                        Spacer()
+                    }
+                    .navigationTitle("权限")
+                    .navigationBarTitleDisplayMode(.inline)
+                }
+                .presentationDetents([.medium])
+            }
+        }
+        #endif
         .alert("重命名会话", isPresented: $showRename) {
             TextField("标题", text: $renameText)
             Button("取消", role: .cancel) {}
@@ -428,16 +448,6 @@ struct SessionView: View {
         }
     }
 
-    private func permissionMenuTitle(_ session: SessionModel) -> String {
-        switch session.currentPermission {
-        case "read-only": return String(localized: "权限：仅可查看")
-        case "workspace-write": return String(localized: "权限：工作区内修改")
-        case "danger-full-access": return String(localized: "权限：完全权限")
-        case .some(let other): return String(localized: "权限：\(other)")
-        case nil: return String(localized: "权限")
-        }
-    }
-
     // MARK: 工具栏
 
     @ToolbarContentBuilder
@@ -455,11 +465,6 @@ struct SessionView: View {
                         UIPasteboard.general.string = session.sessionId
                     } label: {
                         Label("复制会话 ID", systemImage: "doc.on.doc")
-                    }
-                    Button {
-                        showPermissionPicker = true
-                    } label: {
-                        Label(permissionMenuTitle(session), systemImage: "lock.shield")
                     }
                     Button {
                         showModelPicker = true
