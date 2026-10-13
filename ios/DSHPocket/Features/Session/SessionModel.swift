@@ -43,6 +43,8 @@ public final class SessionModel {
 
     private(set) var phase: Phase = .idle
     private(set) var isTurnRunning = false
+    /// 这一轮是什么时候开始的 —— 工作状态那个实时计时器用它。
+    private(set) var turnStartedAt: Date?
     private(set) var isStreaming = false
     private(set) var hasMoreHistory = false
     private(set) var isLoadingHistory = false
@@ -63,6 +65,18 @@ public final class SessionModel {
     /// 队列**不在会话日志里** —— 实测：轮次跑着的时候发一条，日志里一条 `user/message`
     /// 都没有，它只出现在这个投影里。所以想显示"排队中"，唯一的数据来源是它。
     private(set) var queuedMessages: [QueuedMessage] = []
+    /// 投影里的队列（`projections.inbox`）。**权威、总是最新**，但只在快照时更新。
+    private var projectionQueued: [QueuedMessage] = []
+    /// 这个会话打开后有没有收到过**实时的** `agent/inbox/spliced`。
+    ///
+    /// 有的话就用日志推导的队列（它才反映得了"刚删掉一条"）；
+    /// 没有的话用投影 —— 因为**有界快照（`maxMessages: 50`）可能把 inbox 事件
+    /// 切在窗口之外**，那时日志里根本推不出队列。
+    ///
+    /// 用户反馈："退出再进入该会话，排队消息就看不到了；
+    /// 即使没有折叠，关闭 APP 重新打开对话，排队的消息也看不到了。"
+    /// 就是这个原因。
+    private var hasLiveInbox = false
     /// 已经结束的轮次。
     ///
     /// 用它决定"思考过程要不要收起来" —— 用户要的是**输出最终结果之后**才收，
@@ -268,6 +282,19 @@ public final class SessionModel {
         }
     }
 
+    /// 让计时器的起点跟"在不在跑"保持一致。
+    ///
+    /// 日志里有 `turn/start` 就用它；**没有就退回最后一条的时间** ——
+    /// 有界快照（`maxMessages: 50`）常常把 `turn/start` 切在窗口外，
+    /// 那样计时器就永远不显示（跟队列那个问题同源）。
+    private func syncTurnTimer() {
+        if isTurnRunning {
+            if turnStartedAt == nil { turnStartedAt = items.last?.time ?? Date() }
+        } else {
+            turnStartedAt = nil
+        }
+    }
+
     private func applySnapshot(_ snapshot: SessionSnapshot) async {
         // 命中缓存时走**增量续拉**：快照只带最近 N 条消息，而我们手里有更早的。
         // 整体重建会把用户已经翻过的历史丢掉，也会白等一次全量折叠。
@@ -277,6 +304,10 @@ public final class SessionModel {
             hasMoreHistory = snapshot.hasMore
             lastSeq = max(lastSeq, Double(snapshot.cursor))
             phase = .live
+            // **这条提前 return 的路径也要设计时器起点。**
+            // 命中缓存重进会话时走的就是这里 —— 漏了的话
+            // "工作中"那个实时计时器永远不显示（实测）。
+            syncTurnTimer()
             publish()
             saveToCache()
             return
@@ -336,6 +367,7 @@ public final class SessionModel {
         // 日志里能看出这一轮还开着就用它；看不出来（有界快照切在半途）
         // 就退回会话列表给的 running —— **不能无条件设 false**。
         isTurnRunning = builder.isTurnOpen || summaryIsRunning
+        syncTurnTimer()
         publish()
         // 快照分完了：这时候布局才稳定，明确要求滚到底一次。
         requestScrollToBottom()
@@ -351,11 +383,14 @@ public final class SessionModel {
         if event.type == "session/title", let newTitle = event.string("data.title"), !newTitle.isEmpty {
             title = newTitle
         }
+        if event.type == "agent/inbox/spliced" { hasLiveInbox = true }
         if event.type == "turn/start" {
             isTurnRunning = true
             summaryIsRunning = true
+            turnStartedAt = event.time
         }
         if event.type == "turn/end" {
+            turnStartedAt = nil
             // 实时的 `turn/end` 是终局判据：它到了就是跑完了，
             // 不再让可能过期的列表标志把它拉回"运行中"。
             isTurnRunning = false
@@ -416,9 +451,12 @@ public final class SessionModel {
         if let value = values.string("permissions.currentValue") ?? values["permissions"]?.string("currentValue") {
             currentPermission = value
         }
-        // 队列**不从这里读** —— 投影只在快照时更新一次，
-        // 电脑上删掉排队任务后手机要退出会话才消失（实测）。
-        // 它由 `publish()` 从日志推导，见 `publishQueuedMessages()`。
+        // 投影里的队列：**权威**，但只在快照时给一次。
+        // 之后由实时的 `agent/inbox/spliced` 接管（见 `noteInboxEvent`）。
+        let inbox = InboxState(json: values["inbox"] ?? .object([:]))
+        projectionQueued = inbox.nextTurn + inbox.nextStep
+        hasLiveInbox = false
+        publishQueuedMessages()
         if let raw = values["modelSelection"] {
             // 嵌套形状：`{lastUsed: {...}, next: {...}}`。当扁平读会永远拿到空值。
             let chosen = raw["next"] ?? raw["lastUsed"] ?? raw
@@ -696,7 +734,9 @@ public final class SessionModel {
     /// 不撤的话同一句话会显示两遍 —— 一遍是"发送中…"的乐观气泡，
     /// 一遍是"排队中"的队列项。
     private func publishQueuedMessages() {
-        queuedMessages = builder.queuedMessages
+        // 收到过实时 inbox 事件就信日志（它能反映"刚删掉一条"）；
+        // 否则信投影（有界快照可能把 inbox 事件切在窗口外，日志里推不出来）。
+        queuedMessages = hasLiveInbox ? builder.queuedMessages : projectionQueued
         let queuedRpcIds = Set(queuedMessages.compactMap(\.rpcId))
         guard !queuedRpcIds.isEmpty else { return }
         var removed = false

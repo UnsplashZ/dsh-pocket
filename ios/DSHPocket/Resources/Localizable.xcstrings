@@ -140,7 +140,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld min %lld s"
+            "value": "%lldm %llds"
           }
         }
       }
@@ -185,6 +185,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld ms"
+          }
+        }
+      }
+    },
+    "%lld 秒": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%llds"
           }
         }
       }
@@ -1585,6 +1596,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Show the model’s reasoning"
+          }
+        }
+      }
+    },
+    "工作中，已用时 %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Working · %@ elapsed"
           }
         }
       }
@@ -3938,17 +3960,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "System component — can’t be disabled"
-          }
-        }
-      }
-    },
-    "给电脑说点什么…": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Say something to your computer…"
           }
         }
       }

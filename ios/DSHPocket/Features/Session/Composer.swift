@@ -84,6 +84,9 @@ struct Composer: View {
                 attachmentStrip
             }
 
+            // **电脑在不在干活**：一个脉冲点 + 实时计时器。
+            workingIndicator
+
             // `/` 命令 与 `@` 引用：都做成输入框上方的候选条。
             suggestions
 
@@ -98,7 +101,7 @@ struct Composer: View {
             // 布局照桌面端：**输入框占整行**，下面一行放工具
             //（附件 / 权限 / 上下文占用 / 发送），再下面一行是会话统计。
             VStack(spacing: Token.Spacing.tight) {
-                TextField("给电脑说点什么…", text: $session.draft, axis: .vertical)
+                TextField(placeholder, text: $session.draft, axis: .vertical)
                     .textFieldStyle(.plain)
                     .lineLimit(1...6)
                     .focused(isFocused)
@@ -293,6 +296,64 @@ struct Composer: View {
         .opacity(canSend ? 1 : 0.4)
         .accessibilityLabel(Text(isRunning ? "排队发送" : "发送"))
         .accessibilityHint(Text(isRunning ? "等这一轮跑完再发出去" : "把消息发给电脑"))
+    }
+
+    /// 输入框的占位文案 —— **照 desktop 的说法**。
+    ///
+    /// desktop 的 `placeholder.default` 是「发消息或创建任务」，
+    /// 计划模式是「描述你的任务以生成计划」。之前我们自己编的
+    /// 「给电脑说点什么…」跟桌面端对不上（用户："有点奇怪"）。
+    private var placeholder: LocalizedStringKey {
+        // 计划模式下 desktop 会换成另一句（`placeholder.plan`）。
+        // 这里先只做默认那句 —— 计划模式的开关状态还没接进来。
+        "发消息或创建任务"
+    }
+
+    // MARK: 工作状态
+
+    /// **电脑到底在不在干活。**
+    ///
+    /// 用户："工作中状态缺少提示，除了右下角终止按钮，别的地方看不出来
+    /// 是在工作还是停止了。最好像 desktop 一样有一个实时的计时器。"
+    ///
+    /// 用 `TimelineView` 每秒重绘**这一行** —— 不引入 model 层的 ticker，
+    /// 也就不会每秒把整棵时间线刷一遍。
+    @ViewBuilder
+    private var workingIndicator: some View {
+        if session.isTurnRunning, let startedAt = session.turnStartedAt {
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                let elapsed = max(0, context.date.timeIntervalSince(startedAt))
+                HStack(spacing: Token.Spacing.tight) {
+                    Circle()
+                        .fill(Color.green)
+                        .frame(width: 7, height: 7)
+                        .opacity(0.35 + 0.65 * abs(sin(elapsed * .pi / 1.6)))
+                    Text(session.isStreaming ? "正在生成" : "工作中")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    Text(Self.elapsedText(elapsed))
+                        .font(.footnote.monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, Token.Spacing.gutter)
+                .padding(.top, Token.Spacing.tight)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(Text(String(
+                    format: String(localized: "工作中，已用时 %@"),
+                    Self.elapsedText(elapsed)
+                )))
+            }
+        }
+    }
+
+    /// `1 分 23 秒` / `12 秒` —— 跟 desktop 的说法一致。
+    static func elapsedText(_ seconds: TimeInterval) -> String {
+        let total = Int(seconds)
+        if total < 60 { return String(format: String(localized: "%lld 秒"), total) }
+        let minutes = total / 60
+        let rest = total % 60
+        return String(format: String(localized: "%lld 分 %lld 秒"), minutes, rest)
     }
 
     // MARK: `/` 命令 与 `@` 引用
