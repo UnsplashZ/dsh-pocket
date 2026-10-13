@@ -692,6 +692,18 @@ public final class SessionModel {
         subagentCatalog.subagentSessionId(label: label, at: time)
     }
 
+    /// 对一条排队中的消息做点什么（编辑 / 删除 / 插进这一轮）。
+    ///
+    /// 队列本身会由日志里的 `agent/inbox/spliced` 事件推回来，所以这里
+    /// **不需要**手动改本地状态 —— 发出去就行。
+    func updateQueue(itemId: String, action: QueueAction) async {
+        do {
+            try await client.updateQueue(sessionId: sessionId, itemId: itemId, action: action)
+        } catch {
+            failureMessage = (error as? DSHClientError)?.displayMessage ?? error.localizedDescription
+        }
+    }
+
     /// 从某条消息处分叉出一个新会话，返回新会话 id。
     func fork(atSeq: Int?) async -> String? {
         do {

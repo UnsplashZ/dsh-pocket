@@ -420,6 +420,26 @@ public actor DSHClient {
         ])
     }
 
+    // MARK: - 排队消息
+
+    /// 对一条**排队中**的消息做点什么。
+    ///
+    /// 线上形状：`{sessionId, itemId, action}`，其中 `itemId` 是**服务端那条消息的 id**
+    /// （不是本地的 rpcId）；`action` 是三选一：
+    ///   · `{kind:'edit', content:[{type:'text',text}]}` —— 改内容；
+    ///   · `{kind:'remove'}` —— 删掉；
+    ///   · `{kind:'steer'}` —— **插进正在跑的这一轮**（桌面那个 ↑ 按钮）。
+    @discardableResult
+    public func updateQueue(sessionId: String, itemId: String, action: QueueAction) async throws -> JSONValue {
+        try await rpc.call(method: "session/updateQueue", payload: [
+            "args": .object(["request": .object([
+                "sessionId": .string(sessionId),
+                "itemId": .string(itemId),
+                "action": action.json,
+            ])])
+        ])
+    }
+
     // MARK: - Agent preset
 
     /// 可选的 agent preset（建会话时用）。

@@ -156,6 +156,17 @@
         }
       }
     },
+    "%lld 条排队消息": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld queued messages"
+          }
+        }
+      }
+    },
     "%lld 条消息排队中": {
       "extractionState": "manual",
       "localizations": {
@@ -751,6 +762,17 @@
         }
       }
     },
+    "内容": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Content"
+          }
+        }
+      }
+    },
     "再试一次": {
       "extractionState": "manual",
       "localizations": {
@@ -1026,17 +1048,6 @@
         }
       }
     },
-    "只影响这个会话。改完电脑端会记一条权限变更，时间线上也看得到。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Affects this session only. Your computer records the change, and it shows up on the timeline."
-          }
-        }
-      }
-    },
     "只能读，不能改文件，也不能跑会写盘的命令。": {
       "extractionState": "manual",
       "localizations": {
@@ -1259,17 +1270,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Full access"
-          }
-        }
-      }
-    },
-    "完全权限会读写不受工作区限制，并减少确认步骤 —— 包括敏感操作、文件修改和外部命令。仅在你信任接下来的任务时使用。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Full access removes the workspace limit on reads and writes and cuts confirmation steps — including sensitive operations, file changes, and external commands. Only use it when you trust what comes next."
           }
         }
       }
@@ -1882,28 +1882,6 @@
         }
       }
     },
-    "当前会话": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "This session"
-          }
-        }
-      }
-    },
-    "当前档位": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Current"
-          }
-        }
-      }
-    },
     "当前模型": {
       "extractionState": "manual",
       "localizations": {
@@ -2027,17 +2005,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "What we do"
-          }
-        }
-      }
-    },
-    "我已了解风险，仍然启用": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "I understand the risk — enable it"
           }
         }
       }
@@ -2609,56 +2576,6 @@
         }
       }
     },
-    "权限：%@": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Permissions: %@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "权限：%@"
-          }
-        }
-      }
-    },
-    "权限：仅可查看": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Permissions: Read only"
-          }
-        }
-      }
-    },
-    "权限：完全权限": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Permissions: Full access"
-          }
-        }
-      }
-    },
-    "权限：工作区内修改": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Permissions: Workspace write"
-          }
-        }
-      }
-    },
     "查看全部 / 分享": {
       "extractionState": "manual",
       "localizations": {
@@ -3051,17 +2968,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Photo"
-          }
-        }
-      }
-    },
-    "现在": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Now"
           }
         }
       }
@@ -3725,17 +3631,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Couldn’t read the folder"
-          }
-        }
-      }
-    },
-    "读不到权限档位": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Couldn’t load permission presets"
           }
         }
       }

@@ -151,17 +151,8 @@ struct SessionView: View {
                         }
                     }
 
-                    // 排队中的消息放在最后。
-                    //
-                    // 它们**不在会话日志里**（只存在于 `inbox` 投影），所以不能靠
-                    // 时间线条目渲染。不画出来的话，你在电脑上排队发的那条在手机上
-                    // 完全看不到；而自己排队发的那条会一直显示成"发送中…"，
-                    // 看起来像已经发出去了。
-                    if !session.queuedMessages.isEmpty {
-                        QueuedMessagesRow(messages: session.queuedMessages)
-                            .padding(.horizontal, Token.Spacing.gutter)
-                            .id("queued-messages")
-                    }
+                    // 排队消息**不在这里** —— 它是输入框上方那块可展开的面板
+                    // （见 Composer.queuePanel）。放在时间线末尾会跟"已经聊了什么"混在一起。
 
                     if session.items.filter({ !$0.isShadowed }).isEmpty, session.phase != .loading {
                         ContentUnavailableView(

@@ -976,7 +976,10 @@ public struct TimelineBuilder: Sendable {
         for inserted in event.array("data.inserted") ?? [] {
             let rpcId = inserted.string("source.rpcId") ?? UUID().uuidString
             let text = Self.plainText(of: inserted.array("content") ?? [])
-            let itemId = "inbox-\(rpcId)"
+            // **优先用服务端那条消息的 id 当条目 id** —— `session/updateQueue`
+            // 要的 `itemId` 就是它（编辑/删除/插队都按它定位）。
+            // 拿不到才退回本地的 `inbox-<rpcId>`。
+            let itemId = inserted.string("id") ?? "inbox-\(rpcId)"
             inboxItems[rpcId] = itemId
             upsert(
                 TimelineItem(

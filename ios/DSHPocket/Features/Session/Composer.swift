@@ -62,6 +62,11 @@ struct Composer: View {
     @State private var photoSelection: [PhotosPickerItem] = []
     @State private var showPhotoPicker = false
     @State private var showPermissionPicker = false
+    /// 排队面板默认**展开** —— 它出现在屏幕上就说明"有东西在等"，
+    /// 这时候收起只会让人多点一下。
+    @State private var isQueueExpanded = true
+    @State private var editingQueueItem: QueuedMessage?
+    @State private var queueEditText = ""
     @State private var showFileImporter = false
     @State private var sendTrigger = 0
     @State private var stopTrigger = 0
@@ -73,6 +78,10 @@ struct Composer: View {
             if !session.attachments.isEmpty {
                 attachmentStrip
             }
+
+            // 排队消息是**输入框上方一块可展开的记录**，不是摊在时间线末尾。
+            // 桌面端就是这样：它属于"我准备发什么"，不属于"已经聊了什么"。
+            queuePanel
 
             // 布局照桌面端：**输入框占整行**，下面一行放工具
             //（附件 / 权限 / 上下文占用 / 发送），再下面一行是会话统计。
@@ -134,6 +143,21 @@ struct Composer: View {
             .padding(.vertical, Token.Spacing.tight)
 
             statsLine
+        }
+        // 编辑排队消息：用一个带输入框的 alert，不另开一页。
+        .alert("编辑排队消息", isPresented: Binding(
+            get: { editingQueueItem != nil },
+            set: { if !$0 { editingQueueItem = nil } }
+        )) {
+            TextField("内容", text: $queueEditText, axis: .vertical)
+            Button("保存") {
+                if let item = editingQueueItem {
+                    let text = queueEditText
+                    Task { await session.updateQueue(itemId: item.id, action: .edit(text)) }
+                }
+                editingQueueItem = nil
+            }
+            Button("取消", role: .cancel) { editingQueueItem = nil }
         }
         .popover(isPresented: $showPermissionPicker) {
             // 三个选项 + 一个勾，用不着一整页 sheet。
@@ -244,6 +268,102 @@ struct Composer: View {
         .disabled(!canSend)
         .accessibilityLabel(Text("发送"))
         .accessibilityHint(Text("把消息发给电脑"))
+    }
+
+    // MARK: 排队消息
+
+    @ViewBuilder
+    private var queuePanel: some View {
+        if !session.queuedMessages.isEmpty {
+            VStack(spacing: 0) {
+                Button {
+                    withAnimation(.snappy) { isQueueExpanded.toggle() }
+                } label: {
+                    HStack(spacing: Token.Spacing.tight) {
+                        Image(systemName: "text.badge.minus")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(String(format: String(localized: "%lld 条排队消息"), session.queuedMessages.count))
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 0)
+                        Image(systemName: isQueueExpanded ? "chevron.down" : "chevron.up")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.horizontal, Token.Spacing.gutter)
+                    .frame(height: 36)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(String(format: String(localized: "%lld 条排队消息"), session.queuedMessages.count)))
+                .accessibilityHint(Text(isQueueExpanded ? "收起排队消息" : "展开排队消息"))
+
+                if isQueueExpanded {
+                    Divider().padding(.leading, Token.Spacing.gutter)
+                    ForEach(session.queuedMessages) { item in
+                        queueRow(item)
+                        if item.id != session.queuedMessages.last?.id {
+                            Divider().padding(.leading, Token.Spacing.gutter)
+                        }
+                    }
+                }
+            }
+            .background(.bar)
+            .overlay(alignment: .top) { Rectangle().fill(Color(.separator)).frame(height: 0.5) }
+            .overlay(alignment: .bottom) { Rectangle().fill(Color(.separator)).frame(height: 0.5) }
+        }
+    }
+
+    private func queueRow(_ item: QueuedMessage) -> some View {
+        HStack(spacing: Token.Spacing.tight) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.text)
+                    .font(.footnote)
+                    .lineLimit(2)
+                    .foregroundStyle(.primary)
+                if item.imageCount > 0 || item.fileCount > 0 {
+                    Text(queueAttachmentLabel(item))
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            Spacer(minLength: Token.Spacing.hairline)
+
+            queueAction("pencil", label: "编辑") {
+                editingQueueItem = item
+                queueEditText = item.text
+            }
+            queueAction("trash", label: "删除", tint: .red) {
+                Task { await session.updateQueue(itemId: item.id, action: .remove) }
+            }
+            queueAction("arrow.up", label: "插进这一轮") {
+                Task { await session.updateQueue(itemId: item.id, action: .steer) }
+            }
+        }
+        .padding(.horizontal, Token.Spacing.gutter)
+        .padding(.vertical, Token.Spacing.hairline)
+        .frame(minHeight: 40)
+        .accessibilityElement(children: .contain)
+    }
+
+    private func queueAction(_ symbol: String, label: String, tint: Color? = nil, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.caption)
+                .foregroundStyle(tint ?? Color.secondary)
+                .frame(width: 34, height: 34)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(label))
+    }
+
+    private func queueAttachmentLabel(_ item: QueuedMessage) -> String {
+        var parts: [String] = []
+        if item.imageCount > 0 { parts.append(String(format: String(localized: "%lld 张图片"), item.imageCount)) }
+        if item.fileCount > 0 { parts.append(String(format: String(localized: "%lld 个文件"), item.fileCount)) }
+        return parts.joined(separator: " · ")
     }
 
     // MARK: 权限档位

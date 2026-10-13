@@ -685,6 +685,13 @@ EN: dict[str, str] = {
     "立刻插队": "Steer",
     "插进正在跑的这一轮，不再等它跑完": "Inject into the running turn instead of waiting",
     "排队": "Queue",
+    "%lld 条排队消息": "%lld queued messages",
+    "展开排队消息": "Show queued messages",
+    "收起排队消息": "Hide queued messages",
+    "编辑排队消息": "Edit queued message",
+    "编辑": "Edit",
+    "插进这一轮": "Steer into this turn",
+    "内容": "Content",
     "删除": "Delete",
 }
 

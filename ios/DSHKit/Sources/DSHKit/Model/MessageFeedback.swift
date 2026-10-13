@@ -44,3 +44,28 @@ public struct MessageFeedback: Sendable, Hashable {
         self.note = note
     }
 }
+
+
+/// 对一条排队中的消息做的动作（`QueueAction`）。
+public enum QueueAction: Sendable, Hashable {
+    /// 改内容。
+    case edit(String)
+    /// 删掉。
+    case remove
+    /// **插进正在跑的这一轮**（桌面那个 ↑ 按钮）。
+    case steer
+
+    public var json: JSONValue {
+        switch self {
+        case .edit(let text):
+            return .object([
+                "kind": .string("edit"),
+                "content": .array([.object(["type": .string("text"), "text": .string(text)])]),
+            ])
+        case .remove:
+            return .object(["kind": .string("remove")])
+        case .steer:
+            return .object(["kind": .string("steer")])
+        }
+    }
+}

@@ -259,10 +259,13 @@ final class TimelineBuilderTests: XCTestCase {
         _ = builder.apply(snapshot: try Fixture.snapshot([Fixture.turnStart(1, seq: 1)]))
         let spliced = try Fixture.event(Fixture.inboxSpliced("排队中的消息", rpcId: "rpc-queued", seq: 2))
         _ = builder.apply(spliced)
-        guard case .userMessage(let queued)? = builder.items.first(where: { $0.id == "inbox-rpc-queued" })?.kind else {
-            return XCTFail("排队消息应作为待发送项出现")
+        // 条目 id 用**服务端那条消息的 id**（fixture 里是 `m-<seq>`）——
+        // `session/updateQueue` 的 `itemId` 要的就是它（编辑/删除/插队都按它定位）。
+        guard case .userMessage(let queued)? = builder.items.first(where: { $0.id == "m-2" })?.kind else {
+            return XCTFail("排队消息应作为待发送项出现，且条目 id 要用服务端的消息 id")
         }
         XCTAssertTrue(queued.isPending)
+        XCTAssertTrue(queued.isQueued, "要能跟「乐观插入」区分开")
 
         _ = builder.apply(try Fixture.event(Fixture.userMessage("排队中的消息", seq: 6, rpcId: "rpc-queued")))
         let users = builder.items.filter { if case .userMessage = $0.kind { return true }; return false }
