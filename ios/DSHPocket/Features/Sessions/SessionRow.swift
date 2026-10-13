@@ -22,9 +22,12 @@ enum SessionStatus {
     /// 空闲（上一轮已经结束）。
     case idle
 
-    init(_ summary: SessionSummary) {
+    init(_ summary: SessionSummary, awaitingApproval: Bool = false) {
         if !summary.agentAvailable {
             self = .error
+        } else if awaitingApproval {
+            // 审批是**连接级**的瞬时状态，不在会话投影里 —— 由 AppModel 记着。
+            self = .waiting
         } else if !summary.projections.userQuestions.active.isEmpty {
             // 宿主的 `userQuestions` 投影里有未决问题 —— 它正等着人回答。
             self = .waiting
@@ -69,6 +72,10 @@ struct SessionStatusBadge: View {
 struct SessionRow: View {
     let summary: SessionSummary
     var isPinned = false
+    /// 审批是连接级的瞬时状态 —— 从环境里取，别让列表页去拼一个复杂表达式
+    ///（那会让编译器放弃）。
+    @Environment(AppModel.self) private var model
+    private var awaitingApproval: Bool { model.sessionsAwaitingApproval.contains(summary.sessionId) }
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
@@ -79,7 +86,7 @@ struct SessionRow: View {
                         .font(.headline)
                         .foregroundStyle(.primary)
                         .lineLimit(1)
-                    SessionStatusBadge(status: SessionStatus(summary))
+                    SessionStatusBadge(status: SessionStatus(summary, awaitingApproval: awaitingApproval))
                 }
 
                 if !summary.subtitle.isEmpty {
@@ -125,7 +132,7 @@ struct SessionRow: View {
 
     private var accessibilityLabel: String {
         var parts: [String] = [summary.title]
-        parts.append(SessionStatus(summary).label)
+        parts.append(SessionStatus(summary, awaitingApproval: awaitingApproval).label)
         if !summary.subtitle.isEmpty { parts.append(summary.subtitle) }
         parts.append(summary.workspaceName)
         parts.append(Format.relativeTime(summary.updatedAt))

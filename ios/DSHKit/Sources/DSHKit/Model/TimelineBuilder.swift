@@ -15,6 +15,11 @@ import Foundation
 ///      同 (turn, step) 的持久 `assistant/message` 到达时被就地接管，
 ///      复用同一个 `id`，因此 UI 不会闪。
 public struct TimelineBuilder: Sendable {
+    /// 正在丢掉"`/permission` 引发的那一组配置 note"。
+    ///
+    /// **不持久化**（不进 `State`）：它只在一次命令的几毫秒内有效，
+    /// 跨会话/跨缓存没有意义。
+    private var suppressConfigNotes = false
     // MARK: - 输出
 
     /// 全部条目，按 `seq` 升序。含被遮住的条目（用 `isShadowed` 过滤）。
@@ -293,6 +298,31 @@ public struct TimelineBuilder: Sendable {
     public mutating func apply(_ event: SessionEvent) -> TimelineDelta {
         var delta = TimelineDelta()
         lastSeq = max(lastSeq, event.seq)
+
+        // **`/permission` 引发的那一组配置 note，整组丢掉。**
+        //
+        // 它一次会留下 5 行（`⌘ permission` / `sandbox/mode` /
+        // `permission/preset` / `approval/policy` / `command/done`）——
+        // 而权限已经显示在输入框的胶囊上了，这 5 行纯属噪音
+        //（用户："切换权限时会显示一条消息加入排队，这个要优化一下"）。
+        //
+        // 只在**紧跟着的**那几条上生效：窗口在 `command/done` 处关闭，
+        // 所以别的地方（比如从电脑上改权限）照常显示。
+        if event.type == "command/run", event.string("data.name") == "permission" {
+            suppressConfigNotes = true
+            return delta
+        }
+        if suppressConfigNotes {
+            switch event.type {
+            case "sandbox/mode", "permission/preset", "approval/policy":
+                return delta
+            case "command/done":
+                suppressConfigNotes = false
+                return delta
+            default:
+                break
+            }
+        }
 
         // 表面折叠先做：它决定 isShadowed，也决定 replace 事件自己算不算对话。
         let shadowed = foldSurface(event)

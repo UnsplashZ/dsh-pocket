@@ -717,6 +717,31 @@ final class TimelineBuilderTests: XCTestCase {
         XCTAssertEqual(builder.queuedMessages.map(\.text), ["我自己的排队"])
     }
 
+    /// **`/permission` 引发的那一组配置 note 整组丢掉。**
+    ///
+    /// 一次权限切换会留下 5 行（`command/run` / `sandbox/mode` /
+    /// `permission/preset` / `approval/policy` / `command/done`），
+    /// 而权限已经显示在输入框的胶囊上 —— 纯噪音。
+    ///
+    /// 但**别的地方**（从电脑上改权限）照常显示 —— 窗口在 `command/done` 处关闭。
+    func testPermissionCommandNotesAreSuppressed() throws {
+        var builder = TimelineBuilder()
+        _ = builder.apply(try Fixture.event(#"{"type":"command/run","seq":1,"time":1791777000000,"data":{"name":"permission","args":["danger-full-access"]}}"#))
+        _ = builder.apply(try Fixture.event(#"{"type":"sandbox/mode","seq":2,"time":1791777000000,"data":{"mode":"danger-full-access"}}"#))
+        _ = builder.apply(try Fixture.event(#"{"type":"permission/preset","seq":3,"time":1791777000000,"data":{"preset":"danger-full-access"}}"#))
+        _ = builder.apply(try Fixture.event(#"{"type":"approval/policy","seq":4,"time":1791777000000,"data":{"policy":"never"}}"#))
+        _ = builder.apply(try Fixture.event(#"{"type":"command/done","seq":5,"time":1791777000000,"data":{"name":"permission"}}"#))
+        XCTAssertTrue(builder.items.isEmpty, "这一组五行都不该出现，实际：\(builder.items.map(\.kind))")
+
+        // 窗口关了：之后**别处**来的配置变更照常显示
+        _ = builder.apply(try Fixture.event(#"{"type":"sandbox/mode","seq":6,"time":1791777000000,"data":{"mode":"workspace-write"}}"#))
+        XCTAssertEqual(builder.items.count, 1, "窗口关闭后要恢复正常")
+
+        // 别的命令不受影响
+        _ = builder.apply(try Fixture.event(#"{"type":"command/run","seq":7,"time":1791777000000,"data":{"name":"compact"}}"#))
+        XCTAssertEqual(builder.items.count, 2, "只有 permission 被抑制")
+    }
+
     // MARK: 落盘 / 续拉
 
     /// 折叠状态必须能**原样**往返 —— 恢复之后还能继续增量折叠，而不是只能画。

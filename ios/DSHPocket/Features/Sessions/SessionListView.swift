@@ -53,10 +53,7 @@ struct SessionListView: View {
                         Button {
                             onSelect(summary)
                         } label: {
-                            SessionRow(
-                                summary: summary,
-                                isPinned: model.pinnedSessionIds.contains(summary.sessionId)
-                            )
+                            SessionRow(summary: summary)
                         }
                         .buttonStyle(.plain)
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {

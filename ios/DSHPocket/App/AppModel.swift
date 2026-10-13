@@ -90,6 +90,15 @@ public final class AppModel {
 
     /// 等用户决定的审批/提问。**App 永不自动决策**（IOS-DESIGN §4 S4）。
     private(set) var pendingApprovals: [WaterfallRequest] = []
+
+    /// 哪些会话正**等着人批准**。
+    ///
+    /// 审批是**连接级**的瞬时状态，不在会话投影里（`userQuestions` 只有问题），
+    /// 所以列表页的黄灯要靠这里记。只覆盖**这次连接期间收到过审批请求**的会话 ——
+    /// 没打开过的会话、或者连接之前就挂着的审批，这里不知道。
+    var sessionsAwaitingApproval: Set<String> {
+        Set(pendingApprovals.compactMap(\.sessionId))
+    }
     private(set) var pendingQuestions: [WaterfallRequest] = []
     /// 某条 waterfall 属于哪个会话（用于"来自「某某」"）。
     ///
