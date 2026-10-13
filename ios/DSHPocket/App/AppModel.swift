@@ -753,6 +753,44 @@ public final class AppModel {
     /// 在指定工作区里建会话。
     ///
     /// 传 `workspaceId`（不是 cwd）—— 只传 cwd 建出来的会话在电脑端会落进「未分组」。
+    #if DEBUG
+    /// 调试用：走**真实的建会话路径**建一个会话，然后把它的模型选择打出来。
+    ///
+    /// 为什么要有它：这条链路（建会话 → 套默认模型）是用户在手机上点"新建会话"
+    /// 才会走的，模拟器里点不了。光在 Node 里复现一遍不算验证了 App 的代码。
+    func debugCreateSessionAndReportModel() async {
+        guard let id = await createSession(workspaceId: nil, cwd: NSHomeDirectory()) else {
+            logs.log(.warning, "调试建会话失败")
+            return
+        }
+        guard let value = try? await client.sessionProjections(sessionId: id) else { return }
+        let selection = value["values"]?["modelSelection"]
+        logs.log(.info, "调试建会话 \(id.prefix(20))… 的模型选择 = \(selection.map { "\($0)" } ?? "无")")
+    }
+    #endif
+
+    /// 把主机设置的默认模型 + 思考等级套到一个新会话上。
+    ///
+    /// 失败不阻断建会话 —— 最坏情况就是回到"没选模型"的老行为。
+    private func applyDefaultModel(to sessionId: String) async {
+        do {
+            let catalog = try await client.modelCatalog()
+            guard let selection = catalog.defaultSelection else {
+                logs.log(.warning, "主机没有给出默认模型，新会话会退回模型的第一档思考等级")
+                return
+            }
+            try await client.selectModel(
+                sessionId: sessionId,
+                provider: selection.provider,
+                model: selection.model,
+                reasoningEffort: selection.reasoningEffort
+            )
+            logs.log(.info, "新会话套用默认模型：\(selection.provider)/\(selection.model) \(selection.reasoningEffort ?? "")")
+        } catch {
+            logs.log(.warning, "套用默认模型失败：\(error.localizedDescription)")
+        }
+    }
+
     /// 拉一次 agent preset 清单。
     func refreshAgentPresets() async {
         do {
@@ -771,6 +809,16 @@ public final class AppModel {
                 cwd: workspaceId == nil ? cwd : nil,
                 agentPreset: agentPreset
             )
+            // **建完必须显式套用主机默认模型与思考等级。**
+            //
+            // 新建的会话 `modelSelection` 是 `{lastUsed: null, next: null}` ——
+            // 没选模型时主机不会自动套用它自己的默认，而是退回**模型的第一档**
+            // （实测是 `low`）。用户在电脑上设的是 `high`，新会话却拿到 `low`，
+            // 就是这个原因。
+            //
+            // 主机有个 `session/initializeDefaultModel`，但那是**内部接口**
+            // （参数名带下划线，远端调不到），所以用公开的 `selectModel` 自己套。
+            await applyDefaultModel(to: id)
             await refreshSessions()
             // 新会话在 `session/list` 里可能晚一拍才出现。等一小会儿再找，
             // 找不到就直接把 id 交给调用方（它能自己合成一个占位会话去打开）。

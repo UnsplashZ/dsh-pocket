@@ -475,3 +475,31 @@ SwiftPM 状态"上。
 - 键盘弹出后**重新贴底**（键盘动画落定后再补一次）—— 否则最新内容被挡在键盘后面。
 - `TextField` 的**示例值**改用 `prompt: Text(verbatim:)`：写成标题会被抽进本地化目录
   （一次多出 8 条 `1000000` / `WB_API_KEY` 之类的垃圾 key）。
+
+## ADR-0025 · 新建会话必须显式套用主机默认模型
+
+**日期**：2026-10-13
+**症状**：新对话的思考等级是 `low`，而电脑上设的是 `high`。
+
+**根因**：`session/create` 之后，新会话的 `modelSelection` 是
+`{lastUsed: null, next: null}` —— **主机不会自动套用它自己的默认模型**。
+没选模型时它退回**模型的第一档**思考等级（本机是 `low`）。
+
+实测（本机 `agent-default-model` 与 `modelCatalog.default` 都是
+`{wb, deepseek-v4.1-flash, high}`）：
+
+```
+新建后:   {"lastUsed":null,"next":null}
+套用默认后: {"lastUsed":null,"next":{"provider":"wb","model":"deepseek-v4.1-flash","reasoningEffort":"high"}}
+```
+
+**修法**：建完会话显式拿 `modelCatalog.defaultSelection` 去 `session/selectModel`。
+
+主机有个 `session/initializeDefaultModel`，看着正合适，但它是**内部接口** ——
+参数名带下划线（`_request`），`{request:…}` 和 `{_request:…}` 两种形状远端都被拒。
+所以用公开的 `selectModel` 自己套。
+
+**验证方式**：这条链路只有用户在手机上点"新建会话"才会走，模拟器点不了。
+所以在 `AppModel` 里加了一个 DEBUG-only 的 `debugCreateSessionAndReportModel()`，
+**走真实代码路径**建会话再把模型选择打出来 —— 光在 Node 里复现一遍不算验证了 App 的代码。
+实测 App 建出的会话 `next = {wb, deepseek-v4.1-flash, high}`。

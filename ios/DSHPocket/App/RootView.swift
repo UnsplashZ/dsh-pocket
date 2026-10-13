@@ -60,7 +60,14 @@ struct RootView: View {
                 onPair: { showPairing = true },
                 onSettings: { showSettings = true }
             )
-            .onChange(of: model.pendingOpenSessionId) { _, id in
+            #if DEBUG
+        .task {
+            if UserDefaults.standard.bool(forKey: "DSHDebugCreateSession") {
+                await model.debugCreateSessionAndReportModel()
+            }
+        }
+        #endif
+        .onChange(of: model.pendingOpenSessionId) { _, id in
                 guard let id else { return }
                 model.pendingOpenSessionId = nil
                 if let summary = model.sessionSummary(for: id, cwd: nil) {

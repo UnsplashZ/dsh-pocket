@@ -673,6 +673,50 @@ final class LiveIntegrationTests: XCTestCase {
         XCTAssertEqual(presets.map(\.order), presets.map(\.order).sorted())
     }
 
+    /// **新建的会话不会自动套用主机默认模型。**
+    ///
+    /// 实测：`session/create` 之后 `modelSelection` 是 `{lastUsed: null, next: null}`，
+    /// 于是主机退回**模型的第一档**思考等级（本机是 `low`），
+    /// 而用户在电脑上设的是 `high` —— 这就是"新对话默认思考等级是 low"的原因。
+    ///
+    /// 主机有个 `session/initializeDefaultModel`，但它是**内部接口**
+    /// （参数名带下划线 `_request`，远端两种形状都被拒），所以只能
+    /// 自己拿 `modelCatalog.default` 去 `selectModel`。
+    ///
+    /// 这条测试把这个行为钉住：**别指望 create 会带上默认**。
+    func testNewSessionDoesNotInheritTheDefaultModel() async throws {
+        try requireLive()
+        let client = makeClient()
+
+        let id = try await client.createSession(workspaceId: nil, cwd: NSHomeDirectory())
+        defer { Task { _ = try? await client.archiveSession(sessionId: id) } }
+
+        let before = try await client.sessionProjections(sessionId: id)
+        let beforeSelection = before["values"]?["modelSelection"]
+        XCTAssertNil(beforeSelection?["next"]?.string("provider"), "新建的会话不该已经有模型选择")
+        XCTAssertNil(beforeSelection?["next"]?.string("reasoningEffort"))
+
+        // 主机默认必须是**完整的**（含思考等级），否则套上去也没用
+        let catalog = try await client.modelCatalog()
+        let fallback = try XCTUnwrap(catalog.defaultSelection, "主机应当给出默认模型")
+        XCTAssertFalse(fallback.provider.isEmpty)
+        XCTAssertFalse(fallback.model.isEmpty)
+
+        try await client.selectModel(
+            sessionId: id,
+            provider: fallback.provider,
+            model: fallback.model,
+            reasoningEffort: fallback.reasoningEffort
+        )
+
+        let after = try await client.sessionProjections(sessionId: id)
+        let next = try XCTUnwrap(after["values"]?["modelSelection"]?["next"])
+        XCTAssertEqual(next.string("provider"), fallback.provider)
+        XCTAssertEqual(next.string("model"), fallback.model)
+        XCTAssertEqual(next.string("reasoningEffort"), fallback.reasoningEffort,
+                       "思考等级要跟主机默认一致，不能退回模型的第一档")
+    }
+
     func testModelCatalogAndUnaryErrorShape() async throws {
         try requireLive()
         let client = makeClient()
