@@ -294,26 +294,8 @@ public final class SessionModel {
     /// 有界快照（`maxMessages: 50`）常常把 `turn/start` 切在窗口外，
     /// 那样计时器就永远不显示（跟队列那个问题同源）。
     private func syncTurnTimer() {
-        guard isTurnRunning else {
-            turnStartedAt = nil
-            return
-        }
-        guard turnStartedAt == nil else { return }
-        // **起点要尽量贴近这一轮真正的开始。**
-        //
-        // 用 `items.last?.time` 是很差的近似（那可能是这一轮中间某一步），
-        // 所以手机上显示的时间跟电脑上对不上（用户反馈）。
-        // 取**当前这一轮第一条可见内容**的时间 —— 有界快照切掉开头时它仍是个下界，
-        // 但比"最后一条"准得多。
-        // **`currentTurn` 可能是 nil**（最后一条是注入上下文之类、没有 turn）。
-        // 那时 `first(where: { $0.turn == nil })` 会匹配到**日志最开头**那条 ——
-        // 计时器一下子跳到几十分钟前（实测显示 `32 分 47 秒`）。
-        let currentTurn = items.last?.turn
-        if let currentTurn, let first = items.first(where: { $0.turn == currentTurn }) {
-            turnStartedAt = first.time
-        } else {
-            turnStartedAt = items.last?.time ?? Date()
-        }
+        // 逻辑在 DSHKit 里（纯函数，有测试）—— 这里只管接线。
+        turnStartedAt = TurnTimer.start(items: items, isRunning: isTurnRunning, existing: turnStartedAt)
     }
 
     private func applySnapshot(_ snapshot: SessionSnapshot) async {

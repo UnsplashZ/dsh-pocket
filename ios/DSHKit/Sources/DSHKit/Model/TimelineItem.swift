@@ -535,3 +535,34 @@ public struct TimelineDelta: Sendable {
         shouldFollowScroll = shouldFollowScroll || other.shouldFollowScroll
     }
 }
+
+
+public enum TurnTimer {
+    /// 算出"这一轮从什么时候开始"，给工作状态的实时计时器用。
+    ///
+    /// 规则（按可靠性从高到低）：
+    ///   1. 已经有起点（`turn/start` 事件给的）→ 不动它；
+    ///   2. 当前这一轮**第一条可见内容**的时间；
+    ///   3. 最后一条的时间；
+    ///   4. 现在。
+    ///
+    /// **坑（实测显示过 `32 分 47 秒`）**：`items.last?.turn` 可能是 `nil`
+    ///（最后一条是注入上下文之类、没有 turn）。那时如果直接
+    /// `first(where: { $0.turn == nil })`，会匹配到**日志最开头**那条无 turn 的条目，
+    /// 计时器一下子跳到几十分钟前。所以 `nil` 时必须走第 3 步。
+    ///
+    /// 不跑着就返回 `nil`（计时器不显示）。
+    public static func start(
+        items: [TimelineItem],
+        isRunning: Bool,
+        existing: Date?,
+        now: Date = Date()
+    ) -> Date? {
+        guard isRunning else { return nil }
+        if let existing { return existing }
+        if let turn = items.last?.turn, let first = items.first(where: { $0.turn == turn }) {
+            return first.time
+        }
+        return items.last?.time ?? now
+    }
+}

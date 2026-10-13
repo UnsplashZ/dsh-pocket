@@ -867,60 +867,6 @@ struct ToolRow: View {
 }
 
 // MARK: - 待办
-
-struct TodoCard: View {
-    let list: TimelineItem.TodoList
-
-    var body: some View {
-        Card {
-            VStack(alignment: .leading, spacing: Token.Spacing.hairline) {
-                Label("待办", systemImage: "checklist")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                ForEach(list.items) { entry in
-                    HStack(alignment: .firstTextBaseline, spacing: Token.Spacing.tight) {
-                        Image(systemName: symbol(entry.status))
-                            .font(.footnote)
-                            .foregroundStyle(tone(entry.status).color)
-                            .frame(width: 16)
-                        Text(entry.text)
-                            .font(.subheadline)
-                            .strikethrough(entry.status == .completed, color: .secondary)
-                            .foregroundStyle(entry.status == .completed ? Color.secondary : Color.primary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel(Text("\(entry.text)，\(statusLabel(entry.status))"))
-                }
-            }
-        }
-    }
-
-    private func symbol(_ status: TimelineItem.TodoEntry.Status) -> String {
-        switch status {
-        case .pending: return "circle"
-        case .inProgress: return "circle.dotted"
-        case .completed: return "checkmark.circle.fill"
-        }
-    }
-
-    private func tone(_ status: TimelineItem.TodoEntry.Status) -> StatusTone {
-        switch status {
-        case .pending: return .neutral
-        case .inProgress: return .info
-        case .completed: return .success
-        }
-    }
-
-    private func statusLabel(_ status: TimelineItem.TodoEntry.Status) -> String {
-        switch status {
-        case .pending: return String(localized: "待办")
-        case .inProgress: return String(localized: "进行中")
-        case .completed: return String(localized: "已完成")
-        }
-    }
-}
-
 // MARK: - 产物
 
 struct DeliverablesCard: View {

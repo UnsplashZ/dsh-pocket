@@ -742,6 +742,48 @@ final class TimelineBuilderTests: XCTestCase {
         XCTAssertEqual(builder.items.count, 2, "只有 permission 被抑制")
     }
 
+    /// 计时器的起点。
+    ///
+    /// 实测踩过的坑：`items.last?.turn` 是 `nil` 时（最后一条是注入上下文之类），
+    /// 直接 `first(where: { $0.turn == nil })` 会匹配到**日志最开头**那条 ——
+    /// 计时器显示成 `32 分 47 秒`。
+    func testTurnTimerStart() throws {
+        let now = Date(timeIntervalSince1970: 1000)
+        func item(_ seq: Double, _ secondsAgo: TimeInterval, turn: Int?) -> TimelineItem {
+            TimelineItem(
+                id: "i\(seq)", seq: seq, time: now.addingTimeInterval(-secondsAgo), turn: turn,
+                kind: .note(.init(text: "n\(seq)", symbolName: "x", tone: .neutral,
+                                  sourceEventType: "x", isProminent: false))
+            )
+        }
+
+        // ① 不跑着 → 没有起点（计时器不显示）
+        XCTAssertNil(TurnTimer.start(items: [item(1, 5, turn: 1)], isRunning: false, existing: nil, now: now))
+
+        // ② 已经有起点（`turn/start` 给的）→ 不动它
+        let given = now.addingTimeInterval(-30)
+        XCTAssertEqual(TurnTimer.start(items: [item(1, 5, turn: 1)], isRunning: true, existing: given, now: now), given)
+
+        // ③ 没有起点 → 取**当前这一轮第一条**的时间，不是最后一条
+        let items = [item(1, 300, turn: 1), item(2, 120, turn: 2), item(3, 10, turn: 2)]
+        XCTAssertEqual(
+            TurnTimer.start(items: items, isRunning: true, existing: nil, now: now),
+            now.addingTimeInterval(-120),
+            "当前这一轮（turn 2）的第一条是 120 秒前那条"
+        )
+
+        // ④ **最后一条没有 turn 时不能跳到日志最开头**（实测踩过的坑）
+        let mixed = [item(1, 1800, turn: nil), item(2, 90, turn: 2), item(3, 10, turn: nil)]
+        XCTAssertEqual(
+            TurnTimer.start(items: mixed, isRunning: true, existing: nil, now: now),
+            now.addingTimeInterval(-10),
+            "退回最后一条的时间，绝不能匹配到开头那条无 turn 的"
+        )
+
+        // ⑤ 空列表 → 现在
+        XCTAssertEqual(TurnTimer.start(items: [], isRunning: true, existing: nil, now: now), now)
+    }
+
     // MARK: 落盘 / 续拉
 
     /// 折叠状态必须能**原样**往返 —— 恢复之后还能继续增量折叠，而不是只能画。
