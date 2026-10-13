@@ -314,6 +314,7 @@ struct TurnGroupView: View {
     let session: SessionModel
 
     @State private var isExpanded = false
+    @State private var hasAppliedDefault = false
 
     private var startItem: TimelineItem? {
         turn.items.first { if case .turnStart = $0.kind { return true }; return false }
@@ -337,21 +338,21 @@ struct TurnGroupView: View {
             }
 
             if turn.isComplete {
+                // 用户自己说的话永远在最上面，不参与折叠。
+                ForEach(turn.pinned) { item in
+                    TimelineRow(item: item, session: session)
+                        .padding(.horizontal, Token.Spacing.gutter)
+                        .id(item.id)
+                }
+
                 summaryRow
                     .padding(.horizontal, Token.Spacing.gutter)
 
-                if let headline = turn.headline {
-                    TimelineRow(item: headline, session: session)
+                // 收起 = 用户消息 + 结论；展开 = 全过程，**都按时间顺序**。
+                ForEach(isExpanded ? turn.expandedItems : turn.collapsedItems) { item in
+                    TimelineRow(item: item, session: session)
                         .padding(.horizontal, Token.Spacing.gutter)
-                        .id(headline.id)
-                }
-
-                if isExpanded {
-                    ForEach(turn.collapsible) { item in
-                        TimelineRow(item: item, session: session)
-                            .padding(.horizontal, Token.Spacing.gutter)
-                            .id(item.id)
-                    }
+                        .id(item.id)
                 }
             } else {
                 // 跑着：全展开，实时看得到。
@@ -361,6 +362,15 @@ struct TurnGroupView: View {
                         .id(item.id)
                 }
             }
+        }
+        .onAppear {
+            #if DEBUG
+            // 调试用：`defaults write cc.zexa.dshpocket DSHExpandTurns -bool YES`
+            // 让所有轮次默认展开，便于核对展开后的时序。
+            guard !hasAppliedDefault else { return }
+            hasAppliedDefault = true
+            if UserDefaults.standard.bool(forKey: "DSHExpandTurns") { isExpanded = true }
+            #endif
         }
     }
 

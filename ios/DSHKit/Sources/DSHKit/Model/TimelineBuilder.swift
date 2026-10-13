@@ -78,8 +78,12 @@ public struct TimelineBuilder: Sendable {
     /// 而不只是把条目画出来。少一个索引，后续 `surfaceOp.replace` 就会算错区间、
     /// `tool/result` 就会合并不到对应的 `tool/call`。
     public struct State: Sendable, Codable {
-        /// 版本号。形状变了就 +1，读不认识的版本一律丢弃重拉。
-        public static let currentSchemaVersion = 2
+        /// 版本号。形状**或折叠语义**变了就 +1，读不认识的版本一律丢弃重拉。
+        ///
+        /// 注意不只是"字段变了"要升版：`isShadowed` 这类**折叠结果**也存进来了，
+        /// 所以修好一个"错误地标成已隐藏"的 bug 之后，旧缓存里那个错误的标记
+        /// 会一直生效 —— 界面上看不出任何变化，会以为修复没生效（实测踩过）。
+        public static let currentSchemaVersion = 3
 
         public var schemaVersion: Int = State.currentSchemaVersion
         public var header: SessionHeader?
@@ -709,15 +713,29 @@ public struct TimelineBuilder: Sendable {
         // 与乐观插入 / 队列项去重：同一 rpcId 只留一条。
         if let rpcId, let existingId = optimisticItems.removeValue(forKey: rpcId) ?? inboxItems.removeValue(forKey: rpcId),
            let index = indexById[existingId] {
-            items[index].seq = event.seq
-            items[index].time = event.time
-            items[index].id = Self.durableId(event.seq)
-            items[index].kind = .userMessage(.init(
+            // 被接管的可能是**已经标成 shadowed 的队列项**：消息进队列时建了一条
+            // `inbox-<rpcId>`，队列被消费时 `applyInbox` 把它标成 shadowed，
+            // 随后真正的 `user/message` 带着**同一个 rpcId** 到达、接管它。
+            //
+            // 所以这里有两件事必须做对：
+            //   1. **清掉 `isShadowed`** —— 不清就继承"已隐藏"，用户的提示词整条消失
+            //      （实测踩过：用户在 App 里发的消息自己看不到，还以为是 App 吞了）；
+            //   2. **按新的 seq 重新入位** —— 原来只是就地改 `seq`，条目还留在旧位置
+            //      （队列项的临时 seq 在 `turn/start` 之前），于是轮次分组把它当成
+            //      轮次外的条目，用户消息在摘要上面出不来。
+            var taken = items[index]
+            items.remove(at: index)
+            rebuildIndex()
+            taken.seq = event.seq
+            taken.time = event.time
+            taken.id = Self.durableId(event.seq)
+            taken.isShadowed = false
+            taken.kind = .userMessage(.init(
                 text: text, images: images, files: files, rpcId: rpcId, isPending: false
             ))
-            indexById[existingId] = nil
-            indexById[Self.durableId(event.seq)] = index
-            delta.updated.append(items[index])
+            // 旧的 id 要在 delta 里说明"它没了"，否则界面会留着那条待发项。
+            delta.removedIds.append(existingId)
+            upsert(taken, into: &delta)
             return
         }
 

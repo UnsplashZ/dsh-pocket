@@ -36,21 +36,51 @@ public struct TimelineTurn: Sendable, Identifiable {
         }
     }
 
-    /// 收进摘要里的那些（`turn/start`、`turn/end` 除外 —— 它们本身就是摘要）。
+    /// **永远不折叠**的那些：用户自己说的话。
+    ///
+    /// 宿主的事件顺序是 `turn/start` → `user/message` → … → `turn/end`，
+    /// 也就是说用户的提示词**在轮次里面**。不特意挑出来的话，它会被当成
+    /// "轮内过程"一起收进摘要 —— 用户会以为自己的话被吞了。
+    public var pinned: [TimelineItem] {
+        items.filter { if case .userMessage = $0.kind { return true }; return false }
+    }
+
+    /// 收进摘要里的那些（`turn/start`、`turn/end`、用户消息、结论除外）。
     public var collapsible: [TimelineItem] {
         let headlineId = headline?.id
+        let pinnedIds = Set(pinned.map(\.id))
         return items.filter { item in
             switch item.kind {
-            case .turnStart, .turnEnd:
+            case .turnStart, .turnEnd, .userMessage:
                 return false
             default:
-                return item.id != headlineId
+                return item.id != headlineId && !pinnedIds.contains(item.id)
             }
         }
     }
 
     /// 摘要里有多少东西 —— 决定摘要行要不要显示计数。
     public var collapsedCount: Int { collapsible.count }
+
+    /// 摘要行**下面**收起时渲染的内容：只有结论。
+    ///
+    /// 用户消息不在这里 —— 它在摘要行**上面**单独渲染（永远可见），
+    /// 放进来会重复画一遍。
+    public var collapsedItems: [TimelineItem] {
+        [headline].compactMap { $0 }
+    }
+
+    /// 摘要行**下面**展开时渲染的内容：全过程 + 结论，**按时间顺序**。
+    ///
+    /// 展开后必须回到原始时序 —— 之前是"摘要 → 结论 → 过程"，
+    /// 过程跑到结论下面去了，读起来完全反了。
+    public var expandedItems: [TimelineItem] {
+        ordered(collapsible + [headline].compactMap { $0 })
+    }
+
+    private func ordered(_ list: [TimelineItem]) -> [TimelineItem] {
+        list.sorted { $0.seq < $1.seq }
+    }
 }
 
 extension TimelineBuilder {

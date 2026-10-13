@@ -370,16 +370,36 @@ final class TimelineBuilderTests: XCTestCase {
 
     // MARK: 轮次分组
 
-    private func foldTurn(_ builder: inout TimelineBuilder, turn: Int, startSeq: Int, text: String, reasoning: String = "想一想") throws {
-        let events = [
-            Fixture.turnStart(turn, seq: startSeq),
-            Fixture.injectedContext("time", kind: "time-context", seq: startSeq + 1),
-            Fixture.assistantMessage(text: text, reasoning: reasoning, seq: startSeq + 2),
-            Fixture.toolCall("call_\(turn)", seq: startSeq + 3),
-            Fixture.toolResult("call_\(turn)", output: "ok", seq: startSeq + 4),
-            Fixture.assistantMessage(text: "最终结论 \(turn)", seq: startSeq + 5),
-            Fixture.turnEnd(turn, seq: startSeq + 6),
-        ]
+    /// 造一个轮次。
+    ///
+    /// 注意事件顺序：宿主是 `turn/start` → `user/message` → … → `turn/end`，
+    /// **提示词在轮次里面**。seq 也刻意错开 —— 同 seq 会被 `upsert` 覆盖掉。
+    private func foldTurn(
+        _ builder: inout TimelineBuilder,
+        turn: Int,
+        startSeq: Int,
+        text: String,
+        reasoning: String = "想一想",
+        prompt: String? = nil
+    ) throws {
+        var events: [String] = [Fixture.turnStart(turn, seq: startSeq)]
+        var cursor = startSeq
+        if let prompt {
+            cursor += 1
+            events.append(Fixture.userMessage(prompt, seq: cursor))
+        }
+        cursor += 1
+        events.append(Fixture.injectedContext("time", kind: "time-context", seq: cursor))
+        cursor += 1
+        events.append(Fixture.assistantMessage(text: text, reasoning: reasoning, seq: cursor))
+        cursor += 1
+        events.append(Fixture.toolCall("call_\(turn)", seq: cursor))
+        cursor += 1
+        events.append(Fixture.toolResult("call_\(turn)", output: "ok", seq: cursor))
+        cursor += 1
+        events.append(Fixture.assistantMessage(text: "最终结论 \(turn)", seq: cursor))
+        cursor += 1
+        events.append(Fixture.turnEnd(turn, seq: cursor))
         for raw in events { _ = builder.apply(try Fixture.event(raw)) }
     }
 
@@ -411,6 +431,43 @@ final class TimelineBuilderTests: XCTestCase {
         XCTAssertTrue(turn.collapsible.contains { if case .toolCall = $0.kind { return true }; return false })
         XCTAssertFalse(turn.collapsible.contains { if case .turnStart = $0.kind { return true }; return false },
                        "turn/start 自己就是摘要的一部分，不重复收进去")
+    }
+
+    /// **用户自己说的话永远不能被折叠。**
+    ///
+    /// 宿主的事件顺序是 `turn/start` → `user/message` → … → `turn/end`，
+    /// 也就是说提示词**在轮次里面**。不特意挑出来的话它会被当成"轮内过程"
+    /// 一起收进摘要 —— 用户会以为自己的话被吞了（实测踩过）。
+    func testUserPromptInsideTheTurnIsNeverFolded() throws {
+        var builder = TimelineBuilder()
+        try foldTurn(&builder, turn: 1, startSeq: 2, text: "我先看一下", prompt: "帮我看一下这个仓库")
+
+        guard case .turn(let turn) = builder.timelineBlocks().first else { return XCTFail() }
+        XCTAssertEqual(turn.pinned.count, 1, "用户消息要单独挑出来")
+        guard case .userMessage(let prompt)? = turn.pinned.first?.kind else { return XCTFail("挑不出来") }
+        XCTAssertEqual(prompt.text, "帮我看一下这个仓库")
+
+        XCTAssertFalse(
+            turn.collapsible.contains { if case .userMessage = $0.kind { return true }; return false },
+            "折叠区里不该有用户消息"
+        )
+        XCTAssertTrue(turn.collapsedItems.contains { if case .userMessage = $0.kind { return true }; return false } == false,
+                      "收起时渲染的那批里也不该有 —— 它在摘要行上面单独渲染，重复放会画两遍")
+    }
+
+    /// 展开之后要回到**原始时序**：过程在结论前面，不是跑到结论下面去。
+    func testExpandedTurnRestoresChronologicalOrder() throws {
+        var builder = TimelineBuilder()
+        try foldTurn(&builder, turn: 1, startSeq: 2, text: "我先看一下", prompt: "问题")
+        guard case .turn(let turn) = builder.timelineBlocks().first else { return XCTFail() }
+
+        let headlineSeq = try XCTUnwrap(turn.headline?.seq)
+        let expanded = turn.expandedItems.map(\.seq)
+        XCTAssertEqual(expanded, expanded.sorted(), "展开后必须按 seq 升序")
+        XCTAssertEqual(expanded.last, headlineSeq, "结论应当在最后（时序上它本来就是最后）")
+
+        // 收起时只剩结论
+        XCTAssertEqual(turn.collapsedItems.map(\.id), [try XCTUnwrap(turn.headline?.id)])
     }
 
     /// 还在跑的轮次**不**收拢 —— 正在发生的事没有收拢的道理。
@@ -452,6 +509,35 @@ final class TimelineBuilderTests: XCTestCase {
         XCTAssertFalse(assistant?.isConversational ?? true, "但不该出现在默认视图里")
     }
 
+    /// **队列项被消费后，真正的 `user/message` 接管它不能继承"已隐藏"。**
+    ///
+    /// 完整链路（实测踩过）：
+    ///   1. 消息进队列 → 建一条 `inbox-<rpcId>` 待发项；
+    ///   2. 队列被消费 → `applyInbox` 把它标成 `isShadowed = true`；
+    ///   3. 真正的 `user/message` 带着**同一个 rpcId** 到达，接管那条项 ——
+    ///      不清标记的话会继承"已隐藏"，**用户的提示词整条消失**。
+    func testDurableUserMessageTakingOverAConsumedQueueItemIsVisible() throws {
+        var builder = TimelineBuilder()
+        // ① 入队
+        _ = builder.apply(try Fixture.event("""
+        {"type":"agent/inbox/spliced","seq":1,"time":1791777000000,"data":{"inserted":[{"content":[{"type":"text","text":"排队的那条"}],"source":{"kind":"user","rpcId":"rpc-9"},"role":"user","id":"m1"}]},"surfaceOp":null}
+        """))
+        // ② 队列被消费
+        _ = builder.apply(try Fixture.event("""
+        {"type":"agent/inbox/spliced","seq":2,"time":1791777000000,"data":{"removedCount":1,"outcome":"claimed"},"surfaceOp":null}
+        """))
+        // ③ 真正落进日志
+        _ = builder.apply(try Fixture.event(Fixture.userMessage("排队的那条", seq: 3, rpcId: "rpc-9")))
+
+        let durable = builder.items.filter { item in
+            guard case .userMessage(let message) = item.kind else { return false }
+            return !message.isPending
+        }
+        XCTAssertEqual(durable.count, 1, "接管之后只该剩一条")
+        XCTAssertFalse(durable[0].isShadowed, "接管时必须清掉队列项留下的 shadowed 标记")
+        XCTAssertTrue(durable[0].isConversational, "而且要能渲染出来")
+    }
+
     // MARK: 落盘 / 续拉
 
     /// 折叠状态必须能**原样**往返 —— 恢复之后还能继续增量折叠，而不是只能画。
@@ -491,9 +577,12 @@ final class TimelineBuilderTests: XCTestCase {
         let stale = TimelineBuilder.State(schemaVersion: 999)
         XCTAssertNil(TimelineBuilder(state: stale), "版本对不上要丢弃，不能猜着读")
 
-        // 加字段（审批的 callId）时把版本从 1 提到 2 —— 旧缓存必须被丢掉，
-        // 否则 `Approval.callId` 会是 nil，审批卡片又会认不出自己能答。
-        XCTAssertEqual(TimelineBuilder.State.currentSchemaVersion, 2)
+        // 升版的两个理由，都要记住：
+        //   · 加字段（审批的 callId）→ 旧缓存里 `Approval.callId` 是 nil，审批卡片认不出自己能答；
+        //   · **折叠语义**变了（修好"错误地标成已隐藏"）→ 旧缓存里那个错误标记会一直生效，
+        //     界面上看不出任何变化，会以为修复没生效。
+        XCTAssertEqual(TimelineBuilder.State.currentSchemaVersion, 3)
+        XCTAssertNil(TimelineBuilder(state: TimelineBuilder.State(schemaVersion: 2)))
         XCTAssertNil(TimelineBuilder(state: TimelineBuilder.State(schemaVersion: 1)))
     }
 
@@ -610,7 +699,11 @@ final class TimelineBuilderTests: XCTestCase {
                 totalText += message.plainText.count
             }
             XCTAssertGreaterThan(assistantWithBlocks, 0, "\(file.lastPathComponent)：一条助手消息的内容块都没解出来")
-            XCTAssertGreaterThan(totalText, 200, "\(file.lastPathComponent)：助手正文总长度异常（\(totalText)）")
+            // 只看"有没有解出正文"，**不设字数下限** —— 样本有长有短，
+            // 短会话（比如一次 `pwd` 的两轮对话）正文本来就只有几十字。
+            // "解析坏了"的信号由上面那两条（内容块数 + unknown 条数）负责，
+            // 拿字数当完整性指标只会误伤短样本。
+            XCTAssertGreaterThan(totalText, 0, "\(file.lastPathComponent)：助手正文一个字都没解出来")
 
             // 工具调用必须合并成一条一条的，而不是 call/result 各来一条
             let toolIds = builder.items.compactMap { item -> String? in
