@@ -422,3 +422,56 @@ SwiftPM 状态"上。
 
 顺带：**`Picker(.inline)` 配 `VStack` 标签不渲染选中勾**，而这里每个 preset
 都带一段说明、勾必须看得见，所以换成显式的勾选行。
+
+## ADR-0024 · 重连后 sheet 被拆掉、正在跑的会话显示成空闲、模型提供商设置
+
+**日期**：2026-10-13
+
+### 重连后「电脑设置」点一次就缩回去
+
+**根因**：`.sheet(isPresented:)` 挂在了 `Section` **里面**。`connection` 一变（重连）
+整个 `Form` 重建、section 的身份跟着变，已经呈现的 sheet 被拆掉 ——
+用户看到的就是"点一次自己缩回去，得再点一次"。
+**修法**：把它提到最外层（跟 `showPairing` 一样的位置）。
+
+### 正在跑的会话显示成空闲
+
+**根因**：`applySnapshot` 无条件 `isTurnRunning = false`。
+**更深一层**：想"从日志推导"也不行 —— 有界快照（`maxMessages: 20`）可能**切在轮次中间**，
+窗口里根本没有 `turn/start`（实测确认）。
+**修法**：权威来源是 `session/list` 的 `running`（`SessionSummary.isRunning`），
+打开会话时种进去；日志里能看出开合就用它；
+**实时的 `turn/end` 是终局判据** —— 它到了就是跑完了，不再让可能过期的列表标志拉回"运行中"。
+
+> 这个 bug 的后果不只是"少个停止按钮"：跑着的时候输入框会显示成空闲，
+> 用户以为跑完了。
+
+### 输入框：排队 / 插队 / 停止
+
+跑着的时候三个动作分开：**排队**（`mode:'queue'`，带文字标签的主操作）、
+**插队**（`mode:'steer'`，插进正在跑的这一轮）、**停止**（`session/cancel`）。
+跑着时**不显示上下文占用条** —— 那一行放三个按钮已经满了，
+再塞一根进度条会把权限胶囊和百分比挤到截断（实测）。百分比挪到下面的统计行。
+
+### 模型提供商设置
+
+`settings` 里带 `providers` 的命名空间（本机 `llm-pi-ai`）→ 新增/删除/修改提供商与模型。
+**密钥不在手机上**：提供商配的是 `apiKeyEnv`（环境变量名），真正的 key 在电脑的环境里 ——
+所以这一页改着是安全的。
+
+三个实现要点：
+- **必须原样保留没在界面上编辑的字段**（`reasoningEfforts`、`compat.chatTemplateKwargs`、
+  `input`…）。按我们的模型字段重新拼一份 JSON 写回去，用户的推理档位和模板参数就全没了。
+  所以 `mergedJSON()` 是在**原始 JSON 上覆盖**。
+- 写到 `providers.<id>` 而不是重写整个 `providers`（后者会把并发改动一起覆盖）。
+- `SettingsPathOpView` 是**严格联合**：`{op:'set',path,value}` 或 `{op:'unset',path}` ——
+  `unset` 多带一个 `value` 会被拒。
+- **DSH 自己会校验**：一个模型都没有的提供商会保存失败
+  （`provider "x" resolves no models; the installed catalog does not describe this route`）。
+  这条约束提前写进了界面提示。
+
+### 顺带
+
+- 键盘弹出后**重新贴底**（键盘动画落定后再补一次）—— 否则最新内容被挡在键盘后面。
+- `TextField` 的**示例值**改用 `prompt: Text(verbatim:)`：写成标题会被抽进本地化目录
+  （一次多出 8 条 `1000000` / `WB_API_KEY` 之类的垃圾 key）。

@@ -664,7 +664,7 @@ public final class AppModel {
     /// 改一组设置。返回错误文案（成功返回 nil）。
     func mutateSettings(
         namespace: String,
-        operations: [(op: String, path: [String], value: JSONValue)],
+        operations: [(op: String, path: [String], value: JSONValue?)],
         expectedRevision: Int?
     ) async -> String? {
         do {

@@ -15,6 +15,7 @@ struct HostSettingsView: View {
 
     @State private var showModelPicker = false
     @State private var showAllPlugins = false
+    @State private var showProviders = false
     @State private var pendingDisableBundle: HostBundle?
     @State private var workingBundleName: String?
     @State private var errorMessage: String?
@@ -29,6 +30,7 @@ struct HostSettingsView: View {
                     }
                 } else {
                     modelSection
+                    providersSection
                     bundlesSection
                     // 一级页只放"包"。包里的单个插件（本机 202 条）挪到二级页，
                     // 那里有搜索 —— 平铺在一级页完全看不清。
@@ -59,13 +61,22 @@ struct HostSettingsView: View {
                     if model.isLoadingHostSettings { ProgressView().controlSize(.small) }
                 }
             }
-            .task { await model.refreshHostSettings(); await model.refreshHostPlugins() }
+            .task {
+                await model.refreshHostSettings()
+                await model.refreshHostPlugins()
+                #if DEBUG
+                if UserDefaults.standard.bool(forKey: "DSHShowProviders") { showProviders = true }
+                #endif
+            }
             .refreshable { await model.refreshHostSettings(); await model.refreshHostPlugins() }
             .sheet(isPresented: $showModelPicker) {
                 DefaultModelPickerSheet()
             }
             .sheet(isPresented: $showAllPlugins) {
                 PluginDetailView()
+            }
+            .sheet(isPresented: $showProviders) {
+                ModelProvidersView()
             }
             .confirmationDialog(
                 "停用这个插件包？",
@@ -129,6 +140,34 @@ struct HostSettingsView: View {
         let provider = namespace.value.string("provider") ?? ""
         guard !model.isEmpty else { return String(localized: "未设置") }
         return provider.isEmpty ? model : "\(provider) / \(model)"
+    }
+
+    // MARK: 模型提供商
+
+    @ViewBuilder
+    private var providersSection: some View {
+        if model.hostSettings?.namespaces.contains(where: { $0.value["providers"]?.objectValue != nil }) == true {
+            Section {
+                Button {
+                    showProviders = true
+                } label: {
+                    LabeledContent {
+                        Text(String(providerCount))
+                            .foregroundStyle(.secondary)
+                    } label: {
+                        Label("提供商与模型", systemImage: "server.rack")
+                    }
+                }
+            } footer: {
+                Text("新增、删除、修改提供商与模型。密钥不在手机上 —— 提供商配的是环境变量名。")
+            }
+        }
+    }
+
+    private var providerCount: Int {
+        guard let ns = model.hostSettings?.namespaces.first(where: { $0.value["providers"]?.objectValue != nil })
+        else { return 0 }
+        return decodeProviders(ns).count
     }
 
     // MARK: 插件（包级别）

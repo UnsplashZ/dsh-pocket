@@ -371,6 +371,76 @@ final class ProtocolContractTests: XCTestCase {
         XCTAssertNil(catalog.subagentSessionId(label: "不存在", at: at))
     }
 
+    // MARK: 模型提供商
+
+    /// **改提供商时必须原样保留没在界面上编辑的字段。**
+    ///
+    /// 提供商/模型里有 `reasoningEfforts`、`compat.chatTemplateKwargs`、`input`…
+    /// 按我们的模型字段重新拼一份 JSON 写回去，这些会全部丢掉 ——
+    /// 用户的推理档位和模板参数就没了。所以 `mergedJSON()` 是在原始 JSON 上覆盖。
+    func testProviderMergePreservesUntouchedFields() throws {
+        let provider = LLMProvider(id: "wb", raw: Fixture.json(#"""
+        {"displayName":"WB","baseURL":"http://old:1/v1","api":"openai-completions",
+         "apiKeyEnv":"WB_API_KEY","unknownTopLevel":{"keep":"me"},
+         "models":[{"id":"m1","name":"M1","contextWindow":1000,"maxTokens":10,
+                    "reasoningEfforts":{"high":"high"},"compat":{"chatTemplateKwargs":{"a":1}},"input":["text","image"]}]}
+        """#))
+        XCTAssertEqual(provider.models.count, 1)
+        XCTAssertEqual(provider.models[0].raw["reasoningEfforts"]?["high"]?.stringValue, "high")
+
+        var edited = provider
+        edited.baseURL = "http://new:2/v1"
+        edited.models[0].contextWindow = 2000
+
+        let merged = edited.mergedJSON()
+        XCTAssertEqual(merged.string("baseURL"), "http://new:2/v1", "改过的字段要生效")
+        XCTAssertEqual(merged["unknownTopLevel"]?["keep"]?.stringValue, "me", "没碰过的顶层字段要保留")
+        let model = try XCTUnwrap(merged.array("models")?.first)
+        XCTAssertEqual(model.int("contextWindow"), 2000, "改过的模型字段要生效")
+        XCTAssertEqual(model["reasoningEfforts"]?["high"]?.stringValue, "high", "模型的推理档位要保留")
+        XCTAssertEqual(model["compat"]?["chatTemplateKwargs"]?["a"]?.intValue, 1, "模板参数要保留")
+        XCTAssertEqual(model.array("input")?.count, 2, "输入模态要保留")
+    }
+
+    func testProviderParsingFallsBackToId() throws {
+        let provider = LLMProvider(id: "custom", raw: Fixture.json(#"{"baseURL":"http://x/v1"}"#))
+        XCTAssertEqual(provider.displayName, "custom", "没给 displayName 就用 id")
+        XCTAssertEqual(provider.api, "openai-completions", "没给 api 用最常见的那个")
+        XCTAssertTrue(provider.models.isEmpty)
+    }
+
+    func testDecodeProvidersReadsTheProvidersObject() throws {
+        let namespace = SettingsNamespace(json: Fixture.json(#"""
+        {"ns":"llm-pi-ai","revision":3,"value":{"providers":{
+            "wb":{"displayName":"WB","baseURL":"http://a/v1","models":[{"id":"m1"}]},
+            "other":{"displayName":"Other","baseURL":"http://b/v1","models":[]}}}}
+        """#), isWritable: true)
+        let providers = decodeProviders(namespace)
+        XCTAssertEqual(providers.map(\.id).sorted(), ["other", "wb"], "键就是提供商 id")
+        XCTAssertEqual(providers.first { $0.id == "wb" }?.models.count, 1)
+    }
+
+    // MARK: 轮次开合
+
+    /// 有界快照可能切在轮次**中间**（`maxMessages: 20` 时窗口从半途开始），
+    /// 那样日志里根本没有 `turn/start` —— 所以这个推导只能当**补充**，
+    /// 权威来源是会话列表的 `running`。
+    func testIsTurnOpenOnlyTellsTheTruthWhenTheBoundaryIsInTheWindow() throws {
+        var open = TimelineBuilder()
+        _ = open.apply(try Fixture.event(Fixture.turnStart(1, seq: 1)))
+        _ = open.apply(try Fixture.event(Fixture.assistantMessage(text: "在跑", seq: 2)))
+        XCTAssertTrue(open.isTurnOpen)
+
+        _ = open.apply(try Fixture.event(Fixture.turnEnd(1, seq: 3)))
+        XCTAssertFalse(open.isTurnOpen)
+
+        // 窗口切在半途：没有 turn/start，推导不出"在跑"
+        var partial = TimelineBuilder()
+        _ = partial.apply(try Fixture.event(Fixture.stepStart(turn: 1, step: 2, seq: 10)))
+        _ = partial.apply(try Fixture.event(Fixture.assistantMessage(text: "半途", seq: 11)))
+        XCTAssertFalse(partial.isTurnOpen, "这正是必须靠会话列表 running 兜底的原因")
+    }
+
     // MARK: 消息评价
 
     func testMessageFeedbackParsesRatingAndVersion() throws {

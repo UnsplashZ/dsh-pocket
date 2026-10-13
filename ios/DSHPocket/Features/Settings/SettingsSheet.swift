@@ -42,6 +42,12 @@ struct SettingsSheet: View {
                 }
             }
             .sheet(isPresented: $showPairing) { PairingSheet() }
+            // **必须挂在最外层**，不能挂在 `Section` 上。
+            // 挂在 section 上时，`connection` 一变（重连）整个 Form 重建、
+            // section 的身份跟着变，已经呈现的 sheet 会被拆掉 ——
+            // 表现就是"点一次菜单自己缩回去，得再点一次"（实测）。
+            .sheet(isPresented: $showHostSettings) { HostSettingsView() }
+            .sheet(isPresented: $showHostSettingsFromDebug) { HostSettingsView() }
             #if DEBUG
             .sheet(isPresented: $showArchived) {
                 NavigationStack { ArchivedSessionsView() }
@@ -191,8 +197,6 @@ struct SettingsSheet: View {
         } footer: {
             Text("在手机上改**电脑上**的配置：插件开关、新会话的默认模型与思考等级。其余设置在电脑上改更合适。")
         }
-        .sheet(isPresented: $showHostSettings) { HostSettingsView() }
-        .sheet(isPresented: $showHostSettingsFromDebug) { HostSettingsView() }
     }
 
     // MARK: 缓存

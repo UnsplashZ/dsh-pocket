@@ -624,6 +624,11 @@ EN: dict[str, str] = {
     "首字 %@": "TTFT %@",
     "%.0f tok/s": "%.0f tok/s",
     "缓存 %.0f%%": "Cache %.0f%%",
+    "上下文 %.0f%%": "Context %.0f%%",
+    "密钥不在手机上：提供商配的是**环境变量名**，真正的 key 在电脑的环境里。\n\n新增的提供商**至少要有一个模型** —— 一个模型都没有的提供商会保存失败（电脑端会拒绝）。左滑可以删除。":
+        "Keys aren’t on your phone: providers reference an **environment variable name**; the real key lives in your computer’s environment.\n\nA new provider needs **at least one model** — a provider with none will be rejected by your computer. Swipe to delete.",
+    "左滑删除。模型里没在界面上列出的字段（推理档位、模板参数…）会**原样保留**。\n\n模型 id 要和电脑端认的完全一致，否则这个提供商会保存失败。":
+        "Swipe to delete. Fields not shown here (reasoning levels, template args…) are **preserved as-is**.\n\nThe model id must match exactly what your computer expects, or the provider will be rejected.",
     "用量 %@": "%@ tok",
     "复制": "Copy",
     "赞": "Good response",
@@ -644,6 +649,43 @@ EN: dict[str, str] = {
     "模式": "Mode",
     "决定这个会话用哪套 agent 配置。名字下面有说明的，按说明选。":
         "Which agent configuration this session uses. When a preset has a description, go by it.",
+    # 模型提供商
+    "提供商与模型": "Providers & models",
+    "新增、删除、修改提供商与模型。密钥不在手机上 —— 提供商配的是环境变量名。":
+        "Add, remove, and edit providers and models. Keys aren’t on your phone — providers reference an environment variable.",
+    "提供商": "Providers",
+    "提供商 · %lld": "Providers · %lld",
+    "添加提供商": "Add provider",
+    "添加模型": "Add model",
+    "模型 · %lld": "Models · %lld",
+    "%lld 个模型": "%lld models",
+    "容量": "Capacity",
+    "上下文窗口": "Context window",
+    "单次输出上限": "Max output",
+    "标识": "ID",
+    "名称": "Name",
+    "地址": "Base URL",
+    "协议": "API",
+    "密钥环境变量": "Key env var",
+    "「标识」是别的配置引用这个提供商用的键，建好之后不能改。密钥本身不在这里 —— 这里填的是**环境变量名**。":
+        "“ID” is the key other settings use to reference this provider — it can’t change after creation. The key itself isn’t here: this field holds the **environment variable name**.",
+    "密钥不在手机上：提供商配的是**环境变量名**，真正的 key 在电脑的环境里。左滑可以删除。":
+        "Keys aren’t on your phone: providers reference an **environment variable name**; the real key lives in your computer’s environment. Swipe to delete.",
+    "左滑删除。模型里没在界面上列出的字段（推理档位、模板参数…）会**原样保留**。":
+        "Swipe to delete. Fields not shown here (reasoning levels, template args…) are **preserved as-is**.",
+    "模型 id 必须跟服务端认的那个完全一致，写错会选不中。":
+        "The model id must match exactly what the server expects — a typo means it can’t be selected.",
+    "删除这个提供商？": "Delete this provider?",
+    "用它跑着的会话不会立刻停，但之后就选不到它的模型了。":
+        "Sessions already using it keep running, but its models can no longer be selected.",
+    "这台电脑没有暴露模型提供商设置。": "This computer doesn’t expose provider settings.",
+    # 排队 / 插队 / 停止
+    "追加排队": "Queue",
+    "等这一轮跑完再发出去": "Send it once this turn finishes",
+    "立刻插队": "Steer",
+    "插进正在跑的这一轮，不再等它跑完": "Inject into the running turn instead of waiting",
+    "排队": "Queue",
+    "删除": "Delete",
 }
 
 # 哪些插值表达式是整数。判错的后果是英文界面上显示成 `%lld` 字面量，

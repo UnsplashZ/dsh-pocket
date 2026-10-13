@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		07D4AFEDDD493F17EDB21685 /* DSHPocketApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 924598A2E62CF91E30377D87 /* DSHPocketApp.swift */; };
+		0C3DD51E547C02C0C94F342A /* LLMProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 629A0D2486C00C6FD8CB3A91 /* LLMProvider.swift */; };
 		1124AFA07CF308417A5A1867 /* SessionCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD212F40CEBB2E882DB37AE2 /* SessionCacheTests.swift */; };
 		122EA2D82CF1FAF439A5C61E /* TimelineItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 332E9727DA5B522FCF725E72 /* TimelineItem.swift */; };
 		15DACF3340A6F41D53E0005F /* HostBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 836591110B5A4AC8A0E97A47 /* HostBundle.swift */; };
@@ -67,6 +68,7 @@
 		A4D35E605F7A98B9F1ABA329 /* TetherSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AAEDF5B0163D090BF27398A /* TetherSession.swift */; };
 		A6BE9190F5019A8A430646C2 /* PermissionPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = EECC9AE2D0F11BEC981A1404 /* PermissionPickerSheet.swift */; };
 		AD46495FBEDBD188501813BC /* AppLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9FA0B78A3547368B545428A /* AppLogicTests.swift */; };
+		B27ABBD5392E5AB5C0825449 /* ModelProvidersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D128DDECCA3A17DBC3E55D94 /* ModelProvidersView.swift */; };
 		B2C68D45F6D1B2B35D9ED533 /* SessionCategory.swift in Sources */ = {isa = PBXBuildFile; fileRef = B225F0688C4A99917EBDD4AE /* SessionCategory.swift */; };
 		B2F99E897F8DC4F71127968C /* IrohLib.swift in Sources */ = {isa = PBXBuildFile; fileRef = 649275652C15B4E856D19630 /* IrohLib.swift */; };
 		B4AD5FE8791A38577D7AE2C8 /* PairingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBF83F4E8B796777D460DAE3 /* PairingSheet.swift */; };
@@ -179,6 +181,7 @@
 		54FBBD8E05AA668CEF81EF66 /* DSHClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSHClient.swift; sourceTree = "<group>"; };
 		57FD4C43AD3A7045506EDF86 /* LocalProxyServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalProxyServer.swift; sourceTree = "<group>"; };
 		59C72C7E55FE2D733E43C1E5 /* Iroh.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = Iroh.xcframework; path = vendor/Iroh.xcframework; sourceTree = "<group>"; };
+		629A0D2486C00C6FD8CB3A91 /* LLMProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMProvider.swift; sourceTree = "<group>"; };
 		649275652C15B4E856D19630 /* IrohLib.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IrohLib.swift; sourceTree = "<group>"; };
 		6607BBF3D413D89A4B537871 /* Projections.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Projections.swift; sourceTree = "<group>"; };
 		6D3E85F2E06D4C88D4910978 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
@@ -220,6 +223,7 @@
 		CBD739A226633E29134DDDE5 /* HostPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostPlugin.swift; sourceTree = "<group>"; };
 		CD212F40CEBB2E882DB37AE2 /* SessionCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCacheTests.swift; sourceTree = "<group>"; };
 		CE27129706630B034A013169 /* NewSessionSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewSessionSheet.swift; sourceTree = "<group>"; };
+		D128DDECCA3A17DBC3E55D94 /* ModelProvidersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelProvidersView.swift; sourceTree = "<group>"; };
 		D3FFD174FD60E9DC57F54FF3 /* TetherIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TetherIdentity.swift; sourceTree = "<group>"; };
 		D4B82B84D34748F34AB480E7 /* ArchivedSessionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchivedSessionsView.swift; sourceTree = "<group>"; };
 		D5363D3D5D59ADA73D62643C /* MarkdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownView.swift; sourceTree = "<group>"; };
@@ -305,6 +309,7 @@
 				C53081436A11EF6105069F25 /* AgentPreset.swift */,
 				836591110B5A4AC8A0E97A47 /* HostBundle.swift */,
 				CBD739A226633E29134DDDE5 /* HostPlugin.swift */,
+				629A0D2486C00C6FD8CB3A91 /* LLMProvider.swift */,
 				46609A991FC8C5A35FF55F60 /* MessageFeedback.swift */,
 				33BA4D73DF3106AB6973C28A /* ModelCatalog.swift */,
 				26456AC49423F3B6A1F97ACE /* PermissionPreset.swift */,
@@ -459,6 +464,7 @@
 				D4B82B84D34748F34AB480E7 /* ArchivedSessionsView.swift */,
 				8228B8138EE7502853E22F63 /* DiagnosticsView.swift */,
 				29D28F9396FE62A8F095295F /* HostSettingsView.swift */,
+				D128DDECCA3A17DBC3E55D94 /* ModelProvidersView.swift */,
 				F4662D3F79BDEB3E7FA8D5C7 /* SettingsSheet.swift */,
 			);
 			path = Settings;
@@ -738,6 +744,7 @@
 				7D1604DE7CF072C44796FD1E /* HostPlugin.swift in Sources */,
 				9841EB1AD4F981BAEAC319B4 /* HostProvider.swift in Sources */,
 				4B2610E3E5F08B31B0D6B327 /* JSONValue.swift in Sources */,
+				0C3DD51E547C02C0C94F342A /* LLMProvider.swift in Sources */,
 				A466F339BFBD733A2492ADE5 /* MessageFeedback.swift in Sources */,
 				3DDFBE4A5A035056DA874763 /* ModelCatalog.swift in Sources */,
 				5E9D06012AD7777CCDDAFC04 /* MuxClient.swift in Sources */,
@@ -803,6 +810,7 @@
 				6695A409C898AAA1A1ABD408 /* MarkdownBlock.swift in Sources */,
 				175ACEDFC12D7C260D7A9529 /* MarkdownView.swift in Sources */,
 				9D2E673286B4A73F0CB72B69 /* ModelPickerSheet.swift in Sources */,
+				B27ABBD5392E5AB5C0825449 /* ModelProvidersView.swift in Sources */,
 				56F0FA7E876F80733D4CD5AF /* NewSessionSheet.swift in Sources */,
 				B4AD5FE8791A38577D7AE2C8 /* PairingSheet.swift in Sources */,
 				44FF524D67E6E0CE5C416554 /* PermissionLabels.swift in Sources */,

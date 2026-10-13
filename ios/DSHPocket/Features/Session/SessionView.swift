@@ -51,6 +51,7 @@ struct SessionView: View {
                 let created = SessionModel(
                     sessionId: summary.sessionId,
                     title: summary.title,
+                    isRunning: summary.isRunning,
                     appModel: model
                 )
                 session = created
@@ -218,6 +219,20 @@ struct SessionView: View {
                     try? await Task.sleep(for: .milliseconds(60))
                     guard isFollowingBottom else { return }
                     scrollToBottom(proxy, animated: false)
+                }
+            }
+            // 键盘弹出会把输入区顶上去、视口矮一截 —— 不重新贴底的话，
+            // 最新内容会被挡在键盘后面（用户："看不到最新的内容"）。
+            .onChange(of: composerFocused) { _, focused in
+                guard focused else { return }
+                isFollowingBottom = true
+                // 立刻滚一次，再等键盘动画落定后补一次 ——
+                // 键盘高度是动画出来的，只滚一次会停在半路。
+                scrollToBottom(proxy, animated: false)
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(280))
+                    guard composerFocused, isFollowingBottom else { return }
+                    scrollToBottom(proxy, animated: true)
                 }
             }
             .onChange(of: model.focusedApprovalId) { _, newValue in

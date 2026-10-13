@@ -101,6 +101,17 @@
         }
       }
     },
+    "%lld 个模型": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld models"
+          }
+        }
+      }
+    },
     "%lld 个问题": {
       "extractionState": "manual",
       "localizations": {
@@ -277,6 +288,17 @@
         }
       }
     },
+    "「标识」是别的配置引用这个提供商用的键，建好之后不能改。密钥本身不在这里 —— 这里填的是**环境变量名**。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“ID” is the key other settings use to reference this provider — it can’t change after creation. The key itself isn’t here: this field holds the **environment variable name**."
+          }
+        }
+      }
+    },
     "一期如实告知；后续可加一个进程内的随机握手令牌（需要电脑端配合）。": {
       "extractionState": "manual",
       "localizations": {
@@ -339,6 +361,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "The last step didn’t go through"
+          }
+        }
+      }
+    },
+    "上下文 %.0f%%": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Context %.0f%%"
           }
         }
       }
@@ -575,6 +608,17 @@
         }
       }
     },
+    "停止": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop"
+          }
+        }
+      }
+    },
     "停止并归档": {
       "extractionState": "manual",
       "localizations": {
@@ -795,6 +839,17 @@
         }
       }
     },
+    "删除": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete"
+          }
+        }
+      }
+    },
     "别的会话": {
       "extractionState": "manual",
       "localizations": {
@@ -850,6 +905,17 @@
         }
       }
     },
+    "协议": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API"
+          }
+        }
+      }
+    },
     "协议自检": {
       "extractionState": "manual",
       "localizations": {
@@ -890,6 +956,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Arguments"
+          }
+        }
+      }
+    },
+    "发送": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send"
           }
         }
       }
@@ -1275,6 +1352,28 @@
         }
       }
     },
+    "容量": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Capacity"
+          }
+        }
+      }
+    },
+    "密钥不在手机上：提供商配的是**环境变量名**，真正的 key 在电脑的环境里。左滑可以删除。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keys aren’t on your phone: providers reference an **environment variable name**; the real key lives in your computer’s environment. Swipe to delete."
+          }
+        }
+      }
+    },
     "导出日志": {
       "extractionState": "manual",
       "localizations": {
@@ -1382,6 +1481,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Swipe a row in the session list to archive it here."
+          }
+        }
+      }
+    },
+    "左滑删除。模型里没在界面上列出的字段（推理档位、模板参数…）会**原样保留**。\n\n模型 id 要和电脑端认的完全一致，否则这个提供商会保存失败。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Swipe to delete. Fields not shown here (reasoning levels, template args…) are **preserved as-is**.\n\nThe model id must match exactly what your computer expects, or the provider will be rejected."
           }
         }
       }
@@ -2020,6 +2130,17 @@
         }
       }
     },
+    "打断正在跑的这一轮": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Interrupt the running turn"
+          }
+        }
+      }
+    },
     "扫描电脑上的二维码": {
       "extractionState": "manual",
       "localizations": {
@@ -2049,6 +2170,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "No matching subagent session — it may no longer exist."
+          }
+        }
+      }
+    },
+    "把消息发给电脑": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send this message to your computer"
           }
         }
       }
@@ -2114,6 +2246,17 @@
         }
       }
     },
+    "排队": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Queue"
+          }
+        }
+      }
+    },
     "推理强度": {
       "extractionState": "manual",
       "localizations": {
@@ -2136,6 +2279,39 @@
         }
       }
     },
+    "提供商": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Providers"
+          }
+        }
+      }
+    },
+    "提供商 · %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Providers · %lld"
+          }
+        }
+      }
+    },
+    "提供商与模型": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Providers & models"
+          }
+        }
+      }
+    },
     "插件": {
       "extractionState": "manual",
       "localizations": {
@@ -2143,6 +2319,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Plugins"
+          }
+        }
+      }
+    },
+    "插进正在跑的这一轮，不再等它跑完": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inject into the running turn instead of waiting"
           }
         }
       }
@@ -2242,6 +2429,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Defaults for new sessions"
+          }
+        }
+      }
+    },
+    "新增、删除、修改提供商与模型。密钥不在手机上 —— 提供商配的是环境变量名。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add, remove, and edit providers and models. Keys aren’t on your phone — providers reference an environment variable."
           }
         }
       }
@@ -2505,6 +2703,28 @@
         }
       }
     },
+    "模型 id 必须跟服务端认的那个完全一致，写错会选不中。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The model id must match exactly what the server expects — a typo means it can’t be selected."
+          }
+        }
+      }
+    },
+    "模型 · %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Models · %lld"
+          }
+        }
+      }
+    },
     "模式": {
       "extractionState": "manual",
       "localizations": {
@@ -2736,6 +2956,28 @@
         }
       }
     },
+    "添加提供商": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add provider"
+          }
+        }
+      }
+    },
+    "添加模型": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add model"
+          }
+        }
+      }
+    },
     "添加电脑": {
       "extractionState": "manual",
       "localizations": {
@@ -2820,6 +3062,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Now"
+          }
+        }
+      }
+    },
+    "用它跑着的会话不会立刻停，但之后就选不到它的模型了。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sessions already using it keep running, but its models can no longer be selected."
           }
         }
       }
@@ -3127,6 +3380,17 @@
         }
       }
     },
+    "立刻插队": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Steer"
+          }
+        }
+      }
+    },
     "端到端加密": {
       "extractionState": "manual",
       "localizations": {
@@ -3229,6 +3493,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Waiting for approval"
+          }
+        }
+      }
+    },
+    "等这一轮跑完再发出去": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send it once this turn finishes"
           }
         }
       }
@@ -3746,6 +4021,17 @@
         }
       }
     },
+    "这台电脑没有暴露模型提供商设置。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This computer doesn’t expose provider settings."
+          }
+        }
+      }
+    },
     "这台电脑没有暴露默认模型设置。": {
       "extractionState": "manual",
       "localizations": {
@@ -3952,6 +4238,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Connect to computer"
+          }
+        }
+      }
+    },
+    "追加排队": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Queue"
           }
         }
       }

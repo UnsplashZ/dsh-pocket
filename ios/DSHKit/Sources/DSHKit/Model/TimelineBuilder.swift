@@ -187,6 +187,22 @@ public struct TimelineBuilder: Sendable {
     public var isEmpty: Bool { items.isEmpty }
 
     /// 默认视图要渲染的条目（去掉 `raw`、被遮住的单独由 UI 决定）。
+    /// 当前这一轮是不是还开着（最后一条 `turn/start` 之后没有 `turn/end`）。
+    ///
+    /// **从日志推导，不靠快照里的标志位。** 之前 `applySnapshot` 直接把
+    /// "正在跑"设成 false —— 于是**打开一个正在跑的会话会显示成空闲**，
+    /// 连停止按钮都没有（实测：手机上看着像跑完了，其实电脑还在跑）。
+    public var isTurnOpen: Bool {
+        for item in items.reversed() {
+            switch item.kind {
+            case .turnEnd: return false
+            case .turnStart: return true
+            default: continue
+            }
+        }
+        return false
+    }
+
     public var conversationalItems: [TimelineItem] {
         items.filter(\.isConversational)
     }

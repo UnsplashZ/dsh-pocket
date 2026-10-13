@@ -109,12 +109,22 @@ public final class SessionModel {
     private var reconnectAttempt = 0
     private var pendingPromptRpcId: String?
 
-    init(sessionId: String, title: String, appModel: AppModel) {
+    /// 会话列表说它在跑吗。
+    ///
+    /// **这是"正在跑"最权威的来源**：有界快照（`maxMessages: 20`）里可能根本
+    /// 没有 `turn/start`（窗口从半途开始），光靠日志推导不出来 ——
+    /// 表现就是"打开一个正在跑的会话却显示成空闲，连停止按钮都没有"（实测）。
+    /// 打开之后由实时的 `turn/start` / `turn/end` 修正。
+    private var summaryIsRunning: Bool
+
+    init(sessionId: String, title: String, isRunning: Bool = false, appModel: AppModel) {
         self.sessionId = sessionId
         self.title = title
+        self.summaryIsRunning = isRunning
         self.appModel = appModel
         self.settings = appModel.settings
         self.logs = appModel.logs
+        self.isTurnRunning = isRunning
     }
 
     // MARK: 打开 / 关闭
@@ -276,7 +286,9 @@ public final class SessionModel {
         }
         lastSeq = max(lastSeq, Double(snapshot.cursor))
         phase = .live
-        isTurnRunning = false
+        // 日志里能看出这一轮还开着就用它；看不出来（有界快照切在半途）
+        // 就退回会话列表给的 running —— **不能无条件设 false**。
+        isTurnRunning = builder.isTurnOpen || summaryIsRunning
         publish()
         // 快照分完了：这时候布局才稳定，明确要求滚到底一次。
         requestScrollToBottom()
@@ -292,8 +304,16 @@ public final class SessionModel {
         if event.type == "session/title", let newTitle = event.string("data.title"), !newTitle.isEmpty {
             title = newTitle
         }
-        if event.type == "turn/start" { isTurnRunning = true }
-        if event.type == "turn/end" { isTurnRunning = false }
+        if event.type == "turn/start" {
+            isTurnRunning = true
+            summaryIsRunning = true
+        }
+        if event.type == "turn/end" {
+            // 实时的 `turn/end` 是终局判据：它到了就是跑完了，
+            // 不再让可能过期的列表标志把它拉回"运行中"。
+            isTurnRunning = false
+            summaryIsRunning = false
+        }
         if event.type == "step/end" { isStreaming = false }
         _ = delta
         publish()
@@ -461,7 +481,12 @@ public final class SessionModel {
 
     // MARK: 发送 / 打断
 
-    func send() async {
+    /// 发送。
+    ///
+    /// `mode` 是线上契约里的必填字段（`SessionPromptRequest.mode`）：
+    ///   · `.queue` —— 排到下一轮（默认，也是"追加排队"）；
+    ///   · `.steer` —— **插队给正在跑的这一轮**（"立刻打断"）。
+    func send(mode: PromptMode = .queue) async {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty || !attachments.isEmpty else { return }
 
@@ -515,7 +540,7 @@ public final class SessionModel {
                 requestId: rpcId,
                 text: text,
                 attachments: promptAttachments,
-                mode: .queue
+                mode: mode
             )
             pendingPromptRpcId = nil
         } catch {

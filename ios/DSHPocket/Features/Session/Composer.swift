@@ -109,18 +109,59 @@ struct Composer: View {
 
                     Spacer(minLength: Token.Spacing.hairline)
 
-                    contextBar
-
-                    // 同一位置：空闲=发送，运行中=停止
-                    Button(action: isRunning ? stop : send) {
-                        CircleGlyph(
-                            systemImage: isRunning ? "stop.fill" : "arrow.up",
-                            style: isRunning ? .destructive : .prominent
-                        )
+                    // 跑着的时候**不显示**上下文条：那一行已经有三个动作按钮，
+                    // 再塞一根进度条会把权限胶囊和百分比都挤到截断（实测）。
+                    // 百分比挪到下面的统计行里，信息不丢。
+                    if !isRunning {
+                        contextBar
                     }
-                    .disabled(!isRunning && !canSend)
-                    .accessibilityLabel(Text(isRunning ? "停止" : "发送"))
-                    .accessibilityHint(Text(isRunning ? "打断正在跑的这一轮" : "把消息发给电脑"))
+
+                    if isRunning {
+                        // 跑着的时候有三个不同的动作，别再挤成一个按钮：
+                        //   · **排队** —— 排到下一轮（最常用，给文字标签）
+                        //   · **插队** —— 插进正在跑的这一轮（`mode: 'steer'`）
+                        //   · **停止** —— 打断整轮（`session/cancel`）
+                        Button { Task { await session.send(mode: .queue) } } label: {
+                            HStack(spacing: Token.Spacing.hairline) {
+                                Image(systemName: "arrow.up")
+                                    .font(.system(size: Token.Control.glyph - 3, weight: .semibold))
+                                Text("排队")
+                                    .font(.caption.weight(.semibold))
+                            }
+                            .foregroundStyle(canSend ? .white : Color.secondary)
+                            .padding(.horizontal, Token.Spacing.tight)
+                            .frame(height: Token.Control.diameter)
+                            .background(
+                                canSend ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color(.tertiarySystemFill)),
+                                in: Capsule(style: .continuous)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!canSend)
+                        .accessibilityLabel(Text("追加排队"))
+                        .accessibilityHint(Text("等这一轮跑完再发出去"))
+
+                        Button { Task { await session.send(mode: .steer) } } label: {
+                            CircleGlyph(systemImage: "bolt.fill", style: .quiet)
+                        }
+                        .disabled(!canSend)
+                        .opacity(canSend ? 1 : 0.5)
+                        .accessibilityLabel(Text("立刻插队"))
+                        .accessibilityHint(Text("插进正在跑的这一轮，不再等它跑完"))
+
+                        Button(action: stop) {
+                            CircleGlyph(systemImage: "stop.fill", style: .destructive)
+                        }
+                        .accessibilityLabel(Text("停止"))
+                        .accessibilityHint(Text("打断正在跑的这一轮"))
+                    } else {
+                        Button { Task { await session.send(mode: .queue) } } label: {
+                            CircleGlyph(systemImage: "arrow.up", style: .prominent)
+                        }
+                        .disabled(!canSend)
+                        .accessibilityLabel(Text("发送"))
+                        .accessibilityHint(Text("把消息发给电脑"))
+                    }
                 }
             }
             .padding(.horizontal, Token.Spacing.compact)
@@ -277,6 +318,11 @@ struct Composer: View {
         }
         if let cache = session.tokenUsage.cacheHitRate {
             parts.append(String(format: String(localized: "缓存 %.0f%%"), cache * 100))
+        }
+        // 上下文占用挪到这里 —— 跑着的时候上面那行没地方放它。
+        if let pressure = session.contextPressure, pressure.contextWindow > 0 {
+            let ratio = min(1, Double(pressure.pressureTokens) / Double(pressure.contextWindow))
+            parts.append(String(format: String(localized: "上下文 %.0f%%"), ratio * 100))
         }
         return parts
     }

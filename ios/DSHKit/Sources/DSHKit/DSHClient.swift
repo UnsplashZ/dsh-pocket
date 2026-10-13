@@ -554,17 +554,21 @@ public actor DSHClient {
     /// 别人在你之后改过就会被拒，而不是悄悄覆盖掉。
     public func mutateSettings(
         namespace: String,
-        operations: [(op: String, path: [String], value: JSONValue)],
+        operations: [(op: String, path: [String], value: JSONValue?)],
         expectedRevision: Int?
     ) async throws -> SettingsNamespace {
         var args: [String: JSONValue] = [
             "ns": .string(namespace),
             "ops": .array(operations.map { operation in
-                .object([
+                // `SettingsPathOpView` 是个**严格联合**：`{op:'set',path,value}` 或
+                // `{op:'unset',path}`。给 `unset` 多带一个 `value` 会被拒，
+                // 所以 value 是可选的、`unset` 时不带。
+                var object: [String: JSONValue] = [
                     "op": .string(operation.op),
                     "path": .array(operation.path.map { .string($0) }),
-                    "value": operation.value,
-                ])
+                ]
+                if let value = operation.value { object["value"] = value }
+                return .object(object)
             }),
         ]
         if let expectedRevision { args["expectedRevision"] = .number(Double(expectedRevision)) }
