@@ -962,13 +962,28 @@ public struct TimelineBuilder: Sendable {
 
     private mutating func applyInbox(_ event: SessionEvent, into delta: inout TimelineDelta) {
         let removed = event.int("data.removedCount") ?? 0
+        // `start` 是**下标**：这个事件是"从第 start 条起删掉 removedCount 条、
+        // 再把 inserted 插进去"的一次 splice。
+        let start = event.int("data.start") ?? 0
         if removed > 0 {
-            // 队列项被消化掉了：留着也没意义，直接撤掉。
-            for (rpcId, itemId) in inboxItems where indexById[itemId] != nil {
-                _ = rpcId
-                if let index = indexById[itemId] {
-                    items[index].isShadowed = true
-                    delta.shadowedIds.append(itemId)
+            // **只撤掉被消化的那几条。**
+            //
+            // 之前这里把**所有**队列项都标成已隐藏 —— 于是宿主消化掉一条之后，
+            // 手机上剩下的排队消息**全都不见了**（用户："排队的消息在手机上看不到"）。
+            // 更糟的是它们既不在队列区、也不在时间线里（队列项本来就不进时间线），
+            // 等于凭空消失。
+            //
+            // 队列是先进先出，所以按**插入顺序**取 `[start, start+removed)` 那一段。
+            let ordered = inboxItems.values
+                .compactMap { indexById[$0] }
+                .sorted()
+                .map { items[$0].id }
+            for itemId in ordered.dropFirst(start).prefix(removed) {
+                guard let index = indexById[itemId] else { continue }
+                items[index].isShadowed = true
+                delta.shadowedIds.append(itemId)
+                if let rpcId = inboxItems.first(where: { $0.value == itemId })?.key {
+                    inboxItems.removeValue(forKey: rpcId)
                 }
             }
         }

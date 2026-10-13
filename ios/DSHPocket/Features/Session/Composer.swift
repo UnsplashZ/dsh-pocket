@@ -204,6 +204,11 @@ struct Composer: View {
         .onChange(of: session.draft) { _, _ in
             refreshReferences()
         }
+        // **有新东西进队列就自动展开** —— 否则用户手动收过一次之后，
+        // 后面排队的消息只会悄悄加个数字，很容易漏掉。
+        .onChange(of: session.queuedMessages.count) { old, new in
+            if new > old { isQueueExpanded = true }
+        }
         .onChange(of: photoSelection) { _, items in
             Task { await loadPhotos(items) }
         }
@@ -508,6 +513,16 @@ struct Composer: View {
                             .font(.footnote.weight(.medium))
                             .foregroundStyle(.secondary)
                         Spacer(minLength: 0)
+                        // **收起时也要看得见内容。**
+                        // 用户："好像是因为我在手机上点了排队的收起按钮" ——
+                        // 收起来只剩一行计数，很容易以为队列没了。
+                        // 所以收起时把**第一条**的文字带出来（跟待办面板一个做法）。
+                        if !isQueueExpanded, let first = session.queuedMessages.first {
+                            Text(first.text)
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                        }
                         Image(systemName: isQueueExpanded ? "chevron.down" : "chevron.up")
                             .font(.caption2)
                             .foregroundStyle(.tertiary)

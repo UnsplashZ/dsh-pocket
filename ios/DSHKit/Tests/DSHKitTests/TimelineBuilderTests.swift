@@ -670,6 +670,33 @@ final class TimelineBuilderTests: XCTestCase {
         XCTAssertTrue(builder.queuedMessages.isEmpty, "同时要从队列区消失")
     }
 
+    /// **消化队列只该撤掉被消化的那几条。**
+    ///
+    /// `agent/inbox/spliced` 带 `start`（下标）与 `removedCount`，是一次 splice。
+    /// 之前这里把**所有**队列项都标成已隐藏 —— 宿主消化掉一条之后，
+    /// 手机上剩下的排队消息全都不见了（用户："排队的消息在手机上看不到"），
+    /// 而且它们既不在队列区也不在时间线里，等于凭空消失。
+    func testInboxRemovalOnlyDropsTheConsumedItems() throws {
+        var builder = TimelineBuilder()
+        for (index, text) in ["第一条", "第二条", "第三条"].enumerated() {
+            _ = builder.apply(try Fixture.event(Fixture.inboxSpliced(text, rpcId: "r\(index)", seq: index + 1)))
+        }
+        XCTAssertEqual(builder.queuedMessages.map(\.text), ["第一条", "第二条", "第三条"])
+
+        // 宿主消化掉**最前面**那一条（`start: 0`, `removedCount: 1`）
+        _ = builder.apply(try Fixture.event("""
+        {"type":"agent/inbox/spliced","seq":10,"time":1791777000000,"data":{"target":"next-turn","start":0,"removedCount":1,"inserted":[]}}
+        """))
+        XCTAssertEqual(builder.queuedMessages.map(\.text), ["第二条", "第三条"],
+                       "只该少掉第一条，后面两条必须还在")
+
+        // 再消化一条
+        _ = builder.apply(try Fixture.event("""
+        {"type":"agent/inbox/spliced","seq":11,"time":1791777000000,"data":{"target":"next-turn","start":0,"removedCount":1,"inserted":[]}}
+        """))
+        XCTAssertEqual(builder.queuedMessages.map(\.text), ["第三条"])
+    }
+
     // MARK: 落盘 / 续拉
 
     /// 折叠状态必须能**原样**往返 —— 恢复之后还能继续增量折叠，而不是只能画。
