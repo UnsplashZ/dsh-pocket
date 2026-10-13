@@ -51,6 +51,7 @@
 		78E396D2D850FB21020E1833 /* TimelineBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79B7887EBC326BB1948E7ABE /* TimelineBuilder.swift */; };
 		7A09869C8EFE551AD6BA036F /* TetherKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E056E04F55E32F4971BE31A7 /* TetherKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		7D1604DE7CF072C44796FD1E /* HostPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBD739A226633E29134DDDE5 /* HostPlugin.swift */; };
+		7E8F1BF59B07B532CCC456C4 /* AgentPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = C53081436A11EF6105069F25 /* AgentPreset.swift */; };
 		8A956C5313E815D2ADB5A673 /* Composer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30AC58D8B9981CB968F5B72C /* Composer.swift */; };
 		8ED4D3A2D9AE5EA283F32DBE /* DiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8228B8138EE7502853E22F63 /* DiagnosticsView.swift */; };
 		91981B8519415344F4C539AA /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF7607647BE2F4F50589011E /* Theme.swift */; };
@@ -213,6 +214,7 @@
 		C21C6211FB0AADD0108305AC /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		C34579D2D5FA87A175552038 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		C4F4775F445DDBB99CD6F0AC /* TimelineRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineRow.swift; sourceTree = "<group>"; };
+		C53081436A11EF6105069F25 /* AgentPreset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentPreset.swift; sourceTree = "<group>"; };
 		C78763CE3BDD07B0CCD4293E /* MuxClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MuxClient.swift; sourceTree = "<group>"; };
 		C8088DA54E74F0EC85BF1FB4 /* SessionListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListView.swift; sourceTree = "<group>"; };
 		CBD739A226633E29134DDDE5 /* HostPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostPlugin.swift; sourceTree = "<group>"; };
@@ -300,6 +302,7 @@
 		1AFAB05C8488909ABC1473FA /* Model */ = {
 			isa = PBXGroup;
 			children = (
+				C53081436A11EF6105069F25 /* AgentPreset.swift */,
 				836591110B5A4AC8A0E97A47 /* HostBundle.swift */,
 				CBD739A226633E29134DDDE5 /* HostPlugin.swift */,
 				46609A991FC8C5A35FF55F60 /* MessageFeedback.swift */,
@@ -725,6 +728,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7E8F1BF59B07B532CCC456C4 /* AgentPreset.swift in Sources */,
 				28162644411E5D89A0CA6C97 /* DSHClient.swift in Sources */,
 				A4C4DA46B5DCBB456010BE0A /* DSHError.swift in Sources */,
 				44599F8D0882CE97D7645F7A /* DSHLog.swift in Sources */,

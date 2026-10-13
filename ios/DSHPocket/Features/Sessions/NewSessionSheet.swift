@@ -19,6 +19,17 @@ struct NewSessionSheet: View {
     @State private var query = ""
     @State private var creatingWorkspaceId: String?
     @State private var error: String?
+    /// 选中的 preset。默认用主机标的那个。
+    @State private var presetId: String?
+
+    /// 实际生效的 preset。
+    ///
+    /// **惰性求值，不靠 `.task` 初始化** —— `.task` 跑的时候 `agentPresets`
+    /// 可能还没拉回来（它是连接建立后异步加载的），那样勾就永远不显示。
+    /// 没手动选过就用主机标的默认那个。
+    private var effectivePresetId: String? {
+        presetId ?? model.agentPresets.first(where: \.isDefault)?.id ?? model.agentPresets.first?.id
+    }
 
     var body: some View {
         NavigationStack {
@@ -64,6 +75,45 @@ struct NewSessionSheet: View {
 
     private var list: some View {
         List {
+            if !model.agentPresets.isEmpty {
+                Section {
+                    // 不用 `Picker(.inline)`：它配 `VStack` 标签时**不渲染选中勾**，
+                    // 而这里每个 preset 都带一段说明，勾必须看得见（否则不知道选的是哪个）。
+                    ForEach(model.agentPresets) { preset in
+                        Button {
+                            presetId = preset.id
+                        } label: {
+                            HStack(alignment: .top, spacing: Token.Spacing.tight) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(preset.title)
+                                        .foregroundStyle(.primary)
+                                    if let summary = preset.summary, !summary.isEmpty {
+                                        Text(summary)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
+                                }
+                                Spacer(minLength: Token.Spacing.tight)
+                                if effectivePresetId == preset.id {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(.tint)
+                                }
+                            }
+                            .frame(minHeight: Token.minimumHitTarget)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                } header: {
+                    Text("模式")
+                } footer: {
+                    // 有些 preset 只在特定仓库里才有意义（比如 `analytics`
+                    // 是按那个仓库的 AGENTS.md 路由的），所以说明要留着。
+                    Text("决定这个会话用哪套 agent 配置。名字下面有说明的，按说明选。")
+                }
+            }
+
             Section {
                 ForEach(filtered) { target in
                     Button {
@@ -143,7 +193,11 @@ struct NewSessionSheet: View {
         creatingWorkspaceId = target.workspaceId
         Task {
             // 传 workspaceId：会话才会落在这个工作区下，而不是电脑端的「未分组」。
-            let id = await model.createSession(workspaceId: target.workspaceId, cwd: target.cwd)
+            let id = await model.createSession(
+                workspaceId: target.workspaceId,
+                cwd: target.cwd,
+                agentPreset: effectivePresetId
+            )
             creatingWorkspaceId = nil
             guard let id else {
                 error = model.sessionListError ?? String(localized: "电脑没有返回新建的会话。")

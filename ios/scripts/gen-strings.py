@@ -632,6 +632,18 @@ EN: dict[str, str] = {
     # DSHKit 里原本漏掉的
     "与电脑的连接断了：%@": "Lost the connection to your computer: %@",
     "连接已关闭": "The connection was closed",
+    # 子代理 / preset
+    "子代理": "Subagent",
+    "子代理：": "Subagent: ",
+    "一次性": "One-shot",
+    "常驻": "Persistent",
+    "后台": "Background",
+    "找不到对应的子代理会话（可能已经不在列表里了）":
+        "No matching subagent session — it may no longer exist.",
+    "打开这个子代理的会话": "Open this subagent’s session",
+    "模式": "Mode",
+    "决定这个会话用哪套 agent 配置。名字下面有说明的，按说明选。":
+        "Which agent configuration this session uses. When a preset has a description, go by it.",
 }
 
 # 哪些插值表达式是整数。判错的后果是英文界面上显示成 `%lld` 字面量，

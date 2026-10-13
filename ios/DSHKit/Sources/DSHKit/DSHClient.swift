@@ -420,6 +420,15 @@ public actor DSHClient {
         ])
     }
 
+    // MARK: - Agent preset
+
+    /// 可选的 agent preset（建会话时用）。
+    public func agentPresets() async throws -> [AgentPreset] {
+        AgentPreset.decodeList(
+            try await rpc.call(method: "agentPresets/list", payload: ["args": .object([:])])
+        )
+    }
+
     // MARK: - 消息评价
 
     /// 读这个会话已有的评价（按 messageId）。

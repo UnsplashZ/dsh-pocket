@@ -53,7 +53,13 @@ struct TimelineRow: View {
             )
 
         case .toolCall(let call):
-            ToolRow(call: call)
+            // 子代理调用单独一张卡：它的价值在于"能点进去看它干了什么"，
+            // 而不是像 bash 那样展开一段 JSON。
+            if call.name == "subagent" {
+                SubagentCard(call: call, session: session)
+            } else {
+                ToolRow(call: call)
+            }
 
         case .todo(let list):
             TodoCard(list: list)
@@ -233,6 +239,111 @@ struct UserBubble: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(String(localized: "你说：\(message.text)")))
+    }
+}
+
+/// 一次子代理调用。
+///
+/// 桌面上子代理也是一张独立的卡（不是普通工具行）—— 它是一次**委派**，
+/// 用户需要知道：派给了谁、在干什么、干完没有、以及**能点进去看**。
+struct SubagentCard: View {
+    let call: TimelineItem.ToolCall
+    let session: SessionModel
+
+    @Environment(AppModel.self) private var model
+
+    /// 工具调用的参数里就有人类可读的那句描述。
+    private var label: String {
+        guard let data = call.arguments.data(using: .utf8),
+              let object = try? JSONDecoder().decode(JSONValue.self, from: data)
+        else { return String(localized: "子代理") }
+        return object.string("description") ?? object.string("prompt").map { String($0.prefix(40)) } ?? String(localized: "子代理")
+    }
+
+    private var isBackground: Bool {
+        guard let data = call.arguments.data(using: .utf8),
+              let object = try? JSONDecoder().decode(JSONValue.self, from: data)
+        else { return false }
+        return object.bool("run_in_background") ?? false
+    }
+
+    private var subagentId: String? {
+        session.subagentSessionId(label: label, at: call.startedAt)
+    }
+
+    private var summary: DSHKit.SessionSummary? {
+        guard let subagentId else { return nil }
+        return model.sessions.first { $0.sessionId == subagentId }
+    }
+
+    private var isRunning: Bool { summary?.isRunning ?? (call.status == .running) }
+
+    var body: some View {
+        Button {
+            guard let subagentId else { return }
+            model.pendingOpenSessionId = subagentId
+        } label: {
+            Card {
+                VStack(alignment: .leading, spacing: Token.Spacing.tight) {
+                    HStack(spacing: Token.Spacing.tight) {
+                        Image(systemName: "person.2.wave.2")
+                            .foregroundStyle(.tint)
+                        Text(label)
+                            .font(.subheadline.weight(.medium))
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                        Spacer(minLength: Token.Spacing.tight)
+                        if subagentId != nil {
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+
+                    HStack(spacing: Token.Spacing.tight) {
+                        if isRunning {
+                            StatusBadge("运行中", symbol: "circle.dotted", tone: .info)
+                        } else if call.status == .success {
+                            StatusBadge("已完成", symbol: "checkmark.circle.fill", tone: .success)
+                        } else if call.status == .failed {
+                            StatusBadge("失败", symbol: "xmark.circle.fill", tone: .failure)
+                        }
+                        if isBackground {
+                            Text("后台")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        if let ended = call.endedAt {
+                            Text(Format.duration(ended.timeIntervalSince(call.startedAt)) ?? "")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                        Spacer(minLength: 0)
+                    }
+
+                    // 子代理的输出就是它的结论 —— 折叠着给一眼，点进去看全过程。
+                    if !call.output.isEmpty {
+                        Text(call.output)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(3)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    if subagentId == nil {
+                        Text("找不到对应的子代理会话（可能已经不在列表里了）")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(subagentId == nil)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text(String(localized: "子代理：") + label))
+        .accessibilityHint(Text(subagentId == nil ? "" : "打开这个子代理的会话"))
     }
 }
 

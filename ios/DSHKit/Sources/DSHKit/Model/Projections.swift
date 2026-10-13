@@ -115,6 +115,12 @@ public struct SessionProjections: Sendable, Hashable {
     public let contextPressure: ContextPressure?
     public let turnOutline: [TurnOutlineEntry]
     public let agentPreset: String?
+    /// **子代理会话**对自己的一句描述（`{mode, label, seq}`）。
+    ///
+    /// 只有子代理会话有；父会话的 `subagentCatalog` 才是"我派出了哪些子代理"。
+    public let subagent: SubagentInfo?
+    /// 父会话派出的子代理清单（`[{mode, label, id, createdAt}]`）。
+    public let subagentCatalog: [SubagentInfo]
     public let todos: [TimelineItem.TodoEntry]
     public let modelSelection: ModelSelection?
     public let permissions: PermissionState?
@@ -136,6 +142,8 @@ public struct SessionProjections: Sendable, Hashable {
         self.contextPressure = values["contextPressure"].map(ContextPressure.init(json:))
         self.turnOutline = (values.array("turnOutline") ?? []).map(TurnOutlineEntry.init(json:))
         self.agentPreset = values.string("agentPreset")
+        self.subagent = values["subagent"].map(SubagentInfo.init(json:))
+        self.subagentCatalog = (values.array("subagentCatalog") ?? []).map(SubagentInfo.init(json:))
         self.todos = (values.array("todos") ?? []).map {
             TimelineItem.TodoEntry(
                 text: $0.string("content") ?? $0.string("text") ?? "",
@@ -325,6 +333,60 @@ public struct PlanState: Sendable, Hashable {
     public init(json: JSONValue) {
         isActive = json.bool("active") ?? false
         isPending = json.bool("pending") ?? false
+    }
+}
+
+/// 一条子代理信息。
+///
+/// 两个方向共用这个类型：
+///   · 父会话的 `subagentCatalog` —— `{mode, label, id, createdAt}`（`id` 是子代理会话 id）；
+///   · 子代理会话自己的 `subagent` —— `{mode, label, seq}`（没有 `id`）。
+///
+/// **这是唯一能把"父会话里的那次工具调用"和"子代理会话"对上的东西**：
+/// `tool/result` 里只有子代理的输出文本，没有会话 id；
+/// 只能拿工具调用参数里的 `description` 去匹配 `label`。
+public struct SubagentInfo: Sendable, Hashable, Identifiable, Codable {
+    /// 子代理会话 id。子代理**自己**的那份投影里没有，会是空串。
+    public var id: String
+    public var mode: String
+    public var label: String
+    public var createdAt: Date?
+
+    public init(json: JSONValue) {
+        self.id = json.string("id") ?? ""
+        self.mode = json.string("mode") ?? ""
+        self.label = json.string("label") ?? ""
+        if let ms = json.double("createdAt") { self.createdAt = Date(timeIntervalSince1970: ms / 1000) }
+        else { self.createdAt = nil }
+    }
+
+    public var modeLabel: String {
+        switch mode {
+        case "one-shot": return String(localized: "一次性")
+        case "persistent": return String(localized: "常驻")
+        case "": return String(localized: "子代理")
+        default: return mode
+        }
+    }
+}
+
+extension Array where Element == SubagentInfo {
+    /// 找出某次子代理调用对应的**子代理会话 id**。
+    ///
+    /// 这是唯一可行的关联方式：`tool/result` 里只有子代理的**输出文本**，
+    /// 没有会话 id；而父会话的 `subagentCatalog` 里有 `{label, id, createdAt}`，
+    /// 工具调用参数里有 `description` —— 两者是同一个字符串。
+    ///
+    /// 同名时（同一个 label 被派了两次）取 `createdAt` **最接近**那次调用的，
+    /// 而不是随手拿第一个 —— 否则点进去可能看到另一个子代理。
+    public func subagentSessionId(label: String, at time: Date) -> String? {
+        let candidates = filter { $0.label == label && !$0.id.isEmpty }
+        guard !candidates.isEmpty else { return nil }
+        if candidates.count == 1 { return candidates[0].id }
+        return candidates.min { lhs, rhs in
+            abs((lhs.createdAt ?? .distantPast).timeIntervalSince(time))
+                < abs((rhs.createdAt ?? .distantPast).timeIntervalSince(time))
+        }?.id
     }
 }
 

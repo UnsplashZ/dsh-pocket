@@ -320,6 +320,57 @@ final class ProtocolContractTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(message.usage?.cacheHitRate), 590080.0 / 592039.0, accuracy: 0.0001)
     }
 
+    // MARK: agent preset
+
+    /// 只有 `id` 是必填的 —— 本机 5 个 preset 里只有 `analytics` 给了名字和说明。
+    /// 缺名字时必须退回 id，不能显示空白。
+    func testAgentPresetListFallsBackToIdAndSortsByOrder() throws {
+        let presets = AgentPreset.decodeList(Fixture.json(#"""
+        {"presets":[{"id":"minimal","order":3,"isDefault":false},
+                    {"id":"standard","order":1,"isDefault":true},
+                    {"id":"analytics","name":"数据查询与分析","description":"受控数据查询","order":5,"isDefault":false}]}
+        """#))
+        XCTAssertEqual(presets.map(\.id), ["standard", "minimal", "analytics"], "按 order 排")
+        XCTAssertEqual(presets[0].title, "standard", "没给名字就用 id")
+        XCTAssertTrue(presets[0].isDefault)
+        XCTAssertEqual(presets[2].title, "数据查询与分析")
+        XCTAssertEqual(presets[2].summary, "受控数据查询")
+    }
+
+    // MARK: 子代理
+
+    /// 父会话的 `subagentCatalog` 有 `id`；子代理**自己**那份投影没有。
+    func testSubagentInfoParsesBothDirections() throws {
+        let fromParent = SubagentInfo(json: Fixture.json(#"""
+        {"mode":"one-shot","label":"子代理输出你好","id":"session-abc","createdAt":1791867782751}
+        """#))
+        XCTAssertEqual(fromParent.id, "session-abc")
+        XCTAssertEqual(fromParent.label, "子代理输出你好")
+        XCTAssertNotNil(fromParent.createdAt)
+
+        let fromChild = SubagentInfo(json: Fixture.json(#"""
+        {"mode":"one-shot","label":"子代理输出你好","seq":5}
+        """#))
+        XCTAssertEqual(fromChild.id, "", "子代理自己的投影里没有 id")
+        XCTAssertEqual(fromChild.label, "子代理输出你好")
+        XCTAssertEqual(fromChild.modeLabel, String(localized: "一次性"))
+    }
+
+    /// 父会话里的那次工具调用 ↔ 子代理会话，**只能靠 label 关联**：
+    /// `tool/result` 里只有输出文本，没有会话 id。
+    func testSubagentCorrelationPrefersTheClosestInTime() throws {
+        let at = Date(timeIntervalSince1970: 1000)
+        let catalog = [
+            SubagentInfo(json: Fixture.json(#"{"mode":"one-shot","label":"同名","id":"far","createdAt":100000}"#)),
+            SubagentInfo(json: Fixture.json(#"{"mode":"one-shot","label":"同名","id":"near","createdAt":1002000}"#)),
+            SubagentInfo(json: Fixture.json(#"{"mode":"one-shot","label":"别的","id":"other","createdAt":1001000}"#)),
+        ]
+        XCTAssertEqual(catalog.subagentSessionId(label: "同名", at: at), "near",
+                       "同名时取时间最近的那个，否则点进去可能是另一个子代理")
+        XCTAssertEqual(catalog.subagentSessionId(label: "别的", at: at), "other")
+        XCTAssertNil(catalog.subagentSessionId(label: "不存在", at: at))
+    }
+
     // MARK: 消息评价
 
     func testMessageFeedbackParsesRatingAndVersion() throws {

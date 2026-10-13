@@ -657,6 +657,22 @@ final class LiveIntegrationTests: XCTestCase {
         _ = try? await client.archiveSession(sessionId: forked)
     }
 
+    /// `agentPresets/list` 的返回是 `{presets:[…]}`，而且**大部分 preset 只有 id** ——
+    /// 界面必须能接受"没有名字和说明"，否则会显示空白行。
+    func testAgentPresetListAgainstLiveHost() async throws {
+        try requireLive()
+        let client = makeClient()
+        let presets = try await client.agentPresets()
+        XCTAssertFalse(presets.isEmpty, "主机上应当有可选的 preset")
+        XCTAssertTrue(presets.contains { $0.isDefault }, "应当有一个默认的")
+        for preset in presets {
+            XCTAssertFalse(preset.id.isEmpty)
+            XCTAssertFalse(preset.title.isEmpty, "缺名字时要退回 id，不能是空的")
+        }
+        // order 是排序依据，得是递增的
+        XCTAssertEqual(presets.map(\.order), presets.map(\.order).sorted())
+    }
+
     func testModelCatalogAndUnaryErrorShape() async throws {
         try requireLive()
         let client = makeClient()

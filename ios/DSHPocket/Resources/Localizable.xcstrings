@@ -288,6 +288,17 @@
         }
       }
     },
+    "一次性": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "One-shot"
+          }
+        }
+      }
+    },
     "一轮跑完": {
       "extractionState": "manual",
       "localizations": {
@@ -707,6 +718,17 @@
         }
       }
     },
+    "决定这个会话用哪套 agent 配置。名字下面有说明的，按说明选。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Which agent configuration this session uses. When a preset has a description, go by it."
+          }
+        }
+      }
+    },
     "凭证与内容都在你的电脑上": {
       "extractionState": "manual",
       "localizations": {
@@ -971,6 +993,17 @@
         }
       }
     },
+    "后台": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Background"
+          }
+        }
+      }
+    },
     "图片": {
       "extractionState": "manual",
       "localizations": {
@@ -1105,6 +1138,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Failed"
+          }
+        }
+      }
+    },
+    "子代理": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subagent"
+          }
+        }
+      }
+    },
+    "子代理：": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subagent: "
           }
         }
       }
@@ -1629,6 +1684,17 @@
         }
       }
     },
+    "常驻": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Persistent"
+          }
+        }
+      }
+    },
     "开发直连": {
       "extractionState": "manual",
       "localizations": {
@@ -1972,6 +2038,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Allow once"
+          }
+        }
+      }
+    },
+    "找不到对应的子代理会话（可能已经不在列表里了）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No matching subagent session — it may no longer exist."
           }
         }
       }
@@ -2424,6 +2501,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Model"
+          }
+        }
+      }
+    },
+    "模式": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mode"
           }
         }
       }

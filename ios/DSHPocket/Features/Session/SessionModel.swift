@@ -74,6 +74,8 @@ public final class SessionModel {
     private(set) var tokenUsage = TokenUsage(json: .object([:]))
     /// 已有评价，按 messageId 索引。
     private(set) var feedbacks: [String: MessageFeedback] = [:]
+    /// 这个会话派出的子代理（`projections.subagentCatalog`）。
+    private(set) var subagentCatalog: [SubagentInfo] = []
     private(set) var todos: [TimelineItem.TodoEntry] = []
 
     /// 上一次跟随失败的提示（给"所有失败都要有文案"这条）。
@@ -364,6 +366,7 @@ public final class SessionModel {
             TimelineItem.TodoEntry(text: $0.string("content") ?? "", status: .init(raw: $0.string("status")))
         }
         sessionStats = SessionStats(json: values["sessionStats"] ?? .object([:]))
+        subagentCatalog = (values.array("subagentCatalog") ?? []).map(SubagentInfo.init(json:))
         tokenUsage = TokenUsage(json: values["tokenUsage"] ?? .object([:]))
     }
 
@@ -650,6 +653,11 @@ public final class SessionModel {
         } catch {
             failureMessage = (error as? DSHClientError)?.displayMessage ?? error.localizedDescription
         }
+    }
+
+    /// 找出某次子代理调用对应的**子代理会话 id**（实现在 DSHKit 里，纯函数可测）。
+    func subagentSessionId(label: String, at time: Date) -> String? {
+        subagentCatalog.subagentSessionId(label: label, at: time)
     }
 
     /// 从某条消息处分叉出一个新会话，返回新会话 id。

@@ -388,3 +388,37 @@ SwiftPM 状态"上。
 `String(localized:)` 走的就是 App 的目录 —— 不扫它那些文案会漏翻译
 （英文界面上直接显示中文）。现在也扫 `DSHKit/Sources` 与 `TetherKit/Sources`，
 一扩就多找出 24 条。
+
+## ADR-0023 · 子代理卡片与 agent preset 选择
+
+**日期**：2026-10-13
+
+### 子代理：单独一张卡，可点进去
+
+**背景**：用户要求"会话调用的子代理需要合理展示"。
+**决定**：父会话时间线里 `name == "subagent"` 的工具调用不再走通用 `ToolRow`
+（那会摊开一段 JSON），改成一张**可点进去的卡**：
+人类可读的标签（工具参数的 `description`）+ 状态徽标 + 用时 + 子代理输出预览 + 箭头。
+
+**关联是唯一可行的办法，也是最脆的一环**：`tool/result` 里只有子代理的**输出文本**，
+**没有会话 id**。能对上的只有父会话的 `subagentCatalog`（`{label, id, createdAt}`）
+和工具调用参数里的 `description` —— 两者是同一个字符串。
+同名时（同一个 label 被派了两次）取 `createdAt` **最接近**那次调用的，
+而不是随手拿第一个，否则点进去可能看到另一个子代理。
+逻辑放在 `[SubagentInfo].subagentSessionId(label:at:)`，纯函数、有测试。
+
+### agent preset：建会话时选
+
+**决定**：`agentPresets/list` → `{presets:[{id, name?, description?, order, isDefault}]}`，
+建会话时通过 `session/create` 的 `agentPreset` 传进去。
+
+**两个坑**：
+- **只有 `id` 是必填的**。本机 5 个 preset（`standard`/`ptc`/`minimal`/`cordis`/`analytics`）
+  里只有 `analytics` 给了 `name` 与 `description` —— 界面必须在缺名字时退回 id，
+  否则会显示空白行。
+- **默认选中不能用 `.task` 初始化**。`agentPresets` 是连接建立后异步加载的，
+  `.task` 跑的时候它可能还是空的 —— 那样勾就永远不显示（实测）。
+  改成惰性求值：`presetId ?? 主机标的默认 ?? 第一个`。
+
+顺带：**`Picker(.inline)` 配 `VStack` 标签不渲染选中勾**，而这里每个 preset
+都带一段说明、勾必须看得见，所以换成显式的勾选行。

@@ -66,6 +66,8 @@ public final class AppModel {
     private(set) var hostPlugins: [HostPlugin] = []
     /// 主机上的插件**包**（本机 17 条）。设置页展示的是这一层，跟桌面端一致。
     private(set) var hostBundles: [HostBundle] = []
+    /// 可选的 agent preset（建会话时选）。
+    private(set) var agentPresets: [AgentPreset] = []
     /// 主机设置（`settings/describe`）。
     private(set) var hostSettings: SettingsSnapshot?
     private(set) var isLoadingHostSettings = false
@@ -449,6 +451,7 @@ public final class AppModel {
         await observeTetherMessages()
         await observeWorkspace()
         await refreshHostPlugins()
+        await refreshAgentPresets()
         await refreshSessions()
         startListRefreshLoop()
     }
@@ -750,9 +753,24 @@ public final class AppModel {
     /// 在指定工作区里建会话。
     ///
     /// 传 `workspaceId`（不是 cwd）—— 只传 cwd 建出来的会话在电脑端会落进「未分组」。
-    func createSession(workspaceId: String?, cwd: String?) async -> String? {
+    /// 拉一次 agent preset 清单。
+    func refreshAgentPresets() async {
         do {
-            let id = try await client.createSession(workspaceId: workspaceId, cwd: workspaceId == nil ? cwd : nil)
+            agentPresets = try await client.agentPresets()
+            logs.log(.info, "agent preset \(agentPresets.count) 个")
+        } catch {
+            // 拉不到就不显示选择器 —— 建会话照常用默认 preset。
+            logs.log(.debug, "preset 清单拉取失败：\(error.localizedDescription)")
+        }
+    }
+
+    func createSession(workspaceId: String?, cwd: String?, agentPreset: String? = nil) async -> String? {
+        do {
+            let id = try await client.createSession(
+                workspaceId: workspaceId,
+                cwd: workspaceId == nil ? cwd : nil,
+                agentPreset: agentPreset
+            )
             await refreshSessions()
             // 新会话在 `session/list` 里可能晚一拍才出现。等一小会儿再找，
             // 找不到就直接把 id 交给调用方（它能自己合成一个占位会话去打开）。
