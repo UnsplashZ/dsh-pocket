@@ -697,6 +697,26 @@ final class TimelineBuilderTests: XCTestCase {
         XCTAssertEqual(builder.queuedMessages.map(\.text), ["第三条"])
     }
 
+    /// **宿主注入的"审批策略变了"通知不该进队列。**
+    ///
+    /// `dsh-user-approval` 在策略变化时走 `agent.inject(createUserMessage(…))`，
+    /// 把它当成**用户消息**塞进队列。而 `/permission <preset>` 一次改两样
+    ///（沙箱模式 + 审批策略），于是切一次权限就冒出**两条排队消息**。
+    /// 用户没说过这两句话，权限也已经显示在输入框的胶囊上 —— 纯噪音。
+    func testApprovalPolicyNoticeIsNotQueued() throws {
+        var builder = TimelineBuilder()
+        _ = builder.apply(try Fixture.event(Fixture.inboxSpliced(
+            #"The approval policy changed from "never" to "ask" (changed by the user)."#,
+            rpcId: "notice-1", seq: 1
+        )))
+        XCTAssertTrue(builder.queuedMessages.isEmpty, "机器通知不该出现在队列里")
+        XCTAssertTrue(builder.conversationalItems.isEmpty, "也不该进时间线")
+
+        // 用户自己发的照旧
+        _ = builder.apply(try Fixture.event(Fixture.inboxSpliced("我自己的排队", rpcId: "mine", seq: 2)))
+        XCTAssertEqual(builder.queuedMessages.map(\.text), ["我自己的排队"])
+    }
+
     // MARK: 落盘 / 续拉
 
     /// 折叠状态必须能**原样**往返 —— 恢复之后还能继续增量折叠，而不是只能画。

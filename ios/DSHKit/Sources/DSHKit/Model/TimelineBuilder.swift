@@ -187,6 +187,15 @@ public struct TimelineBuilder: Sendable {
     public var isEmpty: Bool { items.isEmpty }
 
     /// 默认视图要渲染的条目（去掉 `raw`、被遮住的单独由 UI 决定）。
+    /// 这句是不是宿主自己注入的机器通知（不是用户打的字）。
+    ///
+    /// 目前只认审批策略变化那一句 —— 它是 DSH 里唯一会往**用户消息**里
+    /// 注入"通知"的地方。**版本耦合**，换措辞就会失效（失效只是噪音回来）。
+    static func isMachineNotice(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.hasPrefix("The approval policy changed from ")
+    }
+
     /// 当前这一轮是不是还开着（最后一条 `turn/start` 之后没有 `turn/end`）。
     ///
     /// **从日志推导，不靠快照里的标志位。** 之前 `applySnapshot` 直接把
@@ -991,6 +1000,18 @@ public struct TimelineBuilder: Sendable {
         for inserted in event.array("data.inserted") ?? [] {
             let rpcId = inserted.string("source.rpcId") ?? UUID().uuidString
             let text = Self.plainText(of: inserted.array("content") ?? [])
+            // **丢掉"审批策略变了"这类机器通知。**
+            //
+            // `dsh-user-approval` 在策略变化时走 `agent.inject(createUserMessage(…))`，
+            // 把一句 `The approval policy changed from "x" to "y" (changed by the user).`
+            // 当成**用户消息**塞进队列。而 `/permission <preset>` 一次改两样
+            //（沙箱模式 + 审批策略），于是切一次权限就冒出**两条排队消息**。
+            //
+            // 用户没说过这两句话，而且权限已经显示在输入框的胶囊上了 —— 纯噪音。
+            //
+            // 注意：这是**版本耦合**的判断（匹配 DSH 硬编码的那句英文模板）。
+            // 宿主换措辞的话这里会失效 —— 失效的后果只是噪音回来，不会丢用户消息。
+            if Self.isMachineNotice(text) { continue }
             // **优先用服务端那条消息的 id 当条目 id** —— `session/updateQueue`
             // 要的 `itemId` 就是它（编辑/删除/插队都按它定位）。
             // 拿不到才退回本地的 `inbox-<rpcId>`。

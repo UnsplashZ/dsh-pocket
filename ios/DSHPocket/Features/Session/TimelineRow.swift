@@ -508,10 +508,13 @@ struct AssistantCard: View {
     }
 
     var body: some View {
-        HStack {
-            Card {
-                VStack(alignment: .leading, spacing: Token.Spacing.tight) {
-                    ForEach(Array(message.renderableBlocks.enumerated()), id: \.offset) { _, block in
+        // 卡片 + **卡片下方的操作行**。操作行放在卡片里看起来像正文的一部分
+        // （用户："放在会话卡片里怪怪的"）。
+        VStack(alignment: .leading, spacing: Token.Spacing.hairline) {
+            HStack {
+                Card {
+                    VStack(alignment: .leading, spacing: Token.Spacing.tight) {
+                        ForEach(Array(message.renderableBlocks.enumerated()), id: \.offset) { _, block in
                         switch block {
                         case .text(let text):
                             MarkdownBody(text: text)
@@ -565,27 +568,41 @@ struct AssistantCard: View {
                             .buttonStyle(.plain)
                             .accessibilityHint(Text("展开模型的推理过程"))
                         }
-                        // 复制/点赞/分支/用量/时间**全在同一行、左对齐**。
-                        // 之前时间单独右对齐、操作另起一行，中间空一大片 ——
-                        // 用户："放到一行，左对齐，不要留这么多空"。
-                        if showsActions {
-                            actionRow
-                            if let usage = message.usage, usage.totalTokens > 0 {
-                                Text(String(format: String(localized: "用量 %@"), Format.tokens(usage.totalTokens) ?? ""))
-                                    .font(.caption2.monospacedDigit())
-                                    .foregroundStyle(.tertiary)
-                            }
-                        }
                         Text(Format.time(time))
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
                         Spacer(minLength: 0)
                     }
                 }
+                }
+            }
+
+            // 操作行在**卡片下方、卡片外面** —— 放在卡片里看起来像正文的一部分
+            // （用户："放在会话卡片里怪怪的"）。
+            if showsActions {
+                actionRowOutsideCard
             }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(String(localized: "助手回复")))
+    }
+
+    /// 卡片**下方**那一行：操作按钮 + 用量 + 时间，整行左对齐。
+    private var actionRowOutsideCard: some View {
+        HStack(spacing: Token.Spacing.tight) {
+            actionRow
+            if let usage = message.usage, usage.totalTokens > 0 {
+                Text(String(format: String(localized: "用量 %@"), Format.tokens(usage.totalTokens) ?? ""))
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.tertiary)
+            }
+            Text(Format.time(time))
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+            Spacer(minLength: 0)
+        }
+        // 跟卡片左边对齐：卡片自己有内边距，这里补上同样的量。
+        .padding(.leading, Token.Spacing.compact)
     }
 
     /// 一条消息能做的事：复制、点赞点踩、从这里分支。
