@@ -544,6 +544,10 @@ EN: dict[str, str] = {
     "工作中，已用时 %@": "Working · %@ elapsed",
     "%lld 分 %lld 秒": "%lldm %llds",
     "%lld 秒": "%llds",
+    "文件": "File",
+    "模型": "Model",
+    "权限": "Permissions",
+    "目标": "Goal",
     "目录": "Folder",
     "插队给这一轮": "Steer into this turn",
     # 连接失败的可执行提示
@@ -864,6 +868,10 @@ EN: dict[str, str] = {
     "工作中，已用时 %@": "Working · %@ elapsed",
     "%lld 分 %lld 秒": "%lldm %llds",
     "%lld 秒": "%llds",
+    "文件": "File",
+    "模型": "Model",
+    "权限": "Permissions",
+    "目标": "Goal",
     "目录": "Folder",
     "删除": "Delete",
 }

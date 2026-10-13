@@ -244,7 +244,11 @@ struct SessionView: View {
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                Composer(session: session, isFocused: $composerFocused)
+                Composer(
+                    onRequestModelPicker: { showModelPicker = true },
+                    session: session,
+                    isFocused: $composerFocused
+                )
             }
             .onChange(of: session.items.last?.id) { _, newValue in
                 guard isFollowingBottom, let newValue else { return }
@@ -279,6 +283,18 @@ struct SessionView: View {
                 Task { @MainActor in
                     try? await Task.sleep(for: .milliseconds(280))
                     guard composerFocused, isFollowingBottom else { return }
+                    scrollToBottom(proxy, animated: true)
+                }
+            }
+            // 轮次跑完 → 过程消息收起 → 内容骤减。
+            // 不重新贴底的话滚动位置会落到内容之外（一片空白）；
+            // 顺带这也是用户要的"触发折叠时自动滚动收缩"。
+            .onChange(of: session.completedTurns.count) { old, new in
+                guard new > old, isFollowingBottom else { return }
+                Task { @MainActor in
+                    // 等折叠动画落定再滚，否则滚的是旧布局。
+                    try? await Task.sleep(for: .milliseconds(120))
+                    guard isFollowingBottom else { return }
                     scrollToBottom(proxy, animated: true)
                 }
             }

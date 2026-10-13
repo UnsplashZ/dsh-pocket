@@ -424,6 +424,11 @@ struct TurnGroupView: View {
                 }
             }
         }
+        // **轮次跑完时"过程消息收起来"要有动画。**
+        // 不加的话是一次瞬间跳变：几十条过程消息凭空消失、内容骤减，
+        // 滚动位置一下子落到内容之外 —— 屏幕上就是一片空白
+        //（用户："因为任务完成，折叠过程消息导致的内容空白"）。
+        .animation(.snappy(duration: 0.42), value: turn.isComplete)
         .onAppear {
             #if DEBUG
             // 调试用：`defaults write cc.zexa.dshpocket DSHExpandTurns -bool YES`

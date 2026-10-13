@@ -54,6 +54,8 @@ struct CircleGlyph: View {
 }
 
 struct Composer: View {
+    /// `/` 菜单里的「模型」要开的是**会话页**的模型选择器（那个状态在 SessionView 上）。
+    var onRequestModelPicker: () -> Void = {}
     @Bindable var session: SessionModel
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -70,6 +72,7 @@ struct Composer: View {
     @State private var referenceSessions: [SessionReferenceCandidate] = []
     @State private var referenceTask: Task<Void, Never>?
     @State private var showContextBreakdown = false
+    @State private var showGoal = false
     @State private var editingQueueItem: QueuedMessage?
     @State private var queueEditText = ""
     @State private var showFileImporter = false
@@ -173,6 +176,9 @@ struct Composer: View {
                 editingQueueItem = nil
             }
             Button("取消", role: .cancel) { editingQueueItem = nil }
+        }
+        .sheet(isPresented: $showGoal) {
+            GoalSheet(session: session)
         }
         .popover(isPresented: $showContextBreakdown) {
             if let breakdown = session.contextBreakdown {
@@ -388,6 +394,13 @@ struct Composer: View {
             let files = trigger.kind == .reference ? referenceFiles : []
             let sessions = trigger.kind == .reference ? referenceSessions : []
 
+            if trigger.kind == .command, trigger.query.isEmpty {
+                // desktop 的 `/` 菜单有两类：宿主的**指令**，和客户端自己的**动作**
+                // （文件/目标/计划/权限/模型）。宿主只给了 6 条指令，
+                // 而"添加文件""切模型"这些本来就是我们自己的界面 —— 顺手放进来。
+                localActions
+            }
+
             if !commands.isEmpty || !files.isEmpty || !sessions.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: Token.Spacing.tight) {
@@ -431,6 +444,30 @@ struct Composer: View {
                 .overlay(alignment: .top) { Rectangle().fill(Color(.separator)).frame(height: 0.5) }
             }
         }
+    }
+
+    /// `/` 菜单里的**本地动作** —— 不经过宿主，直接开我们自己的界面。
+    @ViewBuilder
+    private var localActions: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Token.Spacing.tight) {
+                suggestionChip(title: String(localized: "文件"), subtitle: nil, symbol: "paperclip") {
+                    showPhotoPicker = true
+                }
+                suggestionChip(title: String(localized: "模型"), subtitle: nil, symbol: "cpu") {
+                    onRequestModelPicker()
+                }
+                suggestionChip(title: String(localized: "权限"), subtitle: nil, symbol: "lock.shield") {
+                    showPermissionPicker = true
+                }
+                suggestionChip(title: String(localized: "目标"), subtitle: nil, symbol: "target") {
+                    showGoal = true
+                }
+            }
+            .padding(.horizontal, Token.Spacing.gutter)
+            .padding(.vertical, Token.Spacing.tight)
+        }
+        .background(.bar)
     }
 
     private func suggestionChip(
