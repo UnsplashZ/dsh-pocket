@@ -282,14 +282,28 @@ public final class SessionModel {
             return
         }
         restoredFromCache = false
-        builder = TimelineBuilder()
-        items = []
-        shadowedItems = []
+        // **有内容在屏幕上时不要先清空。**
+        //
+        // 用户复现："点进一条更新了很多消息的会话，原本显示的是之前的缓存，
+        // 然后一下突然变空了，等了好一会又恢复。"
+        //
+        // 原因就在这里：之前先把 `items` 清空再分批折叠，于是
+        // 缓存内容 → 一片空白（折叠期间）→ 内容回来。
+        // 大会话有 40+ 个分片，空白能持续好几秒。
+        //
+        // 现在折到**临时 builder**里，折完一次性换上去 —— 旧内容一直留在屏幕上。
+        // 冷启动（屏幕上本来就没东西）仍然走边折边渲染，那样首屏更快。
+        let hasVisibleContent = !items.isEmpty
+        var rebuilt = TimelineBuilder()
+        if !hasVisibleContent {
+            builder = TimelineBuilder()
+            items = []
+            shadowedItems = []
+        }
         lastSeq = -1
-        // 先出骨架：把标题/投影立刻落到界面上，再分批折叠事件。
         hasMoreHistory = snapshot.hasMore
         applyProjections(snapshot.projections)
-        publish()
+        if !hasVisibleContent { publish() }
 
         let events = snapshot.events
         let chunkSize = 120
@@ -298,12 +312,24 @@ public final class SessionModel {
             if Task.isCancelled { return }
             let end = min(index + chunkSize, events.count)
             for event in events[index..<end] {
-                _ = builder.apply(event)
+                // 双缓冲折到 `rebuilt`，冷启动直接折进 `builder`。
+                // **不能写成 `let target = hasVisibleContent ? rebuilt : builder`** ——
+                // `builder` 是结构体，那样只是复制一份，改不到真的那个。
+                if hasVisibleContent { _ = rebuilt.apply(event) } else { _ = builder.apply(event) }
             }
             index = end
-            publish()
+            // 双缓冲时**中途不发布** —— 发布了就会把旧内容换掉，
+            // 又变回"折一半给人看"。
+            if !hasVisibleContent { publish() }
             // 让出一次主线程：831 KB 的快照要"边到边渲染"，不能等全部解码完。
             await Task.yield()
+        }
+        if hasVisibleContent {
+            builder = rebuilt
+            publish()
+            logs.log(.info, "全量重建完成（双缓冲，\\(events.count) 条事件），期间旧内容一直在屏幕上")
+        } else {
+            logs.log(.info, "冷启动折叠完成（\\(events.count) 条事件）")
         }
         lastSeq = max(lastSeq, Double(snapshot.cursor))
         phase = .live

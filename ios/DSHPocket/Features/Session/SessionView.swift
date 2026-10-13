@@ -457,10 +457,20 @@ struct SessionView: View {
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool) {
-        if reduceMotion || !animated {
+        // **先滚到最后一块内容的 id**，再补一次末尾哨兵。
+        //
+        // 只滚哨兵会"经常失效"（用户反馈）：LazyVStack 里末尾那个零高度的
+        // `Color.clear` 常常还没被实体化，`scrollTo` 就静默什么也不做。
+        // 有真实内容的那一块才是稳的锚点。
+        let last = session?.timelineBlocks.last?.id
+        let apply = {
+            if let last { proxy.scrollTo(last, anchor: .bottom) }
             proxy.scrollTo(bottomAnchor, anchor: .bottom)
+        }
+        if reduceMotion || !animated {
+            apply()
         } else {
-            withAnimation(.default) { proxy.scrollTo(bottomAnchor, anchor: .bottom) }
+            withAnimation(.default) { apply() }
         }
     }
 
