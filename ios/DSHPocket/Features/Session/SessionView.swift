@@ -21,6 +21,7 @@ struct SessionView: View {
     @State private var showModelPicker = false
     @State private var showPermissionPicker = false
     @State private var showPermissionSheetForDebug = false
+    @State private var canAutoLoadHistory = false
     @State private var showJobs = false
     @State private var showGoal = false
     @State private var showShadowed = false
@@ -323,9 +324,21 @@ struct SessionView: View {
             }
             .coordinateSpace(name: Self.timelineSpace)
             .onPreferenceChange(TimelineTopOffsetKey.self) { offset in
-                // 顶部哨兵进入视口（minY 接近 0 或为正）→ 该补了。
+                // **打开会话时不要自动补历史。**
+                //
+                // 刚进来时内容还短（或还没贴到底），哨兵本来就在视口里 ——
+                // 一触发就补，更早的内容插到**上方**，视图一下子跳到中间某条消息
+                //（用户录屏："一开始在最底部，然后会突然跳转到某条消息记录"）。
+                //
+                // 等首次贴底落定之后才允许自动补。
+                guard canAutoLoadHistory else { return }
                 guard offset > -120 else { return }
                 Task { await session.loadOlderHistoryIfNeeded() }
+            }
+            .task {
+                // 给首次布局 + 贴底留出时间，之后才开放"往上滑自动补"。
+                try? await Task.sleep(for: .milliseconds(1200))
+                canAutoLoadHistory = true
             }
         }
     }

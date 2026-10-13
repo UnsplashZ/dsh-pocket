@@ -509,6 +509,41 @@ final class ProtocolContractTests: XCTestCase {
         )
     }
 
+    // MARK: 队列合并（出过三个 bug 的地方）
+
+    private func queued(_ text: String) -> QueuedMessage {
+        QueuedMessage(id: text, text: text, rpcId: nil, imageCount: 0, fileCount: 0)
+    }
+
+    private func inboxItem(_ text: String) -> JSONValue {
+        Fixture.json(#"{"id":"\#(text)","content":[{"type":"text","text":"\#(text)"}],"source":{"kind":"user","rpcId":"r-\#(text)"}}"#)
+    }
+
+    /// **在基准上增量**，不是换成日志推导的那份。
+    ///
+    /// 这条是"重进看不到"和"发新消息后只剩一条"两个 bug 的共同防线：
+    /// 基准（投影）里原有的条目必须留着，只动 splice 覆盖的那一段。
+    func testInboxSpliceIsIncrementalOverTheBaseline() throws {
+        let baseline = [queued("原有1"), queued("原有2"), queued("原有3")]
+
+        // ① 追加一条：**原有三条都要在**
+        let appended = baseline.applyingInboxSplice(start: 3, removedCount: 0, inserted: [inboxItem("新的")])
+        XCTAssertEqual(appended.map(\.text), ["原有1", "原有2", "原有3", "新的"])
+
+        // ② 消化最前面那条（start 0 / removedCount 1）：只少第一条
+        let consumed = baseline.applyingInboxSplice(start: 0, removedCount: 1, inserted: [])
+        XCTAssertEqual(consumed.map(\.text), ["原有2", "原有3"])
+
+        // ③ 从中间删一条
+        let removedMiddle = baseline.applyingInboxSplice(start: 1, removedCount: 1, inserted: [])
+        XCTAssertEqual(removedMiddle.map(\.text), ["原有1", "原有3"])
+
+        // ④ 越界不该崩（宿主偶尔会给出超出当前长度的 start）
+        XCTAssertEqual(baseline.applyingInboxSplice(start: 99, removedCount: 2, inserted: []).count, 3)
+        XCTAssertEqual(baseline.applyingInboxSplice(start: 0, removedCount: 99, inserted: []).count, 0)
+        XCTAssertEqual(baseline.applyingInboxSplice(start: -1, removedCount: 1, inserted: []).count, 3)
+    }
+
     // MARK: 凭据
 
     /// 凭据描述**没有 value 字段，而且是故意的** —— 密钥只存在电脑端，

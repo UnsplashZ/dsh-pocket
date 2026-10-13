@@ -60,12 +60,6 @@ public actor DSHClient {
         return items.compactMap(SessionSummary.decode)
     }
 
-    /// 会话投影（`session/list` 单条，用于列表页之外的地方补齐）。
-    public func listProjections(sessionIds: [String]) async throws -> JSONValue {
-        try await rpc.call(method: "session/list", payload: [
-            "args": .object(["_request": .object(["sessionIds": .array(sessionIds.map { .string($0) })])])
-        ])
-    }
 
     // MARK: - 会话流
 
@@ -837,13 +831,6 @@ public actor DSHClient {
         return CommandExecution.decode(value)
     }
 
-    /// 可用的斜杠命令清单。
-    public func commands(sessionId: String) async throws -> [JSONValue] {
-        let value = try await rpc.call(method: "commands/list", payload: [
-            "args": .object(["agentId": .string(sessionId)])
-        ])
-        return value.arrayValue ?? []
-    }
 
     /// 切换当前会话的权限档位。
     @discardableResult
@@ -933,15 +920,6 @@ public actor DSHClient {
         return entries.compactMap(WorkspaceFileEntry.init(json:))
     }
 
-    /// `workspaceFiles/stat`：**用绝对路径**。
-    public func statFile(scopeId: String, path: String) async throws -> JSONValue {
-        try await rpc.call(method: "workspaceFiles/stat", payload: [
-            "args": .object([
-                "workspaceFileScopeId": .string(scopeId),
-                "path": .string(path),
-            ])
-        ])
-    }
 
     /// `workspaceFiles/read`：**用绝对路径**。
     public func readFile(scopeId: String, path: String, range: JSONValue? = nil) async throws -> String {

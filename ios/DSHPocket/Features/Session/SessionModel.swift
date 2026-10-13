@@ -812,17 +812,13 @@ public final class SessionModel {
     /// 从第 `start` 条起删掉 `removedCount` 条，再把 `inserted` 插进去。
     private func applyLiveInboxSplice(_ event: SessionEvent) {
         hasLiveInbox = true
-        var list = projectionQueued
-        let start = event.int("data.start") ?? 0
-        let removed = event.int("data.removedCount") ?? 0
-        if removed > 0, start < list.count {
-            list.removeSubrange(start..<min(start + removed, list.count))
-        }
-        for inserted in event.array("data.inserted") ?? [] {
-            list.append(QueuedMessage(json: inserted))
-        }
-        projectionQueued = list
-        queuedMessages = list
+        // 合并逻辑在 DSHKit 里（纯函数，有测试）—— 这里只管接线。
+        projectionQueued = projectionQueued.applyingInboxSplice(
+            start: event.int("data.start") ?? 0,
+            removedCount: event.int("data.removedCount") ?? 0,
+            inserted: event.array("data.inserted") ?? []
+        )
+        queuedMessages = projectionQueued
     }
 
     // MARK: 斜杠命令 / 后台任务

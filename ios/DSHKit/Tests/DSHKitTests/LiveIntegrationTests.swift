@@ -392,8 +392,8 @@ final class LiveIntegrationTests: XCTestCase {
         }
 
         // 命令清单里必须有 permission（每条是对象，取 name 字段）
-        let commands = try await client.commands(sessionId: target.sessionId)
-        let names = commands.compactMap { $0.string("name") }
+        let commands = try await client.listCommands(sessionId: target.sessionId)
+        let names = commands.map(\.name)
         XCTAssertFalse(names.isEmpty, "命令清单不该是空的")
         XCTAssertTrue(names.contains("permission"),
                       "命令清单里应该有 permission，实际：\(names.prefix(8))")
@@ -733,7 +733,7 @@ final class LiveIntegrationTests: XCTestCase {
 
         // 未知方法 → 业务错误（HTTP 200 + result.ok=false）或 404，两种都要能被识别成错误。
         do {
-            _ = try await client.listProjections(sessionIds: ["definitely-not-a-session"])
+            _ = try await client.sessionProjections(sessionId: "definitely-not-a-session")
             // 有的部署对未知 id 返回空列表而不是错误 —— 那也算通过。
         } catch let error as DSHClientError {
             XCTAssertTrue(

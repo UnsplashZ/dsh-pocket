@@ -431,6 +431,17 @@
         }
       }
     },
+    "不可用": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unavailable"
+          }
+        }
+      }
+    },
     "不采集分析数据": {
       "extractionState": "manual",
       "localizations": {
@@ -2394,6 +2405,17 @@
         }
       }
     },
+    "执行中": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Working"
+          }
+        }
+      }
+    },
     "扫描电脑上的二维码": {
       "extractionState": "manual",
       "localizations": {
@@ -3045,17 +3067,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Loading plugin bundles…"
-          }
-        }
-      }
-    },
-    "正在运行": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Running"
           }
         }
       }
@@ -3883,6 +3894,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Waiting for your answer"
+          }
+        }
+      }
+    },
+    "等待回复": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting for you"
           }
         }
       }

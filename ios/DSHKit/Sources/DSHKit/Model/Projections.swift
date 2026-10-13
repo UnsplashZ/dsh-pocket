@@ -524,3 +524,31 @@ extension String {
         return String(text.prefix(limit)) + "…"
     }
 }
+
+
+extension Array where Element == QueuedMessage {
+    /// 把一条 `agent/inbox/spliced` **增量地**应用到队列上。
+    ///
+    /// 线上形状是 `{start, removedCount, inserted}` —— 一次 splice：
+    /// 从第 `start` 条起删掉 `removedCount` 条，再把 `inserted` 插进去。
+    ///
+    /// **为什么必须做成"在基准上增量"而不是"换成日志推导的那份"**：
+    /// 投影（`projections.inbox`）是权威且全量的，但只在快照时更新；
+    /// 日志事件是增量的，但**有界快照会把旧事件切在窗口外** ——
+    /// 两者当成二选一的话，就会出现"重进看不到"或"发新消息后只剩一条"。
+    /// 这个函数被抽出来就是为了能脱离网络测（之前那三个 bug 全在这儿）。
+    public func applyingInboxSplice(
+        start: Int,
+        removedCount: Int,
+        inserted: [JSONValue]
+    ) -> [QueuedMessage] {
+        var list = self
+        if removedCount > 0, start >= 0, start < list.count {
+            list.removeSubrange(start..<Swift.min(start + removedCount, list.count))
+        }
+        for item in inserted {
+            list.append(QueuedMessage(json: item))
+        }
+        return list
+    }
+}
