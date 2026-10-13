@@ -108,7 +108,77 @@
 
 ---
 
-## 四、明确建议**不做**的
+## 四、这 8 项分别是谁提供的？
+
+**结论：1-8 全部是 DSH 官方能力，没有一项来自第三方插件。**
+
+用 `pluginManager/listBundles` 查的权威分类（不是按包名猜的）。本机 17 个 bundle 分三层：
+
+### 第 1 层 · 核心内置（`@deepseek-ai/dsh-base`，`management-required`，不可禁用）
+
+服务端能力全在这一层：
+
+| 能力 | 模块 |
+|---|---|
+| 后台任务 | `dsh-jobs-local` · `dsh-tool-jobs` |
+| 目标 | `dsh-goal` · `dsh-goal-round-driver` · `dsh-command-goal` |
+| 命令 | `dsh-commands` · `dsh-command-feedback` · `dsh-command-compact` |
+| 计划模式 | `dsh-plan-mode` |
+| **会话搜索** | `dsh-session-query-sqlite` |
+| **上下文明细** | `dsh-token-meter`（`contextBreakdown` 由它定义） |
+| 技能 | `dsh-skill` · `dsh-skill-filesystem` · `dsh-tool-skill` |
+
+### 第 2 层 · 官方 Web 界面（`@deepseek-ai/dsh-web-app`，`management-required`）
+
+**所有客户端 UI 都在这一层** —— 也就是说这 8 项的手机端实现，本质上是
+把 `dsh-web-app` 里对应的那个 React 组件用 SwiftUI 重写一遍：
+
+| 能力 | 模块 |
+|---|---|
+| 后台任务面板 | `dsh-client-ui-jobs` |
+| 目标面板 | `dsh-client-ui-goal` |
+| 命令菜单 | `dsh-client-ui-commands` |
+| **`@` 引用** | `dsh-client-ui-reference` · `dsh-session-reference` · `dsh-file-reference-local` |
+| 触发候选 | `dsh-client-ui-input-trigger` |
+| **字号调节** | `dsh-client-ui-theme` |
+| 上下文明细 UI | `dsh-client-ui-conversation` |
+| 轨迹 / 技能卡片 | `dsh-client-ui-trajectory` · `dsh-client-ui-skill` |
+
+### 第 3 层 · 官方实验性（`@deepseek-ai/dsh-experimental-*`，`optional`）
+
+**8 项里只有「定时提醒」在这一层** —— 它不在核心包里，是单独一个可选 bundle
+（本机已启用）：
+
+```
+@deepseek-ai/dsh-experimental-schedule-bundle   [enabled, optional]
+   dsh-time-context · dsh-schedule · dsh-client-ui-schedule
+```
+
+同层还有 `experimental-agent-team-profile`（Agent Teams）、`voice-input`、
+`auto-review` —— 都没进我的 1-8。
+
+### 第三方插件跟这 8 项无关
+
+本机装了 **7 个第三方**（`installed` + `removable`），没有一个提供 1-8 的能力：
+
+| 包 | 是什么 |
+|---|---|
+| `dsh-plugin-tether` | 手机客户端传输层 —— **就是我们这个 App 依赖的那个** |
+| `dshmarket` | 可视化插件市场 |
+| `dsh-plugin-tool-management` | MCP／技能／场景／记忆／子代理人设的统一设置面板 |
+| `dsh-better-sidebar` | 增强版右侧栏（文件树、编辑器、变更、任务） |
+| `@michengai/dsh-im-connect` | IM 接入（飞书/微信…）—— 就是频道功能的来源 |
+| `dsh-free-search` | 24 引擎免费搜索 |
+| `dsh-context` | **上下文仪表盘**（dashboard／browser／dynamics + context 命令） |
+
+> ⚠️ **一个例外要标清楚**：第 7 项「上下文明细」我指的是官方的
+> `contextBreakdown`（`{systemTokens, toolsTokens, messageTokens}` 三个数）。
+> 桌面端那个**更丰富的上下文仪表盘**是第三方 `dsh-context` 提供的 ——
+> 那部分不在我的 1-8 里，要做得单独看它的接口。
+
+---
+
+## 五、明确建议**不做**的
 
 - **侧边栏三件套**（终端／浏览器／文档预览增强）：手机屏幕放不下，且真正需要时
   桌面上做更合适
