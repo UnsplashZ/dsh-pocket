@@ -633,6 +633,40 @@ final class TimelineBuilderTests: XCTestCase {
         XCTAssertTrue(builder.queuedMessages.isEmpty, "电脑删掉排队任务后本地要立刻消失，不能等重进会话")
     }
 
+    /// **队列项不能进时间线。**
+    ///
+    /// 它和"乐观插入"都是 `isPending`，但：
+    ///   · 乐观插入 = 你自己刚发的，该在时间线上立刻出现（"发送中…"）；
+    ///   · 队列项 = 还没轮到它，只该出现在底部的「排队中」区。
+    /// 不区分的话队列项会被画成一个蓝色气泡、还带"发送中…" ——
+    /// 看起来就像消息已经发出去了（实测：电脑上排队的任务在手机上就是这样）。
+    func testQueuedItemDoesNotRenderAsASentMessage() throws {
+        var builder = TimelineBuilder()
+        // ① 你自己发的（乐观插入）→ 要进时间线
+        _ = builder.insertOptimisticUserMessage(text: "我刚发的", images: [], files: [], rpcId: "mine")
+
+        // ② 电脑上排队的 → 只该进队列区
+        _ = builder.apply(try Fixture.event("""
+        {"type":"agent/inbox/spliced","seq":1,"time":1791777000000,"data":{"inserted":[{"content":[{"type":"text","text":"排队中的"}],"source":{"kind":"user","rpcId":"queued"},"role":"user","id":"m1"}]},"surfaceOp":null}
+        """))
+
+        let visible = builder.conversationalItems.compactMap { item -> String? in
+            guard case .userMessage(let message) = item.kind else { return nil }
+            return message.text
+        }
+        XCTAssertEqual(visible, ["我刚发的"], "队列项不该出现在时间线里")
+        XCTAssertEqual(builder.queuedMessages.map(\.text), ["排队中的"], "但要在队列区里")
+
+        // ③ 轮到它了：真正的 user/message 接管 → 进时间线、出队列
+        _ = builder.apply(try Fixture.event(Fixture.userMessage("排队中的", seq: 2, rpcId: "queued")))
+        let after = builder.conversationalItems.compactMap { item -> String? in
+            guard case .userMessage(let message) = item.kind else { return nil }
+            return message.text
+        }
+        XCTAssertTrue(after.contains("排队中的"), "被接管之后要进时间线")
+        XCTAssertTrue(builder.queuedMessages.isEmpty, "同时要从队列区消失")
+    }
+
     // MARK: 落盘 / 续拉
 
     /// 折叠状态必须能**原样**往返 —— 恢复之后还能继续增量折叠，而不是只能画。
@@ -672,12 +706,13 @@ final class TimelineBuilderTests: XCTestCase {
         let stale = TimelineBuilder.State(schemaVersion: 999)
         XCTAssertNil(TimelineBuilder(state: stale), "版本对不上要丢弃，不能猜着读")
 
-        // 升版的两个理由，都要记住：
+        // 升版的理由，都要记住：
         //   · 加字段（审批的 callId）→ 旧缓存里 `Approval.callId` 是 nil，审批卡片认不出自己能答；
         //   · **折叠语义**变了（修好"错误地标成已隐藏"）→ 旧缓存里那个错误标记会一直生效，
-        //     界面上看不出任何变化，会以为修复没生效。
-        XCTAssertEqual(TimelineBuilder.State.currentSchemaVersion, 3)
-        XCTAssertNil(TimelineBuilder(state: TimelineBuilder.State(schemaVersion: 2)))
+        //     界面上看不出任何变化，会以为修复没生效；
+        //   · 又加字段（队列项的 `isQueued`）→ 旧缓存里队列项会被当成已发出的消息渲染。
+        XCTAssertEqual(TimelineBuilder.State.currentSchemaVersion, 4)
+        XCTAssertNil(TimelineBuilder(state: TimelineBuilder.State(schemaVersion: 3)))
         XCTAssertNil(TimelineBuilder(state: TimelineBuilder.State(schemaVersion: 1)))
     }
 

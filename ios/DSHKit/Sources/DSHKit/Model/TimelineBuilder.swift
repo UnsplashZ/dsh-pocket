@@ -83,7 +83,7 @@ public struct TimelineBuilder: Sendable {
         /// 注意不只是"字段变了"要升版：`isShadowed` 这类**折叠结果**也存进来了，
         /// 所以修好一个"错误地标成已隐藏"的 bug 之后，旧缓存里那个错误的标记
         /// 会一直生效 —— 界面上看不出任何变化，会以为修复没生效（实测踩过）。
-        public static let currentSchemaVersion = 3
+        public static let currentSchemaVersion = 4
 
         public var schemaVersion: Int = State.currentSchemaVersion
         public var header: SessionHeader?
@@ -215,7 +215,7 @@ public struct TimelineBuilder: Sendable {
         items
             .filter { item in
                 guard !item.isShadowed, case .userMessage(let message) = item.kind else { return false }
-                return message.isPending
+                return message.isQueued
             }
             .sorted { $0.seq < $1.seq }
             .map { item in
@@ -650,7 +650,9 @@ public struct TimelineBuilder: Sendable {
                 id: itemId,
                 seq: nextTransientSeq(),
                 time: Date(),
-                kind: .userMessage(.init(text: text, images: images, files: files, rpcId: rpcId, isPending: true))
+                kind: .userMessage(.init(
+                text: text, images: images, files: files, rpcId: rpcId, isPending: true, isQueued: false
+            ))
             ),
             into: &delta
         )
@@ -776,7 +778,7 @@ public struct TimelineBuilder: Sendable {
             taken.id = Self.durableId(event.seq)
             taken.isShadowed = false
             taken.kind = .userMessage(.init(
-                text: text, images: images, files: files, rpcId: rpcId, isPending: false
+                text: text, images: images, files: files, rpcId: rpcId, isPending: false, isQueued: false
             ))
             // 旧的 id 要在 delta 里说明"它没了"，否则界面会留着那条待发项。
             delta.removedIds.append(existingId)
@@ -979,7 +981,7 @@ public struct TimelineBuilder: Sendable {
             upsert(
                 TimelineItem(
                     id: itemId, seq: nextTransientSeq(), time: event.time,
-                    kind: .userMessage(.init(text: text, rpcId: rpcId, isPending: true))
+                    kind: .userMessage(.init(text: text, rpcId: rpcId, isPending: true, isQueued: true))
                 ),
                 into: &delta
             )

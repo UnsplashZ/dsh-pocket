@@ -106,6 +106,10 @@ extension TimelineItem {
             return false
         case .assistantMessage(let message):
             return message.hasRenderableContent
+        case .userMessage(let message):
+            // 队列项**不进时间线** —— 它只出现在底部的「排队中」区。
+            // 两处都画的话，电脑上排队的任务看起来就像已经发出去了。
+            return !message.isQueued
         default:
             return true
         }
@@ -118,13 +122,29 @@ extension TimelineItem {
         public var rpcId: String?
         /// 由客户端乐观插入、尚未在日志里出现。
         public var isPending: Bool
+        /// **来自队列**（`agent/inbox/spliced` 建的项），不是已经发出去的消息。
+        ///
+        /// 必须跟"乐观插入"区分开：两者 `isPending` 都是 true，但
+        ///   · 乐观插入 = **你自己刚发的**，该在时间线上立刻出现（"发送中…"）；
+        ///   · 队列项 = **还没轮到它**，只该出现在底部的「排队中」区。
+        /// 不区分的话队列项会被画成一个蓝色气泡、还带"发送中…"，
+        /// 看起来就像消息已经发出去了（实测：电脑上排队的任务在手机上就是这样）。
+        public var isQueued: Bool
 
-        public init(text: String, images: [ImageRef] = [], files: [FileRef] = [], rpcId: String? = nil, isPending: Bool = false) {
+        public init(
+            text: String,
+            images: [ImageRef] = [],
+            files: [FileRef] = [],
+            rpcId: String? = nil,
+            isPending: Bool = false,
+            isQueued: Bool = false
+        ) {
             self.text = text
             self.images = images
             self.files = files
             self.rpcId = rpcId
             self.isPending = isPending
+            self.isQueued = isQueued
         }
     }
 
