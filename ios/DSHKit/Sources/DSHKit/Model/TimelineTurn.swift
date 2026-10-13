@@ -88,8 +88,16 @@ extension TimelineBuilder {
     ///
     /// 返回的是**有序的块**：`turn` 是成组的轮次，`item` 是轮次之外的独立条目。
     /// 视图照着渲染就行，不用自己再扫一遍。
-    public func timelineBlocks(includingShadowed: Bool = false) -> [TimelineBlock] {
-        let source = items.filter { includingShadowed || !$0.isShadowed }
+    ///
+    /// **过滤必须跟 `publish()` 保持一致**：这里曾经只过滤 shadowed，
+    /// 于是"只有工具调用"的助手消息（`isConversational == false`）照样进了轮次分组，
+    /// 渲染成一张**只有时间、没有任何文字的空白卡片** —— 在 `SessionView` 里
+    /// 直接渲染 `items` 的时候是看不到的，因为那批早就被过滤过了。
+    public func timelineBlocks(showRawEvents: Bool = false) -> [TimelineBlock] {
+        let source = items.filter { item in
+            guard !showRawEvents else { return true }
+            return !item.isShadowed && item.isConversational
+        }
         var blocks: [TimelineBlock] = []
         var currentTurn: Int?
         var bucket: [TimelineItem] = []

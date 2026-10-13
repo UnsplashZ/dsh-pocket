@@ -470,6 +470,39 @@ final class TimelineBuilderTests: XCTestCase {
         XCTAssertEqual(turn.collapsedItems.map(\.id), [try XCTUnwrap(turn.headline?.id)])
     }
 
+    /// **分组必须跟 `publish()` 用同一套过滤。**
+    ///
+    /// 这里曾经只过滤 shadowed，于是"只有工具调用"的助手消息
+    /// （`isConversational == false`）照样进了轮次分组，渲染成一张
+    /// **只有时间、没有任何文字的空白卡片**。在 `SessionView` 里直接渲染
+    /// `items` 的时候看不到 —— 那批早就被过滤过了，是分组把它漏出来的。
+    func testTurnGroupingDropsItemsTheDefaultViewWouldHide() throws {
+        var builder = TimelineBuilder()
+        _ = builder.apply(try Fixture.event(Fixture.turnStart(1, seq: 1)))
+        // 只声明了一个工具调用的助手消息：条目本身要留着（工具行要用），
+        // 但默认视图里不该出现。
+        _ = builder.apply(try Fixture.event(
+            Fixture.assistantMessage(text: "", toolCall: ("call_x", "bash", "{}"), seq: 2)
+        ))
+        _ = builder.apply(try Fixture.event(Fixture.assistantMessage(text: "有正文", seq: 3)))
+        _ = builder.apply(try Fixture.event(Fixture.turnEnd(1, seq: 4)))
+
+        let blocks = builder.timelineBlocks()
+        guard case .turn(let turn) = blocks.first else { return XCTFail() }
+        let kinds = turn.items.map { item -> String in
+            if case .assistantMessage(let message) = item.kind {
+                return message.hasRenderableContent ? "可渲染" : "空"
+            }
+            return "其它"
+        }
+        XCTAssertFalse(kinds.contains("空"), "空助手消息不该进分组，实际：\(kinds)")
+
+        // 打开"显示原始事件"时要全给出来
+        let raw = builder.timelineBlocks(showRawEvents: true)
+        guard case .turn(let rawTurn) = raw.first else { return XCTFail() }
+        XCTAssertGreaterThan(rawTurn.items.count, turn.items.count, "showRawEvents 下应当更全")
+    }
+
     /// 还在跑的轮次**不**收拢 —— 正在发生的事没有收拢的道理。
     func testRunningTurnIsNotCollapsed() throws {
         var builder = TimelineBuilder()

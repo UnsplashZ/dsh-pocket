@@ -340,7 +340,7 @@ public final class SessionModel {
             if case .turnEnd(let turn, _) = item.kind { return turn }
             return nil
         })
-        timelineBlocks = builder.timelineBlocks(includingShadowed: settings.showRawEvents)
+        timelineBlocks = builder.timelineBlocks(showRawEvents: settings.showRawEvents)
     }
 
     /// 每次"应该滚到底"时自增。View 观察它做一次 `scrollTo`。

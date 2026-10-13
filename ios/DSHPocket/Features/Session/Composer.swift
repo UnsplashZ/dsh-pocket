@@ -59,6 +59,7 @@ struct Composer: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @FocusState private var isFocused: Bool
     @State private var photoSelection: [PhotosPickerItem] = []
+    @State private var showPhotoPicker = false
     @State private var showFileImporter = false
     @State private var sendTrigger = 0
     @State private var stopTrigger = 0
@@ -73,12 +74,12 @@ struct Composer: View {
 
             HStack(alignment: .bottom, spacing: Token.Spacing.tight) {
                 Menu {
-                    PhotosPicker(
-                        selection: $photoSelection,
-                        maxSelectionCount: 6,
-                        matching: .images,
-                        photoLibrary: .shared()
-                    ) {
+                    // `PhotosPicker` **不能放在 `Menu` 里** —— 菜单一关，它自己那层
+                    // 呈现就被丢掉了，点了完全没反应（实测）。所以菜单里只置一个标志，
+                    // 真正的 picker 用 `.photosPicker(isPresented:)` 挂在外面。
+                    Button {
+                        showPhotoPicker = true
+                    } label: {
                         Label("照片", systemImage: "photo.on.rectangle")
                     }
                     Button {
@@ -119,6 +120,13 @@ struct Composer: View {
             .padding(.horizontal, Token.Spacing.gutter)
             .padding(.vertical, Token.Spacing.tight)
         }
+        .photosPicker(
+            isPresented: $showPhotoPicker,
+            selection: $photoSelection,
+            maxSelectionCount: 6,
+            matching: .images,
+            photoLibrary: .shared()
+        )
         // 背景要**铺到屏幕底边**（含 home indicator 那一条），否则输入区下面会露出
         // 一条与滚动区不同的底色，看起来像"多出来一条白边"。
         .background {
@@ -131,7 +139,6 @@ struct Composer: View {
         }
         .sensoryFeedback(.impact(weight: .light), trigger: sendTrigger)
         .sensoryFeedback(.impact(weight: .medium), trigger: stopTrigger)
-        .photosPicker(isPresented: .constant(false), selection: $photoSelection)
         .onChange(of: photoSelection) { _, items in
             Task { await loadPhotos(items) }
         }
