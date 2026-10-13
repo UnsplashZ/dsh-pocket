@@ -102,6 +102,32 @@ public enum TransportMode: String, CaseIterable, Identifiable, Sendable {
 /// 应用设置。`UserDefaults` 是唯一存储 —— 这里没有需要 Keychain 的东西
 /// （设备密钥由 TetherKit 自己管，见 `TetherSecretStore`）。
 @MainActor
+/// 会话内容的字号档位。
+public enum FontScale: String, CaseIterable, Sendable {
+    case small
+    case standard
+    case large
+    case larger
+
+    public var label: LocalizedStringKey {
+        switch self {
+        case .small: return "小"
+        case .standard: return "标准"
+        case .large: return "大"
+        case .larger: return "特大"
+        }
+    }
+
+    public var dynamicTypeSize: DynamicTypeSize {
+        switch self {
+        case .small: return .small
+        case .standard: return .large
+        case .large: return .xLarge
+        case .larger: return .xxLarge
+        }
+    }
+}
+
 @Observable
 public final class AppSettings {
     private enum Key {
@@ -119,6 +145,7 @@ public final class AppSettings {
         static let devDirectURL = "settings.devDirectURL"
         static let activeHost = "settings.activeHost"
         static let hasOnboarded = "settings.hasOnboarded"
+        static let fontScale = "settings.fontScale"
     }
 
     private let defaults: UserDefaults
@@ -138,6 +165,14 @@ public final class AppSettings {
             defaults.set(notifications.questions, forKey: Key.notifyQuestions)
             defaults.set(notifications.completions, forKey: Key.notifyCompletions)
         }
+    }
+
+    /// 会话内容的字号。
+    ///
+    /// 跟桌面端一样**只影响会话内容** —— 导航栏、设置页保持系统字号，
+    /// 否则调大之后设置页会挤成一团。
+    public var fontScale: FontScale {
+        didSet { defaults.set(fontScale.rawValue, forKey: Key.fontScale) }
     }
 
     /// 会话菜单里的"显示模型可见的原始事件"（系统提示、request/header…）。
@@ -196,6 +231,7 @@ public final class AppSettings {
         prefs.completions = defaults.bool(forKey: Key.notifyCompletions)
         self.notifications = prefs
         self.showRawEvents = defaults.bool(forKey: Key.showRawEvents)
+        self.fontScale = FontScale(rawValue: defaults.string(forKey: Key.fontScale) ?? "") ?? .standard
         self.expandReasoningByDefault = defaults.bool(forKey: Key.expandReasoning)
         self.devDirectEnabled = defaults.bool(forKey: Key.devDirect)
         // 迁移：老版本只有 devDirectEnabled 这个开关。

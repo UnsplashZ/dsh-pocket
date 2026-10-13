@@ -109,6 +109,42 @@ public final class AppModel {
     /// `sessionSummary(for:cwd:)` 合成一个占位再 push —— 跟"新建会话"同一条路。
     var pendingOpenSessionId: String?
 
+    /// 当前打开的会话 id（提醒页要知道该查哪个会话的提醒）。
+    var activeSessionId: String?
+
+    /// 主机侧的历史搜索命中。
+    ///
+    /// **主机可能禁用搜索**（本机就是：`openAt: "never"`），
+    /// 所以错误要翻译成人话再显示。
+    private(set) var searchHits: [SessionSearchHit] = []
+    private(set) var isSearching = false
+    private(set) var searchUnavailableReason: String?
+
+    /// 在历史会话里搜。
+    func searchHistory(_ query: String) async {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 2 else {
+            searchHits = []
+            searchUnavailableReason = nil
+            return
+        }
+        isSearching = true
+        defer { isSearching = false }
+        do {
+            searchHits = try await client.searchSessions(query: trimmed)
+            searchUnavailableReason = nil
+        } catch let error as DSHClientError {
+            searchHits = []
+            // 把"部署没开搜索"这种配置问题说清楚，而不是甩一串英文。
+            searchUnavailableReason = error.displayMessage.contains("search is disabled")
+                ? String(localized: "这台电脑没有开启会话搜索索引（session-query 的 openAt 被设成了 never）。")
+                : error.displayMessage
+        } catch {
+            searchHits = []
+            searchUnavailableReason = error.localizedDescription
+        }
+    }
+
     /// 连接换代导致待处理作废时给用户的一句说明。
     var waterfallAbandonedMessage: String?
 

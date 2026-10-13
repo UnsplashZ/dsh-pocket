@@ -16,6 +16,7 @@
 		180EF74A2CCF87F7403C8622 /* PermissionPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26456AC49423F3B6A1F97ACE /* PermissionPreset.swift */; };
 		1F3BC6A32A38E2FFA850E0A9 /* LocalProxyServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57FD4C43AD3A7045506EDF86 /* LocalProxyServer.swift */; };
 		1F54D4112656EAB0E1A33F9C /* TetherProxyPort.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB8FD867EC3110B3BB52E461 /* TetherProxyPort.swift */; };
+		2334369E70DDD4DDE1C6E6E5 /* RemindersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E6545733A72A6DFD18FD257 /* RemindersView.swift */; };
 		28162644411E5D89A0CA6C97 /* DSHClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54FBBD8E05AA668CEF81EF66 /* DSHClient.swift */; };
 		2E7AB6FBC330CEE60C43B586 /* SystemConfiguration.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7071E06DC937B83C09108A62 /* SystemConfiguration.framework */; };
 		2F2037A1772AE4F088992348 /* HostEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E5E5C710758154A562F575D /* HostEvent.swift */; };
@@ -30,6 +31,7 @@
 		410C4DDB28BB404E39511F64 /* Network.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 08306E6C972F98DCB1348670 /* Network.framework */; };
 		4122BFF70BA7A48C3589BF8D /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C21C6211FB0AADD0108305AC /* AppModel.swift */; };
 		41A88EE867540735B3324899 /* TetherKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E056E04F55E32F4971BE31A7 /* TetherKit.framework */; };
+		439817E5C03976AE076C144C /* DesktopParity.swift in Sources */ = {isa = PBXBuildFile; fileRef = B818C0150F1A40E56AEF464A /* DesktopParity.swift */; };
 		44599F8D0882CE97D7645F7A /* DSHLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CE333F2A16C687DBA3400DA /* DSHLog.swift */; };
 		44FF524D67E6E0CE5C416554 /* PermissionLabels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 942183F7BAFEC2139A9DBACE /* PermissionLabels.swift */; };
 		45CA0CAB5D987419CA311B95 /* DSHKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F714C252B15543051C29E9C2 /* DSHKit.framework */; };
@@ -45,6 +47,8 @@
 		6695A409C898AAA1A1ABD408 /* MarkdownBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EB168BF3F2BD1743521E92A /* MarkdownBlock.swift */; };
 		69882D66922A4F6677764464 /* SettingsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4662D3F79BDEB3E7FA8D5C7 /* SettingsSheet.swift */; };
 		6DB90D5832BBE03DE5A07AAD /* TetherLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0DEE2C65B00CABFAB497AB6 /* TetherLink.swift */; };
+		6EB1CBF7D9447769842D1D1E /* JobsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA26E309F029778FB1A638F3 /* JobsSheet.swift */; };
+		729932610A5EFB2D25502799 /* GoalSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27AB7E58212ECE6794F8BC2C /* GoalSheet.swift */; };
 		7352887FCBB27A5B83281625 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 40F731E69C3E40534DA3287A /* Assets.xcassets */; };
 		7414F4E68D5512C52D2705A4 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D3E85F2E06D4C88D4910978 /* AppSettings.swift */; };
 		752B2C890AE4EA28F18A1D09 /* EventStreamCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B624E63D100EADA66BC73883 /* EventStreamCoordinator.swift */; };
@@ -167,6 +171,7 @@
 		20391EC33E89609CD0C82B2E /* FilesSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilesSheet.swift; sourceTree = "<group>"; };
 		2151DE06AE4BA2D88CBE912C /* DSHError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSHError.swift; sourceTree = "<group>"; };
 		26456AC49423F3B6A1F97ACE /* PermissionPreset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionPreset.swift; sourceTree = "<group>"; };
+		27AB7E58212ECE6794F8BC2C /* GoalSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoalSheet.swift; sourceTree = "<group>"; };
 		29D28F9396FE62A8F095295F /* HostSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostSettingsView.swift; sourceTree = "<group>"; };
 		2EF1F42C52A900A991734E25 /* WorkspaceFrame.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceFrame.swift; sourceTree = "<group>"; };
 		30AC58D8B9981CB968F5B72C /* Composer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Composer.swift; sourceTree = "<group>"; };
@@ -181,6 +186,7 @@
 		54FBBD8E05AA668CEF81EF66 /* DSHClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSHClient.swift; sourceTree = "<group>"; };
 		57FD4C43AD3A7045506EDF86 /* LocalProxyServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalProxyServer.swift; sourceTree = "<group>"; };
 		59C72C7E55FE2D733E43C1E5 /* Iroh.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = Iroh.xcframework; path = vendor/Iroh.xcframework; sourceTree = "<group>"; };
+		5E6545733A72A6DFD18FD257 /* RemindersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemindersView.swift; sourceTree = "<group>"; };
 		629A0D2486C00C6FD8CB3A91 /* LLMProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMProvider.swift; sourceTree = "<group>"; };
 		649275652C15B4E856D19630 /* IrohLib.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IrohLib.swift; sourceTree = "<group>"; };
 		6607BBF3D413D89A4B537871 /* Projections.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Projections.swift; sourceTree = "<group>"; };
@@ -212,6 +218,8 @@
 		B225F0688C4A99917EBDD4AE /* SessionCategory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCategory.swift; sourceTree = "<group>"; };
 		B3E177347AB2BA195EBD899C /* TetherSecretStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TetherSecretStore.swift; sourceTree = "<group>"; };
 		B624E63D100EADA66BC73883 /* EventStreamCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventStreamCoordinator.swift; sourceTree = "<group>"; };
+		B818C0150F1A40E56AEF464A /* DesktopParity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopParity.swift; sourceTree = "<group>"; };
+		BA26E309F029778FB1A638F3 /* JobsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobsSheet.swift; sourceTree = "<group>"; };
 		BBF83F4E8B796777D460DAE3 /* PairingSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingSheet.swift; sourceTree = "<group>"; };
 		BF7607647BE2F4F50589011E /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		C21C6211FB0AADD0108305AC /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
@@ -307,6 +315,7 @@
 			isa = PBXGroup;
 			children = (
 				C53081436A11EF6105069F25 /* AgentPreset.swift */,
+				B818C0150F1A40E56AEF464A /* DesktopParity.swift */,
 				836591110B5A4AC8A0E97A47 /* HostBundle.swift */,
 				CBD739A226633E29134DDDE5 /* HostPlugin.swift */,
 				629A0D2486C00C6FD8CB3A91 /* LLMProvider.swift */,
@@ -465,6 +474,7 @@
 				8228B8138EE7502853E22F63 /* DiagnosticsView.swift */,
 				29D28F9396FE62A8F095295F /* HostSettingsView.swift */,
 				D128DDECCA3A17DBC3E55D94 /* ModelProvidersView.swift */,
+				5E6545733A72A6DFD18FD257 /* RemindersView.swift */,
 				F4662D3F79BDEB3E7FA8D5C7 /* SettingsSheet.swift */,
 			);
 			path = Settings;
@@ -508,6 +518,8 @@
 			isa = PBXGroup;
 			children = (
 				30AC58D8B9981CB968F5B72C /* Composer.swift */,
+				27AB7E58212ECE6794F8BC2C /* GoalSheet.swift */,
+				BA26E309F029778FB1A638F3 /* JobsSheet.swift */,
 				995A4C13DF026FD0CCDF5EED /* ModelPickerSheet.swift */,
 				942183F7BAFEC2139A9DBACE /* PermissionLabels.swift */,
 				EECC9AE2D0F11BEC981A1404 /* PermissionPickerSheet.swift */,
@@ -738,6 +750,7 @@
 				28162644411E5D89A0CA6C97 /* DSHClient.swift in Sources */,
 				A4C4DA46B5DCBB456010BE0A /* DSHError.swift in Sources */,
 				44599F8D0882CE97D7645F7A /* DSHLog.swift in Sources */,
+				439817E5C03976AE076C144C /* DesktopParity.swift in Sources */,
 				752B2C890AE4EA28F18A1D09 /* EventStreamCoordinator.swift in Sources */,
 				15DACF3340A6F41D53E0005F /* HostBundle.swift in Sources */,
 				2F2037A1772AE4F088992348 /* HostEvent.swift in Sources */,
@@ -805,8 +818,10 @@
 				07D4AFEDDD493F17EDB21685 /* DSHPocketApp.swift in Sources */,
 				8ED4D3A2D9AE5EA283F32DBE /* DiagnosticsView.swift in Sources */,
 				C2665264EC06FAA6E444E409 /* FilesSheet.swift in Sources */,
+				729932610A5EFB2D25502799 /* GoalSheet.swift in Sources */,
 				A2961CCDDA750A6A8B7C691E /* HostCoordinator.swift in Sources */,
 				B595A2C3E9B6DE071231042E /* HostSettingsView.swift in Sources */,
+				6EB1CBF7D9447769842D1D1E /* JobsSheet.swift in Sources */,
 				6695A409C898AAA1A1ABD408 /* MarkdownBlock.swift in Sources */,
 				175ACEDFC12D7C260D7A9529 /* MarkdownView.swift in Sources */,
 				9D2E673286B4A73F0CB72B69 /* ModelPickerSheet.swift in Sources */,
@@ -815,6 +830,7 @@
 				B4AD5FE8791A38577D7AE2C8 /* PairingSheet.swift in Sources */,
 				44FF524D67E6E0CE5C416554 /* PermissionLabels.swift in Sources */,
 				A6BE9190F5019A8A430646C2 /* PermissionPickerSheet.swift in Sources */,
+				2334369E70DDD4DDE1C6E6E5 /* RemindersView.swift in Sources */,
 				95FCBC192362291AFC893D40 /* RootView.swift in Sources */,
 				3B8301CD794E29F85334619F /* SessionCache.swift in Sources */,
 				4EC3DA4835F8C27CAD3D8FCB /* SessionListView.swift in Sources */,

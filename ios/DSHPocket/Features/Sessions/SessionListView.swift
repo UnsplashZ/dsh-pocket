@@ -40,6 +40,7 @@ struct SessionListView: View {
 
             if hasActiveFilter {
                 filterChipSection
+                historySearchSection
             }
 
             if !model.connection.isConnected {
@@ -97,6 +98,12 @@ struct SessionListView: View {
         }
         .listStyle(.insetGrouped)
         .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: Text("搜索标题或摘要"))
+        // 本地过滤之外，再去电脑上查一遍历史（防抖 350ms）。
+        .task(id: query) {
+            try? await Task.sleep(for: .milliseconds(350))
+            guard !Task.isCancelled else { return }
+            await model.searchHistory(query)
+        }
         .refreshable { await model.refreshSessions() }
         .navigationTitle("会话")
         .toolbar { toolbar }
@@ -170,6 +177,55 @@ struct SessionListView: View {
 
     private var hasActiveFilter: Bool {
         scope != .sessions || workspace != nil
+    }
+
+    /// 主机侧的**历史全文搜索**。
+    ///
+    /// 上面那个 `.searchable` 只过滤**已经加载到列表里**的会话；
+    /// 这一段查的是电脑上的历史索引，能翻到更早、还没加载进来的会话。
+    ///
+    /// **主机可能没开这个索引**：本机就是（`session-query` 的 `openAt: "never"`），
+    /// 这时给一句人话解释，而不是甩一串英文报错。
+    @ViewBuilder
+    private var historySearchSection: some View {
+        if query.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 {
+            if let reason = model.searchUnavailableReason {
+                Section {
+                    Label(reason, systemImage: "magnifyingglass")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } header: {
+                    Text("历史搜索")
+                }
+            } else if !model.searchHits.isEmpty {
+                Section {
+                    ForEach(model.searchHits.prefix(20)) { hit in
+                        Button {
+                            if let summary = model.sessionSummary(for: hit.sessionId, cwd: nil) {
+                                onSelect(summary)
+                            }
+                        } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(hit.title.isEmpty ? hit.sessionId : hit.title)
+                                    .font(.subheadline)
+                                    .lineLimit(1)
+                                if !hit.snippet.isEmpty {
+                                    Text(hit.snippet)
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(2)
+                                }
+                            }
+                            .frame(minHeight: Token.minimumHitTarget)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                } header: {
+                    Text(String(format: String(localized: "历史搜索 · %lld 条"), model.searchHits.count))
+                }
+            }
+        }
     }
 
     private var filterChipSection: some View {

@@ -110,6 +110,15 @@ public enum Format {
     /// 时间线里的时刻。
     public static func time(_ date: Date) -> String { clock.string(from: date) }
 
+    /// 带日期的时刻（提醒用）。
+    public static func absoluteTime(_ date: Date) -> String {
+        let calendar = Calendar.current
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        formatter.setLocalizedDateFormatFromTemplate(calendar.isDateInToday(date) ? "Hm" : "MMMdHm")
+        return formatter.string(from: date)
+    }
+
     /// 字节数："1.2 MB"。用 `ByteCountFormatter` 而不是自己拼。
     public static func bytes(_ count: Int?) -> String? {
         guard let count, count >= 0 else { return nil }

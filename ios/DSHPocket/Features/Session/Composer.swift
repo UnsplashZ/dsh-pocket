@@ -65,6 +65,10 @@ struct Composer: View {
     /// 排队面板默认**展开** —— 它出现在屏幕上就说明"有东西在等"，
     /// 这时候收起只会让人多点一下。
     @State private var isQueueExpanded = true
+    @State private var referenceFiles: [FileReferenceCandidate] = []
+    @State private var referenceSessions: [SessionReferenceCandidate] = []
+    @State private var referenceTask: Task<Void, Never>?
+    @State private var showContextBreakdown = false
     @State private var editingQueueItem: QueuedMessage?
     @State private var queueEditText = ""
     @State private var showFileImporter = false
@@ -78,6 +82,9 @@ struct Composer: View {
             if !session.attachments.isEmpty {
                 attachmentStrip
             }
+
+            // `/` 命令 与 `@` 引用：都做成输入框上方的候选条。
+            suggestions
 
             // 排队消息是**输入框上方一块可展开的记录**，不是摊在时间线末尾。
             // 桌面端就是这样：它属于"我准备发什么"，不属于"已经聊了什么"。
@@ -159,6 +166,12 @@ struct Composer: View {
             }
             Button("取消", role: .cancel) { editingQueueItem = nil }
         }
+        .popover(isPresented: $showContextBreakdown) {
+            if let breakdown = session.contextBreakdown {
+                ContextBreakdownView(breakdown: breakdown, pressure: session.contextPressure)
+                    .presentationCompactAdaptation(.popover)
+            }
+        }
         .popover(isPresented: $showPermissionPicker) {
             // 三个选项 + 一个勾，用不着一整页 sheet。
             PermissionPopover(session: session)
@@ -183,6 +196,9 @@ struct Composer: View {
         }
         .sensoryFeedback(.impact(weight: .light), trigger: sendTrigger)
         .sensoryFeedback(.impact(weight: .medium), trigger: stopTrigger)
+        .onChange(of: session.draft) { _, _ in
+            refreshReferences()
+        }
         .onChange(of: photoSelection) { _, items in
             Task { await loadPhotos(items) }
         }
@@ -267,6 +283,123 @@ struct Composer: View {
         .opacity(canSend ? 1 : 0.4)
         .accessibilityLabel(Text(isRunning ? "排队发送" : "发送"))
         .accessibilityHint(Text(isRunning ? "等这一轮跑完再发出去" : "把消息发给电脑"))
+    }
+
+    // MARK: `/` 命令 与 `@` 引用
+
+    /// 输入框里正在打的 `/命令` 或 `@引用`。
+    ///
+    /// 只在**最后一个词**上触发：`/` 必须出现在开头（`@` 可以出现在任何位置，
+    /// 因为引用常常夹在句子里）。
+    private var trigger: (kind: TriggerKind, query: String)? {
+        let text = session.draft
+        if text.hasPrefix("/"), !text.contains(" ") {
+            return (.command, String(text.dropFirst()))
+        }
+        guard let at = text.lastIndex(of: "@") else { return nil }
+        let tail = text[text.index(after: at)...]
+        guard !tail.contains(" "), !tail.contains("\n") else { return nil }
+        return (.reference, String(tail))
+    }
+
+    private enum TriggerKind { case command, reference }
+
+    @ViewBuilder
+    private var suggestions: some View {
+        if let trigger {
+            let commands = trigger.kind == .command
+                ? session.commands.filter {
+                    trigger.query.isEmpty
+                        || $0.name.localizedCaseInsensitiveContains(trigger.query)
+                        || $0.summary.localizedCaseInsensitiveContains(trigger.query)
+                }
+                : []
+            let files = trigger.kind == .reference ? referenceFiles : []
+            let sessions = trigger.kind == .reference ? referenceSessions : []
+
+            if !commands.isEmpty || !files.isEmpty || !sessions.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: Token.Spacing.tight) {
+                        ForEach(commands) { command in
+                            suggestionChip(
+                                title: "/" + command.name,
+                                subtitle: command.summary,
+                                symbol: "command"
+                            ) {
+                                // 不带参数的命令**直接跑**，带参数的填进输入框。
+                                if command.takesInput {
+                                    session.draft = "/" + command.name + " "
+                                } else {
+                                    Task { await session.runCommand(command) }
+                                }
+                            }
+                        }
+                        ForEach(files.prefix(12)) { file in
+                            suggestionChip(
+                                title: file.path,
+                                subtitle: file.isDirectory ? String(localized: "目录") : nil,
+                                symbol: file.isDirectory ? "folder" : "doc"
+                            ) {
+                                insertReference(file.path)
+                            }
+                        }
+                        ForEach(sessions.prefix(6)) { candidate in
+                            suggestionChip(
+                                title: candidate.display,
+                                subtitle: candidate.sameWorkspace ? String(localized: "同一工作区") : nil,
+                                symbol: "bubble.left.and.text.bubble.right"
+                            ) {
+                                insertReference(candidate.sessionId)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, Token.Spacing.gutter)
+                    .padding(.vertical, Token.Spacing.tight)
+                }
+                .background(.bar)
+                .overlay(alignment: .top) { Rectangle().fill(Color(.separator)).frame(height: 0.5) }
+            }
+        }
+    }
+
+    private func suggestionChip(
+        title: String,
+        subtitle: String?,
+        symbol: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: Token.Spacing.hairline) {
+                Image(systemName: symbol).font(.caption2)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(.caption.weight(.medium))
+                        .lineLimit(1)
+                    if let subtitle, !subtitle.isEmpty {
+                        Text(subtitle)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+            }
+            .padding(.horizontal, Token.Spacing.tight)
+            .padding(.vertical, Token.Spacing.hairline)
+            .background(Color(.tertiarySystemFill), in: Capsule(style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(title))
+    }
+
+    /// 把 `@` 换成引用。
+    private func insertReference(_ value: String) {
+        var text = session.draft
+        if let at = text.lastIndex(of: "@") {
+            text = String(text[..<at])
+        }
+        session.draft = text + "@" + value + " "
+        referenceFiles = []
+        referenceSessions = []
     }
 
     // MARK: 排队消息
@@ -438,14 +571,23 @@ struct Composer: View {
         let stats = session.sessionStats
         if !stats.isEmpty {
             // 居中：靠 `frame(maxWidth: .infinity)` + 居中，而不是靠左再加 Spacer。
-            HStack(spacing: Token.Spacing.hairline) {
-                Text(statTexts(stats).joined(separator: " · "))
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+            // 整行可点 —— 点开是上下文明细（官方 `contextBreakdown` 那三个数）。
+            Button {
+                guard session.contextBreakdown != nil else { return }
+                showContextBreakdown = true
+            } label: {
+                HStack(spacing: Token.Spacing.hairline) {
+                    Text(statTexts(stats).joined(separator: " · "))
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
+                .contentShape(Rectangle())
             }
-            .frame(maxWidth: .infinity, alignment: .center)
+            .buttonStyle(.plain)
+            .disabled(session.contextBreakdown == nil)
             .padding(.horizontal, Token.Spacing.gutter)
             .padding(.top, Token.Spacing.hairline)
             .padding(.bottom, Token.Spacing.tight)
@@ -473,6 +615,27 @@ struct Composer: View {
             parts.append(String(format: String(localized: "上下文 %.0f%%"), ratio * 100))
         }
         return parts
+    }
+
+    /// `@` 候选按输入防抖拉一次。
+    ///
+    /// 每敲一个字符就发一次 RPC 太浪费 —— 250ms 内的连续输入只发最后一次。
+    private func refreshReferences() {
+        guard let trigger, trigger.kind == .reference else {
+            referenceFiles = []
+            referenceSessions = []
+            return
+        }
+        let query = trigger.query
+        referenceTask?.cancel()
+        referenceTask = Task {
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            let result = await session.referenceCandidates(query: query)
+            guard !Task.isCancelled else { return }
+            referenceFiles = result.files
+            referenceSessions = result.sessions
+        }
     }
 
     private var canSend: Bool {

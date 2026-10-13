@@ -34,6 +34,17 @@
         }
       }
     },
+    "%@ 输出": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ output"
+          }
+        }
+      }
+    },
     "%@，%@": {
       "extractionState": "manual",
       "localizations": {
@@ -174,6 +185,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld ms"
+          }
+        }
+      }
+    },
+    "%lld 秒后": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "in %llds"
           }
         }
       }
@@ -354,6 +376,17 @@
         }
       }
     },
+    "上下文占用": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Context usage"
+          }
+        }
+      }
+    },
     "上下文占用 %lld%%": {
       "extractionState": "manual",
       "localizations": {
@@ -514,6 +547,17 @@
         }
       }
     },
+    "会话字号": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Session text size"
+          }
+        }
+      }
+    },
     "会话操作": {
       "extractionState": "manual",
       "localizations": {
@@ -582,6 +626,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Save"
+          }
+        }
+      }
+    },
+    "保存之后智能体会持续执行，直到你说停。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The agent keeps going until you tell it to stop."
           }
         }
       }
@@ -872,6 +927,17 @@
         }
       }
     },
+    "前面的输出已经被丢掉了（超出上限），下面是能拿到的部分。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Earlier output was dropped (over the limit); below is what’s still available."
+          }
+        }
+      }
+    },
     "动作": {
       "extractionState": "manual",
       "localizations": {
@@ -923,6 +989,39 @@
           "stringUnit": {
             "state": "translated",
             "value": "Protocol self-check"
+          }
+        }
+      }
+    },
+    "占窗口 %lld%% · %@ / %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld%% of window · %@ / %@"
+          }
+        }
+      }
+    },
+    "历史搜索": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "History search"
+          }
+        }
+      }
+    },
+    "历史搜索 · %lld 条": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "History · %lld hits"
           }
         }
       }
@@ -982,6 +1081,17 @@
         }
       }
     },
+    "受阻的目标": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Blocked goal"
+          }
+        }
+      }
+    },
     "只列出当前模型支持的档位 —— 不同模型的可选项不一样。": {
       "extractionState": "manual",
       "localizations": {
@@ -1037,6 +1147,28 @@
         }
       }
     },
+    "合计": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Total"
+          }
+        }
+      }
+    },
+    "同一工作区": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Same workspace"
+          }
+        }
+      }
+    },
     "名称": {
       "extractionState": "manual",
       "localizations": {
@@ -1055,6 +1187,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Background"
+          }
+        }
+      }
+    },
+    "后台任务": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Background jobs"
+          }
+        }
+      }
+    },
+    "后台任务（%lld 个运行中）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Background jobs (%lld running)"
           }
         }
       }
@@ -1105,6 +1259,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Type your first message below."
+          }
+        }
+      }
+    },
+    "在会话里用 `/schedule` 让电脑到点干件事，之后会出现在这里。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use `/schedule` in a session to have your computer do something on time; it appears here."
           }
         }
       }
@@ -1280,6 +1445,17 @@
         }
       }
     },
+    "定时提醒": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scheduled reminders"
+          }
+        }
+      }
+    },
     "实验性": {
       "extractionState": "manual",
       "localizations": {
@@ -1359,6 +1535,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Keys aren’t on your phone: providers reference an **environment variable name**; the real key lives in your computer’s environment. Swipe to delete."
+          }
+        }
+      }
+    },
+    "对话历史": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conversation history"
           }
         }
       }
@@ -1452,6 +1639,17 @@
         }
       }
     },
+    "工具定义": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tool definitions"
+          }
+        }
+      }
+    },
     "工具调用折叠成一行，点开看参数与输出": {
       "extractionState": "manual",
       "localizations": {
@@ -1470,6 +1668,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Swipe a row in the session list to archive it here."
+          }
+        }
+      }
+    },
+    "左滑删除。新建要在会话里发 `/schedule` —— 服务端的写接口要求传完整记录和乐观并发版本，比命令脆弱得多。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Swipe to delete. Create reminders with `/schedule` in a session — the write API needs a full record plus an optimistic-concurrency version, which is far more fragile than the command."
           }
         }
       }
@@ -1503,6 +1712,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Interrupted"
+          }
+        }
+      }
+    },
+    "已停止": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stopped"
           }
         }
       }
@@ -1656,6 +1876,17 @@
         }
       }
     },
+    "已暂停的目标": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paused goal"
+          }
+        }
+      }
+    },
     "已经能在你电脑上执行代码的人，可以伪造回环 Host 通过栅栏、自签配对码，把自己配成一台「手机」。": {
       "extractionState": "manual",
       "localizations": {
@@ -1674,6 +1905,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Anyone who can already run code on your computer can forge loopback requests and mint their own pairing code, enrolling themselves as a “phone”. So don’t use this app on a computer where you also run untrusted code."
+          }
+        }
+      }
+    },
+    "已结束": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Finished"
           }
         }
       }
@@ -1987,6 +2229,17 @@
         }
       }
     },
+    "恢复目标": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resume goal"
+          }
+        }
+      }
+    },
     "成功": {
       "extractionState": "manual",
       "localizations": {
@@ -2191,6 +2444,17 @@
         }
       }
     },
+    "指定时刻": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "at a set time"
+          }
+        }
+      }
+    },
     "换一个工作区，或者清除筛选。": {
       "extractionState": "manual",
       "localizations": {
@@ -2209,6 +2473,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Reasoning effort"
+          }
+        }
+      }
+    },
+    "描述你要它持续做什么": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Describe what it should keep doing"
           }
         }
       }
@@ -2253,6 +2528,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Providers & models"
+          }
+        }
+      }
+    },
+    "提醒": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reminder"
           }
         }
       }
@@ -2444,6 +2730,17 @@
         }
       }
     },
+    "暂停目标": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pause goal"
+          }
+        }
+      }
+    },
     "最近日志": {
       "extractionState": "manual",
       "localizations": {
@@ -2495,6 +2792,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Not set"
+          }
+        }
+      }
+    },
+    "未运行的目标": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No active goal"
           }
         }
       }
@@ -2631,6 +2939,17 @@
         }
       }
     },
+    "正在停止": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stopping"
+          }
+        }
+      }
+    },
     "正在和电脑握手，第一次可能要几秒。": {
       "extractionState": "manual",
       "localizations": {
@@ -2752,6 +3071,61 @@
         }
       }
     },
+    "每 %lld 分钟": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "every %lldm"
+          }
+        }
+      }
+    },
+    "每 %lld 小时": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "every %lldh"
+          }
+        }
+      }
+    },
+    "每 %lld 秒": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "every %llds"
+          }
+        }
+      }
+    },
+    "每周": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Weekly"
+          }
+        }
+      }
+    },
+    "每天": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Daily"
+          }
+        }
+      }
+    },
     "没有可寻址的位置，改不了": {
       "extractionState": "manual",
       "localizations": {
@@ -2759,6 +3133,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "No addressable location — can’t be changed"
+          }
+        }
+      }
+    },
+    "没有后台任务": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No background jobs"
           }
         }
       }
@@ -2785,6 +3170,17 @@
         }
       }
     },
+    "没有提醒": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No reminders"
+          }
+        }
+      }
+    },
     "没有收到快照": {
       "extractionState": "manual",
       "localizations": {
@@ -2792,6 +3188,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "No snapshot received"
+          }
+        }
+      }
+    },
+    "没有输出。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No output."
           }
         }
       }
@@ -2913,6 +3320,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Remove"
+          }
+        }
+      }
+    },
+    "清除目标": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear goal"
           }
         }
       }
@@ -3203,6 +3621,39 @@
         }
       }
     },
+    "目录": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Folder"
+          }
+        }
+      }
+    },
+    "目标": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Goal"
+          }
+        }
+      }
+    },
+    "目标内容": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Objective"
+          }
+        }
+      }
+    },
     "目标已更新": {
       "extractionState": "manual",
       "localizations": {
@@ -3210,6 +3661,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Goal updated"
+          }
+        }
+      }
+    },
+    "目标是「让智能体持续做下去」的长期任务。设一个之后，它会自己接着跑。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A goal is a long-running task the agent keeps working on by itself."
           }
         }
       }
@@ -3447,6 +3909,17 @@
         }
       }
     },
+    "系统提示": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System prompt"
+          }
+        }
+      }
+    },
     "系统组件，不能关": {
       "extractionState": "manual",
       "localizations": {
@@ -3487,6 +3960,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Cache %.0f%%"
+          }
+        }
+      }
+    },
+    "编辑目标": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit goal"
           }
         }
       }
@@ -3569,6 +4053,39 @@
         }
       }
     },
+    "让电脑到点自己干件事。新建要在会话里发 `/schedule`。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Have your computer do something on time. Create one with `/schedule` in a session."
+          }
+        }
+      }
+    },
+    "让电脑跑一个后台命令时，它会出现在这里，输出也能实时看。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When a background command runs on your computer, it shows up here — with live output."
+          }
+        }
+      }
+    },
+    "设一个目标": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Set a goal"
+          }
+        }
+      }
+    },
     "设置": {
       "extractionState": "manual",
       "localizations": {
@@ -3609,6 +4126,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Couldn’t load sessions"
+          }
+        }
+      }
+    },
+    "读不到提醒": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn’t load reminders"
           }
         }
       }
@@ -3778,6 +4306,17 @@
         }
       }
     },
+    "还没有输出…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No output yet…"
+          }
+        }
+      }
+    },
     "还没有配对过任何电脑。": {
       "extractionState": "manual",
       "localizations": {
@@ -3829,6 +4368,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "This session is running, and DSH won’t archive it as-is. Stop it first, then archive."
+          }
+        }
+      }
+    },
+    "这个会话没有目标": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This session has no goal"
           }
         }
       }
@@ -3905,6 +4455,17 @@
         }
       }
     },
+    "这台电脑没有开启会话搜索索引（session-query 的 openAt 被设成了 never）。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This computer hasn’t enabled the session search index (session-query’s openAt is set to never)."
+          }
+        }
+      }
+    },
     "这台电脑没有暴露模型提供商设置。": {
       "extractionState": "manual",
       "localizations": {
@@ -3956,6 +4517,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "In progress"
+          }
+        }
+      }
+    },
+    "进行中的目标": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Active goal"
           }
         }
       }

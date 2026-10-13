@@ -430,6 +430,179 @@ public actor DSHClient {
         ])
     }
 
+    // MARK: - 后台任务
+
+    /// 列出这个会话的后台任务。
+    ///
+    /// `job/list` 是**流式**接口（帧类型 `{type:'rows', jobs:[…]}`），
+    /// 走 mux 载具；这里只取第一帧就收工 —— 我们不需要持续订阅列表。
+    public nonisolated func listJobs(sessionId: String) -> AsyncThrowingStream<[BackgroundJob], any Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                let stream = await self.mux.open(
+                    endpoint: "job/list",
+                    payload: .object(["args": .object(["request": .object(["sessionId": .string(sessionId)])])])
+                )
+                do {
+                    for try await frame in stream {
+                        if case .item(let value) = frame, let value {
+                            let jobs = (value.array("jobs") ?? []).map(BackgroundJob.init(json:))
+                            continuation.yield(jobs)
+                            continuation.finish()
+                            return
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    /// 跟一个后台任务的实时输出。
+    public nonisolated func followJob(
+        jobId: String,
+        sessionId: String? = nil,
+        from: Int? = nil
+    ) -> AsyncThrowingStream<JobFollowFrame, any Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                var request: [String: JSONValue] = ["jobId": .string(jobId)]
+                if let sessionId { request["sessionId"] = .string(sessionId) }
+                if let from { request["from"] = .number(Double(from)) }
+                let stream = await self.mux.open(
+                    endpoint: "job/follow",
+                    payload: .object(["args": .object(["request": .object(request)])])
+                )
+                do {
+                    for try await frame in stream {
+                        guard case .item(let value) = frame, let value else { continue }
+                        switch value.string("type") {
+                        case "opened":
+                            continuation.yield(.opened(
+                                job: BackgroundJob(json: value["job"] ?? .object([:])),
+                                from: value.int("from") ?? 0
+                            ))
+                        case "output":
+                            let chunks = (value.array("chunks") ?? []).map { chunk in
+                                (at: Date(timeIntervalSince1970: (chunk.double("at") ?? 0) / 1000),
+                                 text: chunk.string("text") ?? "")
+                            }
+                            continuation.yield(.output(
+                                chunks: chunks,
+                                next: value.int("next") ?? 0,
+                                lossy: value.bool("lossy") ?? false
+                            ))
+                        case "status":
+                            continuation.yield(.status(BackgroundJob(json: value["job"] ?? .object([:]))))
+                        default:
+                            continue
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    /// 停掉一个后台任务。
+    public func killJob(sessionId: String, jobId: String) async throws -> String {
+        let value = try await rpc.call(method: "job/kill", payload: [
+            "args": .object(["request": .object([
+                "sessionId": .string(sessionId),
+                "jobId": .string(jobId),
+            ])])
+        ])
+        return value.string("outcome") ?? ""
+    }
+
+    // MARK: - 斜杠命令
+
+    /// 这个会话可用的斜杠命令。
+    ///
+    /// 注意是**扁平的 `agentId`**，不是 `{request:{…}}`（实测）。
+    public func listCommands(sessionId: String) async throws -> [SlashCommand] {
+        let value = try await rpc.call(method: "commands/list", payload: [
+            "args": .object(["agentId": .string(sessionId)])
+        ])
+        return (value.arrayValue ?? []).map(SlashCommand.init(json:))
+    }
+
+    // MARK: - 引用（`@`）
+
+    /// `@` 后面能引用哪些**工作区文件**。
+    public func fileReferenceCandidates(sessionId: String, query: String) async throws -> [FileReferenceCandidate] {
+        let value = try await rpc.call(method: "fileReferences/list", payload: [
+            "args": .object([
+                "agentId": .string(sessionId),
+                "query": .string(query),
+            ])
+        ])
+        return (value.arrayValue ?? []).map(FileReferenceCandidate.init(json:))
+    }
+
+    /// `@` 后面能引用哪些**别的会话**。
+    public func sessionReferenceCandidates(sessionId: String, query: String) async throws -> [SessionReferenceCandidate] {
+        let value = try await rpc.call(method: "sessionReferenceResolver/candidates", payload: [
+            "args": .object([
+                "agentId": .string(sessionId),
+                "query": .string(query),
+            ])
+        ])
+        return (value.arrayValue ?? []).map(SessionReferenceCandidate.init(json:))
+    }
+
+    // MARK: - 定时提醒
+
+    /// 这个会话的定时提醒。
+    public func listSchedules(sessionId: String) async throws -> [Reminder] {
+        let value = try await rpc.call(method: "schedule/list", payload: [
+            "args": .object(["request": .object(["sessionId": .string(sessionId)])])
+        ])
+        return (value.arrayValue ?? []).map(Reminder.init(json:))
+    }
+
+    /// 全部提醒（`schedule/catalog`，不分会话）。
+    public func scheduleCatalog() async throws -> [Reminder] {
+        let value = try await rpc.call(method: "schedule/catalog", payload: ["args": .object([:])])
+        return (value.arrayValue ?? []).map(Reminder.init(json:))
+    }
+
+    /// 删掉一条提醒。`expected` 是乐观并发控制要的**原记录**。
+    @discardableResult
+    public func deleteSchedule(id: String, expected: JSONValue) async throws -> Bool {
+        let value = try await rpc.call(method: "schedule/delete", payload: [
+            "args": .object(["request": .object([
+                "id": .string(id),
+                "expected": expected,
+            ])])
+        ])
+        return value.bool("deleted") ?? value.bool("ok") ?? false
+    }
+
+    // MARK: - 会话搜索
+
+    /// 全文搜索历史会话。
+    ///
+    /// **主机可能禁用**：本机就返回
+    /// `session search is disabled: this deployment configures the session-query index with openAt "never"`。
+    /// 这是部署配置（`dsh-session-query-sqlite` 的 `openAt`，默认是 `startup`），
+    /// 不是 App 能改的 —— 所以调用方要把这个错误**翻译成人话**。
+    public func searchSessions(query: String, limit: Int = 30) async throws -> [SessionSearchHit] {
+        let value = try await rpc.call(method: "session/search", payload: [
+            "args": .object(["request": .object([
+                "query": .string(query),
+                "limit": .number(Double(limit)),
+            ])])
+        ])
+        return (value.array("hits") ?? value.arrayValue ?? []).map(SessionSearchHit.init(json:))
+    }
+
     // MARK: - 凭据（API 密钥）
 
     /// 查这些 ref 配了没有。

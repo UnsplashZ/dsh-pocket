@@ -503,3 +503,45 @@ SwiftPM 状态"上。
 所以在 `AppModel` 里加了一个 DEBUG-only 的 `debugCreateSessionAndReportModel()`，
 **走真实代码路径**建会话再把模型选择打出来 —— 光在 Node 里复现一遍不算验证了 App 的代码。
 实测 App 建出的会话 `next = {wb, deepseek-v4.1-flash, high}`。
+
+## ADR-0026 · 桌面端对齐的八项能力
+
+**日期**：2026-10-13
+
+按 `docs/DESKTOP-PARITY.md` 的清单把八项都做了。**全部是 DSH 官方能力**
+（服务端在 `dsh-base`，客户端 UI 在 `dsh-web-app`），唯一一个官方实验性可选的是定时提醒。
+
+| 能力 | 接口 | 实现要点 |
+|---|---|---|
+| 后台任务面板 | `job/{list,follow,kill}` | **`job/list` 是流式**（帧 `{type:'rows'}`），走 mux 载具；`follow` 拿实时输出 |
+| 会话搜索 | `session/search` | **主机可能禁用**（见下） |
+| `/` 命令菜单 | `commands/list({agentId})` | 扁平 `agentId`，不是 `{request:{…}}` |
+| 目标面板 | `projections.goal` + `/goal` 命令 | 目标**没有写接口**，改只能走命令 |
+| `@` 引用 | `fileReferences/list` · `sessionReferenceResolver/candidates` | 都要 `{agentId, query}` |
+| 定时提醒 | `schedule/{list,catalog,delete}` | 新建仍走 `/schedule` 命令（写接口要完整记录 + `expected` 乐观并发） |
+| 上下文明细 | `projections.contextBreakdown` | 三个数，点统计栏弹 popover |
+| 字号调节 | 本地设置 | **只作用在会话内容上**，跟桌面端一致 |
+
+### 两个必须说清楚的坑
+
+**1. `session/search` 在这台机器上是禁用的。**
+
+```
+session search failed: SessionQueryError: session search is disabled:
+this deployment configures the session-query index with openAt "never"
+```
+
+`dsh-session-query-sqlite` 的 `openAt` **默认是 `startup`**，这台被设成了 `never`。
+这是**部署配置**，不是 App 能改的 —— 所以界面把这条错误**翻译成人话**
+（"这台电脑没有开启会话搜索索引…"），而不是甩英文报错。
+
+**2. 命令的 `input` 决定要不要填参数。**
+
+带 `input` 的命令填进输入框让用户补参数；不带的**直接执行** ——
+否则用户还要再按一次发送，多一步。
+
+### 顺带修掉的：消息操作行
+
+用户："复制点赞等功能按钮和时间放到一行，左对齐，不要留这么多空。"
+之前时间单独右对齐、操作另起一行，中间空一大片。现在
+`[复制] [👍] [👎] [分支] [用量] [时间]` **全在一行、整行左对齐**。

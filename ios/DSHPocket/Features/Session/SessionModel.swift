@@ -80,6 +80,14 @@ public final class SessionModel {
     private(set) var feedbacks: [String: MessageFeedback] = [:]
     /// 这个会话派出的子代理（`projections.subagentCatalog`）。
     private(set) var subagentCatalog: [SubagentInfo] = []
+    /// 上下文里各部分占了多少（`projections.contextBreakdown`）。
+    private(set) var contextBreakdown: ContextBreakdown?
+    /// 会话的长期目标（`projections.goal`）。
+    private(set) var goal: SessionGoal?
+    /// 这个会话的后台任务。
+    private(set) var jobs: [BackgroundJob] = []
+    /// 可用的斜杠命令。
+    private(set) var commands: [SlashCommand] = []
     private(set) var todos: [TimelineItem.TodoEntry] = []
 
     /// 上一次跟随失败的提示（给"所有失败都要有文案"这条）。
@@ -161,6 +169,8 @@ public final class SessionModel {
             permissionPresetOptions = catalog.options
         }
         startStatsPolling()
+        await refreshCommands()
+        await refreshJobs()
     }
 
     func close() {
@@ -397,6 +407,8 @@ public final class SessionModel {
         }
         sessionStats = SessionStats(json: values["sessionStats"] ?? .object([:]))
         subagentCatalog = (values.array("subagentCatalog") ?? []).map(SubagentInfo.init(json:))
+        contextBreakdown = values["contextBreakdown"].map(ContextBreakdown.init(json:))
+        goal = values["goal"].map(SessionGoal.init(json:))
         tokenUsage = TokenUsage(json: values["tokenUsage"] ?? .object([:]))
     }
 
@@ -684,6 +696,83 @@ public final class SessionModel {
         tokenUsage = TokenUsage(json: values["tokenUsage"] ?? .object([:]))
         if let pressure = values["contextPressure"] {
             contextPressure = ContextPressure(json: pressure)
+        }
+        if let breakdown = values["contextBreakdown"] {
+            contextBreakdown = ContextBreakdown(json: breakdown)
+        }
+        goal = values["goal"].map(SessionGoal.init(json:))
+    }
+
+    // MARK: 斜杠命令 / 后台任务
+
+    /// 只刷新目标（目标面板打开时用）。
+    func refreshGoal() async {
+        guard let value = try? await client.sessionProjections(sessionId: sessionId) else { return }
+        goal = value["values"]?["goal"].map(SessionGoal.init(json:))
+    }
+
+    /// 拉一次可用的斜杠命令。
+    func refreshCommands() async {
+        commands = (try? await client.listCommands(sessionId: sessionId)) ?? []
+    }
+
+    /// 刷新后台任务列表。
+    func refreshJobs() async {
+        do {
+            for try await jobs in client.listJobs(sessionId: sessionId) {
+                self.jobs = jobs
+                break
+            }
+        } catch {
+            logs.log(.debug, "后台任务列表拉取失败：\(error.localizedDescription)")
+        }
+    }
+
+    /// 停掉一个后台任务，然后刷新。
+    func killJob(_ job: BackgroundJob) async {
+        do {
+            _ = try await client.killJob(sessionId: sessionId, jobId: job.id)
+            await refreshJobs()
+        } catch {
+            failureMessage = (error as? DSHClientError)?.displayMessage ?? error.localizedDescription
+        }
+    }
+
+    /// 跟一个后台任务的实时输出。
+    func followJob(_ job: BackgroundJob) -> AsyncThrowingStream<JobFollowFrame, any Error> {
+        // 先把 client 取出来再交给流的构建闭包 —— `client` 是主 actor 隔离的，
+        // 而 `followJob` 本身是 nonisolated 的。
+        let client = self.client
+        return client.followJob(jobId: job.id, sessionId: nil, from: nil)
+    }
+
+    /// 跑一条斜杠命令。
+    ///
+    /// 命令是**发进对话**的（`commands/execute`），所以它跟普通消息一样会出现在时间线上。
+    func runCommand(_ command: SlashCommand, argument: String = "") async {
+        let line = argument.isEmpty ? "/\(command.name)" : "/\(command.name) \(argument)"
+        do {
+            _ = try await client.executeCommand(sessionId: sessionId, line: line)
+            draft = ""
+            publish()
+        } catch {
+            failureMessage = (error as? DSHClientError)?.displayMessage ?? error.localizedDescription
+        }
+    }
+
+    /// `@` 的候选（文件 + 别的会话）。
+    func referenceCandidates(query: String) async -> (files: [FileReferenceCandidate], sessions: [SessionReferenceCandidate]) {
+        async let files = try? await client.fileReferenceCandidates(sessionId: sessionId, query: query)
+        async let sessions = try? await client.sessionReferenceCandidates(sessionId: sessionId, query: query)
+        return (await files ?? [], await sessions ?? [])
+    }
+
+    /// 改目标。走 `/goal` 命令 —— 目标没有独立的写接口。
+    func updateGoal(_ argument: String) async {
+        do {
+            _ = try await client.executeCommand(sessionId: sessionId, line: "/goal \(argument)")
+        } catch {
+            failureMessage = (error as? DSHClientError)?.displayMessage ?? error.localizedDescription
         }
     }
 

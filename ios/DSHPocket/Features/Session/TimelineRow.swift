@@ -562,16 +562,21 @@ struct AssistantCard: View {
                             .buttonStyle(.plain)
                             .accessibilityHint(Text("展开模型的推理过程"))
                         }
-                        Spacer(minLength: 0)
+                        // 复制/点赞/分支/用量/时间**全在同一行、左对齐**。
+                        // 之前时间单独右对齐、操作另起一行，中间空一大片 ——
+                        // 用户："放到一行，左对齐，不要留这么多空"。
+                        if showsActions {
+                            actionRow
+                            if let usage = message.usage, usage.totalTokens > 0 {
+                                Text(String(format: String(localized: "用量 %@"), Format.tokens(usage.totalTokens) ?? ""))
+                                    .font(.caption2.monospacedDigit())
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
                         Text(Format.time(time))
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
-                    }
-
-                    // 操作行**单独一行、左对齐** —— 挤在时间旁边会被推到中间，
-                    // 看起来像居中的一排图标（用户："你这个居中对齐好丑"）。
-                    if showsActions {
-                        actionRow
+                        Spacer(minLength: 0)
                     }
                 }
             }
@@ -580,14 +585,14 @@ struct AssistantCard: View {
         .accessibilityLabel(Text(String(localized: "助手回复")))
     }
 
-    /// 一条消息能做的事：复制、点赞点踩、从这里分支、看用量。
+    /// 一条消息能做的事：复制、点赞点踩、从这里分支。
     ///
-    /// 放在页脚跟时间同一行 —— 桌面上也是这么摆的：这些是**回看时**才需要的动作，
-    /// 不该占据正文的注意力。
+    /// 跟用量、时间**挤在同一行**，整行左对齐 —— 桌面上也是这么摆的：
+    /// 这些是回看时才需要的动作，不该占据正文的注意力，也不该在中间空出一大片。
     @ViewBuilder
     private var actionRow: some View {
         if message.hasRenderableContent {
-            HStack(spacing: Token.Spacing.tight) {
+            HStack(spacing: 2) {
                 actionIcon("doc.on.doc", label: "复制") {
                     UIPasteboard.general.string = message.plainText
                     copyFeedback += 1
@@ -614,11 +619,6 @@ struct AssistantCard: View {
                         await model.refreshSessions()
                         model.pendingOpenSessionId = id
                     }
-                }
-                if let usage = message.usage, usage.totalTokens > 0 {
-                    Text(String(format: String(localized: "用量 %@"), Format.tokens(usage.totalTokens) ?? ""))
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.tertiary)
                 }
             }
             .sensoryFeedback(.success, trigger: copyFeedback)

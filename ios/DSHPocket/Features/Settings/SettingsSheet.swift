@@ -31,6 +31,7 @@ struct SettingsSheet: View {
                 archivedSection
                 notificationsSection
                 appearanceSection
+                remindersSection
                 diagnosticsSection
                 aboutSection
             }
@@ -288,6 +289,31 @@ struct SettingsSheet: View {
             Toggle(isOn: $settings.expandReasoningByDefault) {
                 Label("默认展开思考过程", systemImage: "brain")
             }
+
+            // 字号**只影响会话内容** —— 跟桌面端一致。
+            // 全局放大会把设置页和导航栏一起撑开，反而更难用。
+            Picker(selection: $settings.fontScale) {
+                ForEach(FontScale.allCases, id: \.self) { scale in
+                    Text(scale.label).tag(scale)
+                }
+            } label: {
+                Label("会话字号", systemImage: "textformat.size")
+            }
+            .pickerStyle(.segmented)
+        }
+    }
+
+    // MARK: 定时提醒
+
+    private var remindersSection: some View {
+        Section {
+            NavigationLink {
+                RemindersView()
+            } label: {
+                Label("定时提醒", systemImage: "bell.badge")
+            }
+        } footer: {
+            Text("让电脑到点自己干件事。新建要在会话里发 `/schedule`。")
         }
     }
 

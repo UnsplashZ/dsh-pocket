@@ -21,6 +21,8 @@ struct SessionView: View {
     @State private var showModelPicker = false
     @State private var showPermissionPicker = false
     @State private var showPermissionSheetForDebug = false
+    @State private var showJobs = false
+    @State private var showGoal = false
     @State private var showShadowed = false
     @FocusState private var composerFocused: Bool
     @State private var isFollowingBottom = true
@@ -57,9 +59,22 @@ struct SessionView: View {
                 )
                 session = created
                 await created.open()
+                #if DEBUG
+                // 调试用：预填输入框，好核对 `/` 命令菜单和 `@` 引用条。
+                // 模拟器里打不了字，只能这样看。**必须在 open 之后** ——
+                // open 会重置草稿。
+                if let seed = UserDefaults.standard.string(forKey: "DSHSeedDraft"), !seed.isEmpty {
+                    created.draft = seed
+                    UserDefaults.standard.removeObject(forKey: "DSHSeedDraft")
+                }
+                #endif
             }
         }
-        .onDisappear { session?.close() }
+        .onAppear { model.activeSessionId = summary.sessionId }
+        .onDisappear {
+            if model.activeSessionId == summary.sessionId { model.activeSessionId = nil }
+            session?.close()
+        }
         .sheet(isPresented: $showFiles) {
             if let session {
                 FilesSheet(scopeId: session.sessionId)
@@ -77,6 +92,12 @@ struct SessionView: View {
                     // iPhone 上默认会摊成 sheet，显式要求真正的 popover。
                     .presentationCompactAdaptation(.popover)
             }
+        }
+        .sheet(isPresented: $showJobs) {
+            if let session { JobsSheet(session: session) }
+        }
+        .sheet(isPresented: $showGoal) {
+            if let session { GoalSheet(session: session) }
         }
         #if DEBUG
         // 调试用：`.task` 里设状态**弹不出 popover**（它需要锚点已经布局好），
@@ -481,6 +502,24 @@ struct SessionView: View {
                     Button {
                         showFiles = true
                     } label: {
+                        Button {
+                            showJobs = true
+                        } label: {
+                            Label(
+                                session.jobs.contains(where: \.isRunning)
+                                    ? String(format: String(localized: "后台任务（%lld 个运行中）"), session.jobs.filter(\.isRunning).count)
+                                    : "后台任务",
+                                systemImage: "clock.arrow.circlepath"
+                            )
+                        }
+                        Button {
+                            showGoal = true
+                        } label: {
+                            Label(
+                                session.goal?.isActive == true ? "目标（进行中）" : "目标",
+                                systemImage: "target"
+                            )
+                        }
                         Label("工作区文件", systemImage: "folder")
                     }
                     Button {

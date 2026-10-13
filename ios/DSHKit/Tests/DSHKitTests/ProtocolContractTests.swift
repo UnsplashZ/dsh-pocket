@@ -441,6 +441,74 @@ final class ProtocolContractTests: XCTestCase {
         XCTAssertFalse(partial.isTurnOpen, "这正是必须靠会话列表 running 兜底的原因")
     }
 
+    // MARK: 桌面端对齐（后台任务 / 命令 / 提醒 / 上下文明细 / 引用）
+
+    /// `JobView` 的输出是**嵌套对象**（`output.total` / `output.earliest`），
+    /// 不是平铺的 —— 解错了任务列表会显示成 0 字节。
+    func testBackgroundJobParsesNestedOutputCounters() throws {
+        let job = BackgroundJob(json: Fixture.json(#"""
+        {"id":"job-1","kind":"bash","label":"npm run dev","status":"running",
+         "startedAt":1791777000000,"output":{"total":4096,"earliest":1024}}
+        """#))
+        XCTAssertEqual(job.id, "job-1")
+        XCTAssertEqual(job.label, "npm run dev")
+        XCTAssertEqual(job.outputTotal, 4096)
+        XCTAssertEqual(job.outputEarliest, 1024, "超出上限的部分从 earliest 开始，界面要说清")
+        XCTAssertTrue(job.isRunning)
+        XCTAssertNil(job.duration, "还没结束就没有时长")
+        XCTAssertEqual(job.statusLabel, String(localized: "运行中"))
+    }
+
+    /// 命令的 `input` 存在就说明它要参数 —— 不要参数的应当**直接执行**，
+    /// 而不是填进输入框让用户再按一次发送。
+    func testSlashCommandKnowsWhetherItTakesInput() throws {
+        let plain = SlashCommand(json: Fixture.json(#"{"name":"compact","description":"Compact history"}"#))
+        XCTAssertFalse(plain.takesInput)
+        XCTAssertEqual(plain.id, "compact")
+
+        let withInput = SlashCommand(json: Fixture.json(#"""
+        {"name":"goal","description":"Set a goal","input":{"kind":"text"}}
+        """#))
+        XCTAssertTrue(withInput.takesInput)
+    }
+
+    /// 提醒的 `kind` 决定了怎么描述重复规则，而且**原始 JSON 要留着** ——
+    /// 删除时要把它当乐观并发的 `expected` 传回去。
+    func testReminderKeepsRawJSONAndDescribesCadence() throws {
+        let daily = Reminder(json: Fixture.json(#"""
+        {"id":"s1","kind":"daily","title":"早报","prompt":"发早报",
+         "daily":{"time":"09:00:00","timeZone":"Asia/Shanghai"}}
+        """#))
+        XCTAssertEqual(daily.title, "早报")
+        XCTAssertEqual(daily.cadence, String(localized: "每天"))
+        XCTAssertEqual(daily.raw.string("prompt"), "发早报", "原始 JSON 要留着，删除时当 expected 用")
+
+        let every = Reminder(json: Fixture.json(#"{"id":"s2","kind":"every","everySeconds":7200}"#))
+        XCTAssertEqual(every.cadence, String(format: String(localized: "每 %lld 小时"), 2))
+        XCTAssertEqual(every.title, String(localized: "提醒"), "没给标题就退回一个通用词")
+    }
+
+    /// 上下文明细就是三个数，合计要等于三者之和。
+    func testContextBreakdownTotals() throws {
+        let breakdown = ContextBreakdown(json: Fixture.json(#"""
+        {"systemTokens":2659,"toolsTokens":11692,"messageTokens":47806}
+        """#))
+        XCTAssertEqual(breakdown.total, 62_157)
+        XCTAssertEqual(breakdown.parts.count, 3)
+        XCTAssertFalse(breakdown.isEmpty)
+        XCTAssertTrue(ContextBreakdown(json: .object([:])).isEmpty)
+    }
+
+    /// 目标：`phase` 决定能不能暂停/恢复。
+    func testSessionGoalPhases() throws {
+        XCTAssertTrue(SessionGoal(json: Fixture.json(#"{"phase":"active","objective":"跑完测试"}"#)).isActive)
+        XCTAssertFalse(SessionGoal(json: Fixture.json(#"{"phase":"paused"}"#)).isActive)
+        XCTAssertEqual(
+            SessionGoal(json: Fixture.json(#"{"phase":"blocked"}"#)).phaseLabel,
+            String(localized: "受阻的目标")
+        )
+    }
+
     // MARK: 凭据
 
     /// 凭据描述**没有 value 字段，而且是故意的** —— 密钥只存在电脑端，
