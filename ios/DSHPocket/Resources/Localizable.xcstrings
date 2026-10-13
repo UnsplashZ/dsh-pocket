@@ -2719,6 +2719,17 @@
         }
       }
     },
+    "新对话": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New chat"
+          }
+        }
+      }
+    },
     "新建会话": {
       "extractionState": "manual",
       "localizations": {

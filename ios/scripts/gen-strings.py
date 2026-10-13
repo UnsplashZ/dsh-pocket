@@ -158,6 +158,7 @@ EN: dict[str, str] = {
     "待办": "To-dos",
     "进行中": "In progress",
     "已完成": "Done",
+    "新对话": "New chat",
     "产物": "Deliverables",
 
     # 审批
@@ -495,6 +496,7 @@ EN: dict[str, str] = {
     "等待回复": "Waiting for you",
     "不可用": "Unavailable",
     "已完成": "Done",
+    "新对话": "New chat",
     "目标（进行中）": "Goal (active)",
     "目标内容": "Objective",
     "进行中的目标": "Active goal",
@@ -556,6 +558,7 @@ EN: dict[str, str] = {
     "等待回复": "Waiting for you",
     "不可用": "Unavailable",
     "已完成": "Done",
+    "新对话": "New chat",
     "目录": "Folder",
     "插队给这一轮": "Steer into this turn",
     # 连接失败的可执行提示
@@ -685,6 +688,7 @@ EN: dict[str, str] = {
     "思考中…": "Thinking…",
     # 轮次收拢
     "已完成": "Done",
+    "新对话": "New chat",
     "用时 %@": "took %@",
     "%lld 步": "%lld steps",
     "展开这一轮的过程": "Expand this turn’s steps",
@@ -827,6 +831,7 @@ EN: dict[str, str] = {
     "等待回复": "Waiting for you",
     "不可用": "Unavailable",
     "已完成": "Done",
+    "新对话": "New chat",
     "目标（进行中）": "Goal (active)",
     "目标内容": "Objective",
     "进行中的目标": "Active goal",
@@ -888,6 +893,7 @@ EN: dict[str, str] = {
     "等待回复": "Waiting for you",
     "不可用": "Unavailable",
     "已完成": "Done",
+    "新对话": "New chat",
     "目录": "Folder",
     "删除": "Delete",
 }

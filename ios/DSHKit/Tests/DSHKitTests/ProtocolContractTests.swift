@@ -707,12 +707,23 @@ final class ProtocolContractTests: XCTestCase {
         XCTAssertEqual(summary.projections.contextFraction ?? 0, 0.062446, accuracy: 0.000001)
     }
 
-    func testSessionSummaryFallsBackToIdWhenUntitled() throws {
+    /// 还没标题的会话（刚建的、或宿主还没生成标题）显示**「新对话」**，
+    /// **不显示原始 session id**。
+    ///
+    /// 用户："新对话默认的标题叫'新对话'，不要直接展示原始的 sessionid。"
+    /// 之前这里退回 `String(sessionId.prefix(18))`，列表上就是一串
+    /// `session-4eaabdbf-af1e`。
+    func testSessionSummaryShowsNewChatWhenUntitled() throws {
         let value = Fixture.json(#"{"sessionId":"session-0123456789abcdef","updatedAt":0,"projections":{"asOfSeq":-1,"values":{}}}"#)
         let summary = try XCTUnwrap(SessionSummary.decode(value))
-        XCTAssertEqual(summary.title, "session-0123456789")
+        XCTAssertEqual(summary.title, String(localized: "新对话"))
+        XCTAssertFalse(summary.title.contains("session-"), "别把 id 漏出去")
         XCTAssertEqual(summary.workspaceName, "其它")
         XCTAssertEqual(summary.subtitle, "")
+
+        // 有标题时照常
+        let titled = Fixture.json(#"{"sessionId":"session-0123456789abcdef","updatedAt":0,"projections":{"asOfSeq":1,"values":{"title":"读一下这个仓库"}}}"#)
+        XCTAssertEqual(try XCTUnwrap(SessionSummary.decode(titled)).title, "读一下这个仓库")
     }
 
     func testListRowCleaningCollapsesWhitespaceAndMarkdown() {

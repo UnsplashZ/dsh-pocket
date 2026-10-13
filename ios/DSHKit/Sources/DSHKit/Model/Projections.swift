@@ -22,7 +22,12 @@ public struct SessionSummary: Sendable, Identifiable, Hashable {
 
     public var title: String {
         if let title = projections.title, !title.isEmpty { return title }
-        return String(sessionId.prefix(18))
+        // **不要退回会话 id。**
+        //
+        // 新建的会话还没有标题（宿主是拿第一句话去生成标题的，要等一拍），
+        // 之前这里显示 `session-4eaabdbf-af1e` 这样的原始 id ——
+        // 用户："新对话默认的标题叫'新对话'，不要直接展示原始的 sessionid"。
+        return String(localized: "新对话")
     }
 
     /// 最后一条摘要（列表页副标题）。
