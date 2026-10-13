@@ -573,9 +573,6 @@ struct AssistantCard: View {
                             .buttonStyle(.plain)
                             .accessibilityHint(Text("展开模型的推理过程"))
                         }
-                        Text(Format.time(time))
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
                         Spacer(minLength: 0)
                     }
                 }
