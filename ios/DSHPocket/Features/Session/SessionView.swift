@@ -21,6 +21,7 @@ struct SessionView: View {
     @State private var showModelPicker = false
     @State private var showPermissionPicker = false
     @State private var showShadowed = false
+    @FocusState private var composerFocused: Bool
     @State private var isFollowingBottom = true
     @State private var lastKnownTailId: String?
     @State private var highlightId: String?
@@ -162,7 +163,24 @@ struct SessionView: View {
                 // 需要复制的地方各自开：代码块有复制按钮，审批参数与展开的
                 // 推理内容各自带了 `.textSelection(.enabled)`。
             }
-            .scrollDismissesKeyboard(.interactively)
+            // **`.immediately`，不是 `.interactively`。**
+            // `.interactively` 只在"往下拖"（往回翻旧消息）时跟着手势收键盘，
+            // 往上滑看新消息时纹丝不动 —— 而手机上键盘一占就是小半屏，
+            // 想腾地方的人恰恰是在往上滑。改成一开始滚动就收。
+            .scrollDismissesKeyboard(.immediately)
+            // 点消息区也收键盘。
+            //
+            // `.scrollDismissesKeyboard` 只在**真的滚动**时生效 —— 内容不够长、
+            // 或者已经贴底时滑不动，键盘就赖着不走。而手机上它一占就是小半屏，
+            // 用户只是想看看内容却腾不出地方。
+            //
+            // **必须挂在 `ScrollView` 自己身上**（也就是两个 `safeAreaInset` 之前）：
+            // 挂到后面会连输入框一起覆盖，点一下输入框立刻失焦，根本没法打字。
+            // 用 `simultaneousGesture` 而不是 `gesture`：不抢子视图的手势，
+            // 点工具行、点展开都照常工作，只是顺手把键盘收了。
+            .simultaneousGesture(
+                TapGesture().onEnded { composerFocused = false }
+            )
             .background(Color(.systemGroupedBackground))
             .safeAreaInset(edge: .top, spacing: 0) {
                 VStack(spacing: 0) {
@@ -178,7 +196,7 @@ struct SessionView: View {
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                Composer(session: session)
+                Composer(session: session, isFocused: $composerFocused)
             }
             .onChange(of: session.items.last?.id) { _, newValue in
                 guard isFollowingBottom, let newValue else { return }

@@ -57,7 +57,8 @@ struct Composer: View {
     @Bindable var session: SessionModel
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @FocusState private var isFocused: Bool
+    /// 焦点由上层持有 —— 这样"点消息区收键盘"才能从外面关掉它。
+    var isFocused: FocusState<Bool>.Binding
     @State private var photoSelection: [PhotosPickerItem] = []
     @State private var showPhotoPicker = false
     @State private var showFileImporter = false
@@ -95,7 +96,7 @@ struct Composer: View {
                 TextField("给电脑说点什么…", text: $session.draft, axis: .vertical)
                     .textFieldStyle(.plain)
                     .lineLimit(1...6)
-                    .focused($isFocused)
+                    .focused(isFocused)
                     .submitLabel(.send)
                     .onSubmit { send() }
                     .padding(.horizontal, Token.Spacing.compact)
