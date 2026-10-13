@@ -420,6 +420,45 @@ public actor DSHClient {
         ])
     }
 
+    /// 只取一个会话的投影（`{asOfSeq, values}`）。
+    ///
+    /// 比 `session/list` 轻得多 —— 统计栏要每几秒刷一次，
+    /// 拉整个会话列表（含所有子代理）太浪费。
+    public func sessionProjections(sessionId: String) async throws -> JSONValue {
+        try await rpc.call(method: "session/projections", payload: [
+            "args": .object(["request": .object(["sessionId": .string(sessionId)])])
+        ])
+    }
+
+    // MARK: - 凭据（API 密钥）
+
+    /// 查这些 ref 配了没有。
+    ///
+    /// **值永远不会回传** —— 线上只给 `{configured, source?, writable}`。
+    /// 这就是"密文存储"：密钥存在电脑端的凭据库里，手机只能知道"配过没有"。
+    public func credentialsDescribe(refs: [String]) async throws -> [String: CredentialInfo] {
+        let value = try await rpc.call(method: "credentials/describe", payload: [
+            "args": .object(["refs": .array(refs.map { .string($0) })])
+        ])
+        guard let object = value.objectValue else { return [:] }
+        return object.mapValues(CredentialInfo.init(json:))
+    }
+
+    /// 写入一个密钥。走的是**已经端到端加密的 iroh 通道**，
+    /// 落到电脑端的凭据库；之后只能查到"配过没有"，读不回原文。
+    public func credentialsSet(ref: String, value: String) async throws {
+        _ = try await rpc.call(method: "credentials/set", payload: [
+            "args": .object(["ref": .string(ref), "value": .string(value)])
+        ])
+    }
+
+    /// 删掉一个密钥。
+    public func credentialsUnset(ref: String) async throws {
+        _ = try await rpc.call(method: "credentials/unset", payload: [
+            "args": .object(["ref": .string(ref)])
+        ])
+    }
+
     // MARK: - 排队消息
 
     /// 对一条**排队中**的消息做点什么。

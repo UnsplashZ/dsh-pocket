@@ -135,6 +135,17 @@ struct SessionView: View {
                         shadowedSection(session)
                     }
 
+                    // **兜底：分组为空但条目还在，就直接渲染条目。**
+                    // 正常情况下走不到这里；但真走到了，宁可排版差一点，
+                    // 也不能给用户一片空白（实测重连时偶尔出现）。
+                    if session.timelineBlocks.isEmpty, !session.items.filter({ !$0.isShadowed }).isEmpty {
+                        ForEach(session.items.filter { !$0.isShadowed }) { item in
+                            TimelineRow(item: item, session: session)
+                                .id(item.id)
+                                .padding(.horizontal, Token.Spacing.gutter)
+                        }
+                    }
+
                     // 按轮次分组渲染：跑完的轮次收拢成一行摘要 + 最终结论。
                     ForEach(session.timelineBlocks) { block in
                         switch block {
@@ -154,7 +165,11 @@ struct SessionView: View {
                     // 排队消息**不在这里** —— 它是输入框上方那块可展开的面板
                     // （见 Composer.queuePanel）。放在时间线末尾会跟"已经聊了什么"混在一起。
 
-                    if session.items.filter({ !$0.isShadowed }).isEmpty, session.phase != .loading {
+                    // 空态跟着**实际渲染的东西**走，不跟 `items` 走 ——
+                    // 否则"条目在但一条都渲染不出来"时会变成一片空白。
+                    if session.timelineBlocks.isEmpty,
+                       session.items.filter({ !$0.isShadowed }).isEmpty,
+                       session.phase != .loading {
                         ContentUnavailableView(
                             "这个会话还是空的",
                             systemImage: "text.bubble",

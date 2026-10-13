@@ -441,6 +441,27 @@ final class ProtocolContractTests: XCTestCase {
         XCTAssertFalse(partial.isTurnOpen, "这正是必须靠会话列表 running 兜底的原因")
     }
 
+    // MARK: 凭据
+
+    /// 凭据描述**没有 value 字段，而且是故意的** —— 密钥只存在电脑端，
+    /// 手机只能知道"配过没有、从哪儿来、能不能改"。
+    func testCredentialInfoNeverCarriesTheValue() throws {
+        let info = CredentialInfo(json: Fixture.json(#"{"configured":true,"source":"file","writable":true}"#))
+        XCTAssertTrue(info.configured)
+        XCTAssertEqual(info.source, "file")
+        XCTAssertTrue(info.writable)
+
+        // 就算服务端（错误地）把 value 塞回来，我们的模型里也没有地方放它。
+        let withValue = CredentialInfo(json: Fixture.json(#"{"configured":true,"value":"sk-secret"}"#))
+        XCTAssertTrue(withValue.configured)
+        XCTAssertNil(withValue.source)
+        XCTAssertFalse(withValue.writable, "缺省时按不可改处理，别让界面以为能覆盖")
+
+        let missing = CredentialInfo(json: Fixture.json(#"{"configured":false,"writable":true}"#))
+        XCTAssertFalse(missing.configured)
+        XCTAssertNil(missing.source, "没配过就没有来源")
+    }
+
     // MARK: 消息评价
 
     func testMessageFeedbackParsesRatingAndVersion() throws {

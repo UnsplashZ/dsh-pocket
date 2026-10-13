@@ -145,17 +145,6 @@
         }
       }
     },
-    "%lld 条排队中": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld queued"
-          }
-        }
-      }
-    },
     "%lld 条排队消息": {
       "extractionState": "manual",
       "localizations": {
@@ -163,17 +152,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld queued messages"
-          }
-        }
-      }
-    },
-    "%lld 条消息排队中": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld messages queued"
           }
         }
       }
@@ -207,17 +185,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld turns"
-          }
-        }
-      }
-    },
-    "1 条排队中": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "1 queued"
           }
         }
       }
@@ -299,13 +266,13 @@
         }
       }
     },
-    "「标识」是别的配置引用这个提供商用的键，建好之后不能改。密钥本身不在这里 —— 这里填的是**环境变量名**。": {
+    "「标识」是别的配置引用这个提供商用的键，建好之后不能改。\n\n「密钥名」是电脑端凭据库里的**名字**，密钥原文在下面单独填。": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "“ID” is the key other settings use to reference this provider — it can’t change after creation. The key itself isn’t here: this field holds the **environment variable name**."
+            "value": "“ID” is the key other settings use to reference this provider — it can’t change after creation.\n\n“Key name” is the **name** in your computer’s credential store; enter the actual key separately below."
           }
         }
       }
@@ -615,6 +582,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Save"
+          }
+        }
+      }
+    },
+    "保存后会覆盖电脑上已有的那个密钥。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saving replaces the key already on your computer."
           }
         }
       }
@@ -978,17 +956,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Arguments"
-          }
-        }
-      }
-    },
-    "发送": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Send"
           }
         }
       }
@@ -1359,6 +1326,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Capacity"
+          }
+        }
+      }
+    },
+    "密钥": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API key"
+          }
+        }
+      }
+    },
+    "密钥**只写不读**：走的是已经端到端加密的 iroh 通道，存在电脑端的凭据库里；之后手机只能查到「配过没有」，拉不回原文。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keys are **write-only**: they travel over the already end-to-end-encrypted iroh channel and live in your computer’s credential store. Your phone can only see whether one is configured — never the value."
           }
         }
       }
@@ -1794,6 +1783,17 @@
         }
       }
     },
+    "已配置": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configured"
+          }
+        }
+      }
+    },
     "常驻": {
       "extractionState": "manual",
       "localizations": {
@@ -2141,17 +2141,6 @@
         }
       }
     },
-    "把消息发给电脑": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Send this message to your computer"
-          }
-        }
-      }
-    },
     "把电脑上的二维码放进取景框": {
       "extractionState": "manual",
       "localizations": {
@@ -2209,17 +2198,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Pick another workspace, or clear the filter."
-          }
-        }
-      }
-    },
-    "排队": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Queue"
           }
         }
       }
@@ -2286,17 +2264,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Plugins"
-          }
-        }
-      }
-    },
-    "插进正在跑的这一轮，不再等它跑完": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Inject into the running turn instead of waiting"
           }
         }
       }
@@ -2539,6 +2506,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Not connected"
+          }
+        }
+      }
+    },
+    "未配置": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not configured"
           }
         }
       }
@@ -2934,7 +2912,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Clear"
+            "value": "Remove"
           }
         }
       }
@@ -2946,6 +2924,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Clear the filter"
+          }
+        }
+      }
+    },
+    "清除这个密钥": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove this key"
           }
         }
       }
@@ -3027,6 +3016,17 @@
         }
       }
     },
+    "由电脑上的环境变量提供": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Provided by an environment variable on your computer"
+          }
+        }
+      }
+    },
     "电脑 ID": {
       "extractionState": "manual",
       "localizations": {
@@ -3100,6 +3100,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "No pairing window is open on your computer. Open “Connect phone” there and try again."
+          }
+        }
+      }
+    },
+    "电脑上那个提供商会立刻用不了，直到重新填一个。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That provider stops working immediately on your computer until you enter a new one."
           }
         }
       }
@@ -3188,17 +3199,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Computer settings"
-          }
-        }
-      }
-    },
-    "电脑跑完这一轮就会发出去。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Your computer sends it when this turn finishes."
           }
         }
       }
@@ -3399,17 +3399,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Waiting for approval"
-          }
-        }
-      }
-    },
-    "等这一轮跑完再发出去": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Send it once this turn finishes"
           }
         }
       }
@@ -4133,17 +4122,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Connect to computer"
-          }
-        }
-      }
-    },
-    "追加排队": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Queue"
           }
         }
       }

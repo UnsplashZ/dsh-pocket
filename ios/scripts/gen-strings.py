@@ -625,8 +625,8 @@ EN: dict[str, str] = {
     "%.0f tok/s": "%.0f tok/s",
     "缓存 %.0f%%": "Cache %.0f%%",
     "上下文 %.0f%%": "Context %.0f%%",
-    "密钥不在手机上：提供商配的是**环境变量名**，真正的 key 在电脑的环境里。\n\n新增的提供商**至少要有一个模型** —— 一个模型都没有的提供商会保存失败（电脑端会拒绝）。左滑可以删除。":
-        "Keys aren’t on your phone: providers reference an **environment variable name**; the real key lives in your computer’s environment.\n\nA new provider needs **at least one model** — a provider with none will be rejected by your computer. Swipe to delete.",
+    "点进去可以**直接填密钥**：密钥只写不读，存在电脑端的凭据库里。\n\n新增的提供商**至少要有一个模型** —— 一个模型都没有的提供商会保存失败（电脑端会拒绝）。左滑可以删除。":
+        "Tap in to **enter the key directly**: keys are write-only and live in your computer’s credential store.\n\nA new provider needs **at least one model** — a provider with none will be rejected by your computer. Swipe to delete.",
     "左滑删除。模型里没在界面上列出的字段（推理档位、模板参数…）会**原样保留**。\n\n模型 id 要和电脑端认的完全一致，否则这个提供商会保存失败。":
         "Swipe to delete. Fields not shown here (reasoning levels, template args…) are **preserved as-is**.\n\nThe model id must match exactly what your computer expects, or the provider will be rejected.",
     "用量 %@": "%@ tok",
@@ -667,8 +667,8 @@ EN: dict[str, str] = {
     "地址": "Base URL",
     "协议": "API",
     "密钥环境变量": "Key env var",
-    "「标识」是别的配置引用这个提供商用的键，建好之后不能改。密钥本身不在这里 —— 这里填的是**环境变量名**。":
-        "“ID” is the key other settings use to reference this provider — it can’t change after creation. The key itself isn’t here: this field holds the **environment variable name**.",
+    "「标识」是别的配置引用这个提供商用的键，建好之后不能改。\n\n「密钥名」是电脑端凭据库里的**名字**，密钥原文在下面单独填。":
+        "“ID” is the key other settings use to reference this provider — it can’t change after creation.\n\n“Key name” is the **name** in your computer’s credential store; enter the actual key separately below.",
     "密钥不在手机上：提供商配的是**环境变量名**，真正的 key 在电脑的环境里。左滑可以删除。":
         "Keys aren’t on your phone: providers reference an **environment variable name**; the real key lives in your computer’s environment. Swipe to delete.",
     "左滑删除。模型里没在界面上列出的字段（推理档位、模板参数…）会**原样保留**。":
@@ -692,6 +692,21 @@ EN: dict[str, str] = {
     "编辑": "Edit",
     "插进这一轮": "Steer into this turn",
     "内容": "Content",
+    # 密钥（只写不读）
+    "密钥": "API key",
+    "已配置": "Configured",
+    "未配置": "Not configured",
+    "由电脑上的环境变量提供": "Provided by an environment variable on your computer",
+    "粘贴 API 密钥": "Paste API key",
+    "保存后会覆盖电脑上已有的那个密钥。": "Saving replaces the key already on your computer.",
+    "清除这个密钥": "Remove this key",
+    "清除这个密钥？": "Remove this key?",
+    "清除": "Remove",
+    "电脑上那个提供商会立刻用不了，直到重新填一个。":
+        "That provider stops working immediately on your computer until you enter a new one.",
+    "密钥**只写不读**：走的是已经端到端加密的 iroh 通道，存在电脑端的凭据库里；之后手机只能查到「配过没有」，拉不回原文。":
+        "Keys are **write-only**: they travel over the already end-to-end-encrypted iroh channel and live in your computer’s credential store. Your phone can only see whether one is configured — never the value.",
+    "排队发送": "Queue",
     "删除": "Delete",
 }
 

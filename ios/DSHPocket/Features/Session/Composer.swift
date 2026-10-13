@@ -213,44 +213,42 @@ struct Composer: View {
     /// （`unable to type-check this expression in reasonable time`）。
     @ViewBuilder
     private var actionButtons: some View {
-        if isRunning {
-            queueButton
-            steerButton
+        // **一个主按钮**，按状态变：
+        //   闲置 + 没文本 → 灰色发送（点不动）
+        //   闲置 + 有文本 → 实色发送
+        //   跑着 + 没文本 → **红色停止**
+        //   跑着 + 有文本 → 实色发送（实际是排队）
+        // 插队单独一个小按钮，只在真能插的时候出现。
+        if isRunning, !canSend {
             stopButton
         } else {
             sendButton
         }
-    }
-
-    private var queueButton: some View {
-        Button { Task { await session.send(mode: .queue) } } label: {
-            HStack(spacing: Token.Spacing.hairline) {
-                Image(systemName: "arrow.up")
-                    .font(.system(size: Token.Control.glyph - 3, weight: .semibold))
-                Text("排队").font(.caption.weight(.semibold))
-            }
-            .foregroundStyle(canSend ? Color.white : Color.secondary)
-            .padding(.horizontal, Token.Spacing.tight)
-            .frame(height: Token.Control.diameter)
-            .background(
-                canSend ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color(.tertiarySystemFill)),
-                in: Capsule(style: .continuous)
-            )
+        if isRunning, canSend || !session.queuedMessages.isEmpty {
+            steerButton
         }
-        .buttonStyle(.plain)
-        .disabled(!canSend)
-        .accessibilityLabel(Text("追加排队"))
-        .accessibilityHint(Text("等这一轮跑完再发出去"))
     }
 
+    /// 主按钮：跑着且没文本时是停止，其余是发送。
+    private var isStopMode: Bool { isRunning && !canSend }
+
+    /// 插队：有草稿就插草稿，没草稿就插**队列里的第一条**。
+    ///
+    /// 用户："排队的会话，通过一个简单的交互按钮可以插话发送"。
     private var steerButton: some View {
-        Button { Task { await session.send(mode: .steer) } } label: {
+        Button {
+            Task {
+                if canSend {
+                    await session.send(mode: .steer)
+                } else if let first = session.queuedMessages.first {
+                    await session.updateQueue(itemId: first.id, action: .steer)
+                }
+            }
+        } label: {
             CircleGlyph(systemImage: "bolt.fill", style: .quiet)
         }
-        .disabled(!canSend)
-        .opacity(canSend ? 1 : 0.5)
         .accessibilityLabel(Text("立刻插队"))
-        .accessibilityHint(Text("插进正在跑的这一轮，不再等它跑完"))
+        .accessibilityHint(Text(canSend ? "把输入框里的内容插进正在跑的这一轮" : "把排队里的第一条插进正在跑的这一轮"))
     }
 
     private var stopButton: some View {
@@ -266,8 +264,9 @@ struct Composer: View {
             CircleGlyph(systemImage: "arrow.up", style: .prominent)
         }
         .disabled(!canSend)
-        .accessibilityLabel(Text("发送"))
-        .accessibilityHint(Text("把消息发给电脑"))
+        .opacity(canSend ? 1 : 0.4)
+        .accessibilityLabel(Text(isRunning ? "排队发送" : "发送"))
+        .accessibilityHint(Text(isRunning ? "等这一轮跑完再发出去" : "把消息发给电脑"))
     }
 
     // MARK: 排队消息
@@ -438,13 +437,15 @@ struct Composer: View {
     private var statsLine: some View {
         let stats = session.sessionStats
         if !stats.isEmpty {
+            // 居中：靠 `frame(maxWidth: .infinity)` + 居中，而不是靠左再加 Spacer。
             HStack(spacing: Token.Spacing.hairline) {
                 Text(statTexts(stats).joined(separator: " · "))
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
-                Spacer(minLength: 0)
+                    .minimumScaleFactor(0.8)
             }
+            .frame(maxWidth: .infinity, alignment: .center)
             .padding(.horizontal, Token.Spacing.gutter)
             .padding(.top, Token.Spacing.hairline)
             .padding(.bottom, Token.Spacing.tight)

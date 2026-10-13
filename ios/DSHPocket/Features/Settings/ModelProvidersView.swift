@@ -67,7 +67,14 @@ struct ModelProvidersView: View {
                     Button("完成") { dismiss() }
                 }
             }
-            .task { await model.refreshHostSettings() }
+            .task {
+                await model.refreshHostSettings()
+                #if DEBUG
+                if UserDefaults.standard.bool(forKey: "DSHShowProviderEditor") {
+                    editing = providers.first
+                }
+                #endif
+            }
             .sheet(item: $editing) { provider in
                 ProviderEditorView(provider: provider, namespace: namespace?.ns, isNew: false)
             }
@@ -158,6 +165,10 @@ struct ProviderEditorView: View {
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var hasLoaded = false
+    /// 新密钥。**只写不读** —— 拉回来的只有 `credential`（配过没有）。
+    @State private var apiKey = ""
+    @State private var credential: CredentialInfo?
+    @State private var clearKey = false
 
     private var isValid: Bool {
         !providerId.trimmingCharacters(in: .whitespaces).isEmpty
@@ -191,7 +202,7 @@ struct ProviderEditorView: View {
                     Picker("协议", selection: $api) {
                         ForEach(LLMProvider.knownAPIs, id: \.self) { Text($0).tag($0) }
                     }
-                    LabeledContent("密钥环境变量") {
+                    LabeledContent("密钥名") {
                         TextField("", text: $apiKeyEnv, prompt: Text(verbatim: "WB_API_KEY"))
                             .multilineTextAlignment(.trailing)
                             .autocorrectionDisabled()
@@ -201,7 +212,47 @@ struct ProviderEditorView: View {
                     Text("提供商")
                 } footer: {
                     // 说清"标识"为什么不能改：它是别的配置引用这个提供商的键。
-                    Text("「标识」是别的配置引用这个提供商用的键，建好之后不能改。密钥本身不在这里 —— 这里填的是**环境变量名**。")
+                    Text("「标识」是别的配置引用这个提供商用的键，建好之后不能改。\n\n「密钥名」是电脑端凭据库里的**名字**，密钥原文在下面单独填。")
+                }
+
+                // 密钥单独一段：**只写不读**。电脑端只回"配过没有"，
+                // 原文既不在手机上、也不会被拉回来。
+                Section {
+                    HStack {
+                        Label("密钥", systemImage: "key")
+                        Spacer()
+                        if credential?.configured == true {
+                            Label("已配置", systemImage: "checkmark.circle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.green)
+                                .labelStyle(.titleAndIcon)
+                        } else if credential?.writable == false {
+                            Text("由电脑上的环境变量提供")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("未配置")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                    if credential?.writable != false {
+                        SecureField("粘贴 API 密钥", text: $apiKey)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                        if credential?.configured == true, !apiKey.isEmpty {
+                            Text("保存后会覆盖电脑上已有的那个密钥。")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        if credential?.configured == true, apiKey.isEmpty {
+                            Button("清除这个密钥", role: .destructive) { clearKey = true }
+                        }
+                    }
+                } header: {
+                    Text("密钥")
+                } footer: {
+                    Text("密钥**只写不读**：走的是已经端到端加密的 iroh 通道，存在电脑端的凭据库里；之后手机只能查到「配过没有」，拉不回原文。")
                 }
 
                 Section {
@@ -266,7 +317,16 @@ struct ProviderEditorView: View {
                     api = provider.api
                     apiKeyEnv = provider.apiKeyEnv
                     models = provider.models
+                    await refreshCredential()
                 }
+            }
+            .confirmationDialog("清除这个密钥？", isPresented: $clearKey, titleVisibility: .visible) {
+                Button("清除", role: .destructive) {
+                    Task { await unsetCredential() }
+                }
+                Button("取消", role: .cancel) {}
+            } message: {
+                Text("电脑上那个提供商会立刻用不了，直到重新填一个。")
             }
             .sheet(item: $editingModel) { entry in
                 ModelEditorView(model: entry) { updated in
@@ -288,6 +348,24 @@ struct ProviderEditorView: View {
         }
     }
 
+    /// 查这个 ref 配了没有。**查不到值** —— 线上就不给。
+    private func refreshCredential() async {
+        let ref = apiKeyEnv.trimmingCharacters(in: .whitespaces)
+        guard !ref.isEmpty else { credential = nil; return }
+        credential = try? await model.client.credentialsDescribe(refs: [ref])[ref]
+    }
+
+    private func unsetCredential() async {
+        let ref = apiKeyEnv.trimmingCharacters(in: .whitespaces)
+        guard !ref.isEmpty else { return }
+        do {
+            try await model.client.credentialsUnset(ref: ref)
+            await refreshCredential()
+        } catch {
+            errorMessage = (error as? DSHClientError)?.displayMessage ?? error.localizedDescription
+        }
+    }
+
     private func save() {
         guard let namespace else { return }
         let id = providerId.trimmingCharacters(in: .whitespaces)
@@ -304,6 +382,17 @@ struct ProviderEditorView: View {
 
         isSaving = true
         Task {
+            // 先写密钥（如果有）—— 设置里只放 ref，密钥本体进凭据库。
+            let ref = apiKeyEnv.trimmingCharacters(in: .whitespaces)
+            if !apiKey.isEmpty, !ref.isEmpty {
+                do {
+                    try await model.client.credentialsSet(ref: ref, value: apiKey)
+                } catch {
+                    errorMessage = (error as? DSHClientError)?.displayMessage ?? error.localizedDescription
+                    isSaving = false
+                    return
+                }
+            }
             // 用 `set` 精确写到 `providers.<id>`：**不要**重写整个 `providers`，
             // 那样会把别的提供商也一起覆盖（并发改动会丢）。
             errorMessage = await model.mutateSettings(

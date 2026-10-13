@@ -90,3 +90,22 @@ public func decodeProviders(_ namespace: SettingsNamespace) -> [LLMProvider] {
         .map { LLMProvider(id: $0.key, raw: $0.value) }
         .sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
 }
+
+
+/// 一个凭据 ref 的状态（`credentials/describe`）。
+///
+/// **没有 `value` 字段，而且是故意的** —— 密钥只存在电脑端，
+/// 手机只能知道"配过没有、从哪儿来的、能不能改"。
+public struct CredentialInfo: Sendable, Hashable {
+    public var configured: Bool
+    /// 来源（本机实测是 `"file"`）。
+    public var source: String?
+    /// 这个 ref 能不能通过远端改（有些是环境变量注入的，改不了）。
+    public var writable: Bool
+
+    public init(json: JSONValue) {
+        self.configured = json.bool("configured") ?? false
+        self.source = json.string("source")
+        self.writable = json.bool("writable") ?? false
+    }
+}

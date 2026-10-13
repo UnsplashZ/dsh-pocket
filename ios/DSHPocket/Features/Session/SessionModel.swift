@@ -56,6 +56,8 @@ public final class SessionModel {
     private(set) var currentPermission: String?
     /// 从主机拉到的权限档位清单（含说明）。空的时候用内置三个兜底。
     private(set) var permissionPresetOptions: [PermissionPreset] = []
+    /// 统计栏的轮询任务。
+    private var statsTask: Task<Void, Never>?
     /// 排队中的消息（`projections.inbox`）。
     ///
     /// 队列**不在会话日志里** —— 实测：轮次跑着的时候发一条，日志里一条 `user/message`
@@ -158,9 +160,12 @@ public final class SessionModel {
         if let catalog = try? await client.permissionPresets() {
             permissionPresetOptions = catalog.options
         }
+        startStatsPolling()
     }
 
     func close() {
+        statsTask?.cancel()
+        statsTask = nil
         followTask?.cancel()
         followTask = nil
         generationTask?.cancel()
@@ -406,6 +411,19 @@ public final class SessionModel {
         })
         timelineBlocks = builder.timelineBlocks(showRawEvents: settings.showRawEvents)
         publishQueuedMessages()
+
+        // **自检：条目在、分组却空了。**
+        // 这会让界面变成一片空白（骨架要求条目为空、空态要求 phase != loading，
+        // 两个条件都不满足）。实测重连时偶尔出现。
+        // 分组是"哪些该显示"的唯一真相，它空了就必须说清为什么。
+        let visibleCount = visible.count
+        if visibleCount > 0, timelineBlocks.isEmpty {
+            let shadowed = visible.filter(\.isShadowed).count
+            let nonConversational = visible.filter { !$0.isConversational }.count
+            logs.log(.warning, """
+            时间线分组为空但条目有 \(visibleCount) 条 ——             已隐藏 \(shadowed)、不可渲染 \(nonConversational)、phase=\(phase)
+            """)
+        }
     }
 
     /// 每次"应该滚到底"时自增。View 观察它做一次 `scrollTo`。
@@ -639,6 +657,34 @@ public final class SessionModel {
             if !builder.removeOptimisticUserMessage(rpcId: rpcId).removedIds.isEmpty { removed = true }
         }
         if removed { publish() }
+    }
+
+    // MARK: 统计轮询
+
+    /// 底部统计栏定时刷新。
+    ///
+    /// 这些数字（轮数/步数/首字/速度/缓存/上下文）只在**快照**里来，
+    /// 而快照只在打开会话时给一次 —— 所以跑着的时候那一行是**冻住的**。
+    /// 用 `session/projections`（轻量）每几秒补一次。
+    private func startStatsPolling() {
+        statsTask?.cancel()
+        statsTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                guard !Task.isCancelled, let self else { return }
+                await self.refreshStatsOnce()
+            }
+        }
+    }
+
+    private func refreshStatsOnce() async {
+        guard let value = try? await client.sessionProjections(sessionId: sessionId) else { return }
+        let values = value["values"] ?? .object([:])
+        sessionStats = SessionStats(json: values["sessionStats"] ?? .object([:]))
+        tokenUsage = TokenUsage(json: values["tokenUsage"] ?? .object([:]))
+        if let pressure = values["contextPressure"] {
+            contextPressure = ContextPressure(json: pressure)
+        }
     }
 
     // MARK: 评价 / 分支
