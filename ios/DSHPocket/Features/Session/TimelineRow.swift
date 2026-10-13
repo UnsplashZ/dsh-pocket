@@ -309,13 +309,11 @@ struct AssistantCard: View {
 
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    // 跑着的时候：折叠面板，默认收起（长推理会把对话挤下去），设置里可以改成默认展开。
-    @State private var reasoningExpanded = false
-    /// 轮次结束**之后**用户有没有手动把思考过程翻出来。
+    /// 用户有没有把思考过程翻出来。
     ///
-    /// 与上面那个分开：用户要的是"输出最终结果时全部隐藏，除非手动展开"。
-    /// 跑的时候该看就看，跑完就该消失 —— 两种状态不能共用一个开关。
-    @State private var reasoningRevealedAfterCompletion = false
+    /// **默认永远是关的**（跑着的时候也是）—— 长轮次里每一步都冒一张卡片太吵，
+    /// 而推理内容一次点击就能看到。设置里的"默认展开"可以把它变成常开。
+    @State private var reasoningRevealed = false
     @State private var hasAppliedDefault = false
 
     private var hasReasoning: Bool {
@@ -334,11 +332,12 @@ struct AssistantCard: View {
                             MarkdownBody(text: text)
 
                         case .reasoning(let text):
-                            // 轮次结束 + 用户没手动展开 → **整块不渲染**。
-                            // 这就是"输出最终结果时把思考过程全藏起来"。
-                            if !isTurnComplete {
-                                reasoningBlock(text)
-                            } else if reasoningRevealedAfterCompletion {
+                            // **一律默认不渲染**，只留页脚那个入口。
+                            //
+                            // 之前分两种状态（跑着看、跑完收起），但用户要的是
+                            // "不默认显示" —— 而且一个长轮次里每一步都冒一张
+                            // "思考过程"卡片，跟工具行交错在一起非常吵。
+                            if reasoningRevealed {
                                 revealedReasoningBlock(text)
                             }
 
@@ -363,20 +362,23 @@ struct AssistantCard: View {
                         if message.interrupted {
                             StatusBadge("已中断", symbol: "stop.circle", tone: .warning)
                         }
-                        // 轮次结束后思考过程整块藏起来了，入口留在这里。
+                        // 思考过程的入口就留在这里。
                         // 做得**刻意低干扰**：一行小字，跟时间并排，不抢正文。
-                        if isTurnComplete, hasReasoning, !reasoningRevealedAfterCompletion {
+                        if hasReasoning, !reasoningRevealed {
                             Button {
-                                withAnimation(reduceMotion ? nil : .snappy) {
-                                    reasoningRevealedAfterCompletion = true
-                                }
+                                withAnimation(reduceMotion ? nil : .snappy) { reasoningRevealed = true }
                             } label: {
-                                Label("思考过程", systemImage: "brain")
-                                    .font(.caption2)
-                                    .foregroundStyle(.tertiary)
+                                Label(
+                                    // 跑着的时候说"思考中"，让人知道它正在推理；
+                                    // 跑完了就说"思考过程"，暗示这里存着内容。
+                                    message.isStreaming || !isTurnComplete ? "思考中…" : "思考过程",
+                                    systemImage: "brain"
+                                )
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
                             }
                             .buttonStyle(.plain)
-                            .accessibilityHint(Text("展开这一轮模型的推理过程"))
+                            .accessibilityHint(Text("展开模型的推理过程"))
                         }
                         Spacer(minLength: 0)
                         Text(Format.time(time))
@@ -385,7 +387,6 @@ struct AssistantCard: View {
                     }
                 }
             }
-            Spacer(minLength: Token.Spacing.section * 2)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(String(localized: "助手回复")))
@@ -403,9 +404,7 @@ struct AssistantCard: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 Button("收起") {
-                    withAnimation(reduceMotion ? nil : .snappy) {
-                        reasoningRevealedAfterCompletion = false
-                    }
+                    withAnimation(reduceMotion ? nil : .snappy) { reasoningRevealed = false }
                 }
                 .font(.caption2)
                 .buttonStyle(.plain)
@@ -425,28 +424,6 @@ struct AssistantCard: View {
         .accessibilityElement(children: .contain)
     }
 
-    private func reasoningBlock(_ text: String) -> some View {
-        DisclosureGroup(isExpanded: $reasoningExpanded) {
-            Text(text)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, Token.Spacing.hairline)
-        } label: {
-            Label("思考过程", systemImage: "brain")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-        }
-        .accessibilityHint(Text("展开查看模型的推理过程"))
-        .onAppear {
-            // 只在第一次出现时套用设置，之后尊重用户手动展开/收起。
-            guard !hasAppliedDefault else { return }
-            hasAppliedDefault = true
-            reasoningExpanded = model.settings.expandReasoningByDefault
-            // 设置里打开"默认展开"时，轮次结束之后也一并翻出来。
-            reasoningRevealedAfterCompletion = model.settings.expandReasoningByDefault
-        }
-    }
 }
 
 /// 代码块：等宽 + 横向滚动 + 复制按钮 + 分享。

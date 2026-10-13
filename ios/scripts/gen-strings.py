@@ -586,7 +586,8 @@ EN: dict[str, str] = {
     "%lld 张图片": "%lld images",
     "%lld 个文件": "%lld files",
     "电脑跑完这一轮就会发出去。": "Your computer sends it when this turn finishes.",
-    "展开这一轮模型的推理过程": "Show the model’s reasoning for this turn",
+    "展开模型的推理过程": "Show the model’s reasoning",
+    "思考中…": "Thinking…",
 }
 
 # 哪些插值表达式是整数。判错的后果是英文界面上显示成 `%lld` 字面量，

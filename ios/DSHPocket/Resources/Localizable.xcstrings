@@ -1121,24 +1121,13 @@
         }
       }
     },
-    "展开查看模型的推理过程": {
+    "展开模型的推理过程": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Show the model’s reasoning"
-          }
-        }
-      }
-    },
-    "展开这一轮模型的推理过程": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Show the model’s reasoning for this turn"
           }
         }
       }
