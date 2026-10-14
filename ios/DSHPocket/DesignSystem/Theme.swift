@@ -97,14 +97,38 @@ public enum Format {
         return formatter
     }()
 
+    // 显式指定了语言时才另造 formatter；`.current`（几乎所有调用）复用上面那份缓存，
+    // 免得为了可测试性把每次列表渲染都变成造 formatter。
+    // 有这两个工厂，`locale` 参数才不是摆设 —— 三个分支都会真的按它选语言。
+    private static func relativeFormatter(_ locale: Locale) -> RelativeDateTimeFormatter {
+        guard locale != .current else { return relative }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.locale = locale
+        formatter.unitsStyle = relative.unitsStyle
+        return formatter
+    }
+
+    private static func absoluteFormatter(_ locale: Locale) -> DateFormatter {
+        guard locale != .current else { return absolute }
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.dateStyle = absolute.dateStyle
+        formatter.timeStyle = absolute.timeStyle
+        return formatter
+    }
+
     /// 列表页的相对时间："3 分钟前"。
-    public static func relativeTime(_ date: Date, now: Date = Date()) -> String {
+    ///
+    /// `locale` 从参数进来：底下走的是 `String(localized:)` 与 `Locale.current`，
+    /// 也就是**环境**。不把它参数化，这几行就没法断言具体文案 ——
+    /// 中文机器上过、英文机器上挂（CI 的 en-US runner 上正是这么红的）。
+    public static func relativeTime(_ date: Date, now: Date = Date(), locale: Locale = .current) -> String {
         let interval = now.timeIntervalSince(date)
-        if interval < 60 { return String(localized: "刚刚") }
+        if interval < 60 { return String(localized: "刚刚", locale: locale) }
         if interval < 86_400 * 7 {
-            return relative.localizedString(for: date, relativeTo: now)
+            return relativeFormatter(locale).localizedString(for: date, relativeTo: now)
         }
-        return absolute.string(from: date)
+        return absoluteFormatter(locale).string(from: date)
     }
 
     /// 时间线里的时刻。
@@ -125,20 +149,20 @@ public enum Format {
         return ByteCountFormatter.string(fromByteCount: Int64(count), countStyle: .file)
     }
 
-    /// 耗时："1.2 秒" / "45 毫秒"。
-    public static func duration(_ seconds: TimeInterval?) -> String? {
+    /// 耗时："1.2 秒" / "45 毫秒"。`locale` 的理由同 `relativeTime`。
+    public static func duration(_ seconds: TimeInterval?, locale: Locale = .current) -> String? {
         guard let seconds, seconds >= 0 else { return nil }
         // 用 String(format:) + 纯格式串而不是插值：String Catalog 的 key 才会是
         // 明确的 `%lld` / `%.1f`，不会出现 `\(x, specifier:)` 那种边角写法。
         if seconds < 1 {
-            return String(format: String(localized: "%lld 毫秒"), Int((seconds * 1000).rounded()))
+            return String(format: String(localized: "%lld 毫秒", locale: locale), Int((seconds * 1000).rounded()))
         }
         if seconds < 60 {
-            return String(format: String(localized: "%.1f 秒"), seconds)
+            return String(format: String(localized: "%.1f 秒", locale: locale), seconds)
         }
         let minutes = Int(seconds / 60)
         let remainder = Int(seconds.truncatingRemainder(dividingBy: 60))
-        return String(format: String(localized: "%lld 分 %lld 秒"), minutes, remainder)
+        return String(format: String(localized: "%lld 分 %lld 秒", locale: locale), minutes, remainder)
     }
 
     /// 令牌数："12.3k"。

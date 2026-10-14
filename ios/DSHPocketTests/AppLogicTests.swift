@@ -61,17 +61,28 @@ final class AppLogicTests: XCTestCase {
 
     // MARK: 格式化
 
+    // 本地化文案跟着语言走，所以**不能**假设跑在中文机器上：
+    // CI 的 runner 是 en-US，写死中文的断言到那儿全红。两边都断言，
+    // 顺带把 en 的文案也覆盖上（缺翻译时 `String(localized:)` 会退回 key，
+    // 断言就会在英文那一侧失败）。
+    private static let zhLocale = Locale(identifier: "zh-Hans")
+    private static let enLocale = Locale(identifier: "en")
+
     func testRelativeTimeReadsNaturally() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
-        XCTAssertEqual(Format.relativeTime(now.addingTimeInterval(-5), now: now), "刚刚")
-        XCTAssertFalse(Format.relativeTime(now.addingTimeInterval(-3600), now: now).isEmpty)
-        XCTAssertFalse(Format.relativeTime(now.addingTimeInterval(-86_400 * 30), now: now).isEmpty)
+        XCTAssertEqual(Format.relativeTime(now.addingTimeInterval(-5), now: now, locale: Self.zhLocale), "刚刚")
+        XCTAssertEqual(Format.relativeTime(now.addingTimeInterval(-5), now: now, locale: Self.enLocale), "Just now")
+        XCTAssertFalse(Format.relativeTime(now.addingTimeInterval(-3600), now: now, locale: Self.zhLocale).isEmpty)
+        XCTAssertFalse(Format.relativeTime(now.addingTimeInterval(-86_400 * 30), now: now, locale: Self.zhLocale).isEmpty)
     }
 
     func testDurationFormatting() {
-        XCTAssertEqual(Format.duration(0.045), "45 毫秒")
-        XCTAssertEqual(Format.duration(2.24), "2.2 秒")
-        XCTAssertEqual(Format.duration(125), "2 分 5 秒")
+        XCTAssertEqual(Format.duration(0.045, locale: Self.zhLocale), "45 毫秒")
+        XCTAssertEqual(Format.duration(2.24, locale: Self.zhLocale), "2.2 秒")
+        XCTAssertEqual(Format.duration(125, locale: Self.zhLocale), "2 分 5 秒")
+        XCTAssertEqual(Format.duration(0.045, locale: Self.enLocale), "45 ms")
+        XCTAssertEqual(Format.duration(2.24, locale: Self.enLocale), "2.2 s")
+        XCTAssertEqual(Format.duration(125, locale: Self.enLocale), "2m 5s")
         XCTAssertNil(Format.duration(nil))
         XCTAssertNil(Format.duration(-1))
     }

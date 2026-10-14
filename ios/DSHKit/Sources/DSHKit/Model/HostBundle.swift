@@ -44,7 +44,10 @@ public struct HostBundle: Sendable, Hashable, Identifiable {
         }
     }
 
-    public init(json: JSONValue) {
+    /// `languages` 是**环境**，不是这段解析逻辑的一部分，所以从参数进来（默认跟系统走）。
+    /// 不这样的话「按语言挑本地化字段」根本没法测：在中文机器上过、在英文机器上挂 ——
+    /// CI（en-US runner）就是这么红的。
+    public init(json: JSONValue, languages: [String] = Locale.preferredLanguages) {
         let name = json.string("name") ?? ""
         self.name = name
         self.version = json.string("version")
@@ -56,8 +59,8 @@ public struct HostBundle: Sendable, Hashable, Identifiable {
         self.rowCount = (json.array("rows") ?? []).count
         let meta = json["meta"] ?? .object([:])
         // `meta.title` 可能是纯字符串，也可能是 `{en, zh}` —— 两种都要认。
-        self.title = meta.localized("title") ?? name
-        self.summary = meta.localized("description") ?? json.string("description")
+        self.title = meta.localized("title", languages: languages) ?? name
+        self.summary = meta.localized("description", languages: languages) ?? json.string("description")
     }
 }
 
@@ -66,11 +69,11 @@ extension JSONValue {
     ///
     /// 实测两种形态都存在：`dshmarket` 的 `meta.title` 是 `"dshmarket"`，
     /// 而 `dsh-context` 的是 `{"en":"Context (dsh-context)","zh":"上下文 (dsh-context)"}`。
-    public func localized(_ key: String) -> String? {
+    public func localized(_ key: String, languages: [String] = Locale.preferredLanguages) -> String? {
         guard let value = self[key] else { return nil }
         if let plain = value.stringValue, !plain.isEmpty { return plain }
         guard let object = value.objectValue else { return nil }
-        for candidate in JSONValue.preferredLocaleKeys {
+        for candidate in JSONValue.preferredLocaleKeys(for: languages) {
             if let text = object[candidate]?.stringValue, !text.isEmpty { return text }
         }
         // 认不出的键：拿第一个非空值也比丢掉强。
@@ -81,9 +84,9 @@ extension JSONValue {
     }
 
     /// 语言偏好顺序：`zh-Hans` → `zh` → 完整标签 → `en`。
-    static var preferredLocaleKeys: [String] {
+    public static func preferredLocaleKeys(for languages: [String] = Locale.preferredLanguages) -> [String] {
         var keys: [String] = []
-        for language in Locale.preferredLanguages {
+        for language in languages {
             let parts = language.split(separator: "-")
             if parts.count > 1 { keys.append("\(parts[0])-\(parts[1])") }
             keys.append(String(parts[0]))

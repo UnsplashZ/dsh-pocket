@@ -601,7 +601,7 @@ final class ProtocolContractTests: XCTestCase {
             {"name":"@deepseek-ai/dsh-base","enabled":true,"installed":false,"optional":false,
              "readOnlyReason":"management-required","rows":[{},{},{}]}
             """#),
-        ].map(HostBundle.init(json:))
+        ].map { HostBundle(json: $0, languages: ["zh-Hans"]) }
 
         XCTAssertEqual(bundles[0].title, "插件市场", "纯字符串形态")
         XCTAssertEqual(bundles[0].summary, "逛一逛，点一下，装好。")
@@ -612,6 +612,19 @@ final class ProtocolContractTests: XCTestCase {
         XCTAssertEqual(bundles[1].summary, "提供自动审查权限模式。")
         XCTAssertTrue(bundles[1].optional, "官方可选包 → 界面上标「实验性」")
         XCTAssertTrue(bundles[1].isOfficial)
+
+        // 同一个包换成英文环境：必须选到 en 那一份。
+        // 语言是**环境**不是逻辑，所以从参数进来 —— 写死中文的断言在 CI（en-US）上会红。
+        let english = HostBundle(
+            json: Fixture.json(#"""
+            {"name":"@deepseek-ai/dsh-experimental-auto-review","optional":true,"rows":[{},{}],
+             "meta":{"title":{"en":"Auto review","zh":"自动授权审查"},
+                     "description":{"en":"Automatic review mode.","zh":"提供自动审查权限模式。"}}}
+            """#),
+            languages: ["en-US"]
+        )
+        XCTAssertEqual(english.title, "Auto review")
+        XCTAssertEqual(english.summary, "Automatic review mode.")
 
         // 没有 meta 时退回模块名，不能是空标题
         XCTAssertEqual(bundles[2].title, "@deepseek-ai/dsh-base")

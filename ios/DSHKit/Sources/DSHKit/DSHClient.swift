@@ -752,7 +752,9 @@ public actor DSHClient {
     /// 平铺出来没法看；这里是包（本机 17 条），每个带人类可读的标题与说明。
     public func listBundles() async throws -> [HostBundle] {
         let value = try await rpc.call(method: "pluginManager/listBundles", payload: ["args": .object([:])])
-        return (value.arrayValue ?? []).map(HostBundle.init(json:))
+        // 写成闭包而不是 `map(HostBundle.init(json:))`：`init` 带上默认参数之后
+        // 就没法再当函数值用（默认参数不参与函数引用）。
+        return (value.arrayValue ?? []).map { HostBundle(json: $0) }
     }
 
     /// 开关一个插件包。`name` 用包的 `name`。
