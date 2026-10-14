@@ -30,17 +30,17 @@ jobs:
       - name: 本地化文案完整性
         run: python3 ios/scripts/gen-strings.py --check
 
-      # 版本号的唯一真源是 ios/VERSION；project.yml 是它的下游。
-      # 手改 project.yml 会让"包里印的版本"和"tag 上的版本"悄悄分叉，
+      # 版本号的唯一真源是 ios/VERSION；project.yml 与**生成的** project.pbxproj
+      # 都是它的下游。手改下游会让"包里印的版本"和"tag 上的版本"悄悄分叉，
       # 这里让它在 PR 阶段就红，而不是等发布之后。
-      - name: 版本号与 project.yml 是否同步
+      - name: 版本号与 project.yml / pbxproj 是否同步
         run: |
           set -euo pipefail
           bash ios/scripts/version.sh sync
-          if ! git diff --quiet -- ios/project.yml; then
-            echo "::error::ios/project.yml 里的 MARKETING_VERSION 与 ios/VERSION 不一致。"
+          if ! git diff --quiet -- ios/project.yml ios/DSHPocket.xcodeproj/project.pbxproj; then
+            echo "::error::ios/project.yml 或 project.pbxproj 里的 MARKETING_VERSION 与 ios/VERSION 不一致。"
             echo "改版本号请用： bash ios/scripts/version.sh set <X.Y.Z>"
-            git diff -- ios/project.yml
+            git diff -- ios/project.yml ios/DSHPocket.xcodeproj/project.pbxproj
             exit 1
           fi
           echo "版本号一致：$(bash ios/scripts/version.sh get)"

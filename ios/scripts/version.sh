@@ -21,6 +21,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 VERSION_FILE="${ROOT}/ios/VERSION"
 PROJECT_YML="${ROOT}/ios/project.yml"
+PBXPROJ="${ROOT}/ios/DSHPocket.xcodeproj/project.pbxproj"
 
 die() { echo "version.sh: $*" >&2; exit 1; }
 
@@ -49,6 +50,16 @@ sync_project_yml() {
   perl -i -pe "s/^(\s*MARKETING_VERSION:\s*).*\$/\${1}\"${version}\"/" "${PROJECT_YML}"
   if [ -n "${build}" ]; then
     perl -i -pe "s/^(\s*CURRENT_PROJECT_VERSION:\s*).*\$/\${1}${build}/" "${PROJECT_YML}"
+  fi
+
+  # 生成的 Xcode 工程也进了库（这样不装 xcodegen 也能打开），它的 MARKETING_VERSION
+  # 是从 project.yml 抄下来的。不一起改的话，每次发版都会留下一处漂移 ——
+  # 表现为"谁构建一下，工作区就多出一个他根本没改过的 diff"。
+  if [ -f "${PBXPROJ}" ]; then
+    perl -i -pe "s/^(\s*MARKETING_VERSION = ).*\$/\${1}${version};/" "${PBXPROJ}"
+    local got_pbx
+    got_pbx="$(perl -ne 'print "$1\n" and exit if /^\s*MARKETING_VERSION = ([^;]+);/' "${PBXPROJ}")"
+    [ "${got_pbx}" = "${version}" ] || die "写 project.pbxproj 失败：期望 ${version}，实际 ${got_pbx}"
   fi
 
   # 写完立刻回读断言：静默失配比报错危险得多（构建出来的包会带着旧版本号）

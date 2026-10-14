@@ -2,6 +2,8 @@
 .DS_Store
 node_modules/
 *.log
+# ios/scripts/*.py 会被 CI 与本地直接跑，顺手留下的字节码缓存不该入库
+__pycache__/
 
 # ── Xcode / 构建产物 ───────────────────────────────────────────────────────
 # ios/build.sh 写 ios/.derived/；scripts/install-device.sh 写 .derived-device/；
