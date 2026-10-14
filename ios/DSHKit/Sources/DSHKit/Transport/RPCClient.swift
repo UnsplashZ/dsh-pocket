@@ -10,7 +10,7 @@ public actor RPCClient {
     private let provider: any DSHHostProvider
     private let session: URLSession
     private let retry: RetryPolicy
-    private let logger: any DSHLogSink?
+    private let logger: (any DSHLogSink)?
 
     /// rpcId 由客户端生成并回显；用它把响应与请求配对。
     private var inflight: [String: Task<JSONValue, any Error>] = [:]
@@ -19,7 +19,7 @@ public actor RPCClient {
         provider: any DSHHostProvider,
         session: URLSession = .dshShared,
         retry: RetryPolicy = .default,
-        logger: any DSHLogSink? = nil
+        logger: (any DSHLogSink)? = nil
     ) {
         self.provider = provider
         self.session = session

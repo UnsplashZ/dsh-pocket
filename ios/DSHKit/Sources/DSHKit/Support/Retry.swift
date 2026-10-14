@@ -61,7 +61,7 @@ public struct RetryPolicy: Sendable {
 /// 跑一个可重试的操作。
 public func withRetry<T>(
     _ policy: RetryPolicy,
-    logger: any DSHLogSink? = nil,
+    logger: (any DSHLogSink)? = nil,
     operation: () async throws -> T
 ) async throws -> T {
     var attempt = 1

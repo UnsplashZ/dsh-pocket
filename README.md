@@ -295,7 +295,7 @@ dsh-pocket/
     DSHPocketTests/        app-layer unit tests (40)
     DSHKit/                SwiftPM: DSH client protocol (116 tests)
     TetherKit/             SwiftPM: iroh wrapper + DLP + local proxy (33 tests)
-    scripts/               fetch-iroh.sh · make-ipa.sh · version.sh · pick-simulator.sh
+    scripts/               fetch-iroh.sh · make-ipa.sh · version.sh · select-xcode.sh · pick-simulator.sh
     spikes/M0BInterop/     transport interop verification
     vendor/                iroh parts (not committed, fetched by script)
   tools/                   host-side helpers (cookie minting, dev gateway, capture, status)

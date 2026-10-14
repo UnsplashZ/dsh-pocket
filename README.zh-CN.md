@@ -276,7 +276,7 @@ dsh-pocket/
     DSHPocketTests/        App 层单测（40 条）
     DSHKit/                SwiftPM：DSH 客户端协议层（116 条单测）
     TetherKit/             SwiftPM：iroh 封装 + DLP + 本地代理（33 条单测）
-    scripts/               fetch-iroh.sh · make-ipa.sh · version.sh · pick-simulator.sh
+    scripts/               fetch-iroh.sh · make-ipa.sh · version.sh · select-xcode.sh · pick-simulator.sh
     spikes/M0BInterop/     M0b 互通验证可执行程序
     vendor/                iroh 部件（不入库，由脚本取）
   tools/                   电脑端辅助工具（签 cookie、直连网关、抓包、查看配对状态）

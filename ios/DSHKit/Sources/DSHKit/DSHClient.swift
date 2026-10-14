@@ -15,13 +15,13 @@ public actor DSHClient {
     private let rpc: RPCClient
     private let mux: MuxClient
     private let session: URLSession
-    private let logger: any DSHLogSink?
+    private let logger: (any DSHLogSink)?
 
     public init(
         provider: any DSHHostProvider,
         session: URLSession = .dshShared,
         retry: RetryPolicy = .default,
-        logger: any DSHLogSink? = nil
+        logger: (any DSHLogSink)? = nil
     ) {
         self.provider = provider
         self.session = session

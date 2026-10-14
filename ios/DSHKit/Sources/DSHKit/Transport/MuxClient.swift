@@ -28,7 +28,7 @@ public enum MuxFrame: Sendable {
 public actor MuxClient {
     private let provider: any DSHHostProvider
     private let session: URLSession
-    private let logger: any DSHLogSink?
+    private let logger: (any DSHLogSink)?
 
     private var socket: URLSessionWebSocketTask?
     private var receiveLoop: Task<Void, Never>?
@@ -42,7 +42,7 @@ public actor MuxClient {
     public init(
         provider: any DSHHostProvider,
         session: URLSession = .dshShared,
-        logger: any DSHLogSink? = nil
+        logger: (any DSHLogSink)? = nil
     ) {
         self.provider = provider
         self.session = session

@@ -33,7 +33,7 @@ public actor EventStreamCoordinator {
     public typealias WaterfallAnswerer = @Sendable (WaterfallRequest) async -> WaterfallDecision
 
     private let client: DSHClient
-    private let logger: any DSHLogSink?
+    private let logger: (any DSHLogSink)?
     private let reconnect: RetryPolicy
 
     private var generation: Generation?
@@ -44,7 +44,7 @@ public actor EventStreamCoordinator {
 
     private var generationContinuations: [UUID: AsyncStream<Generation?>.Continuation] = [:]
 
-    public init(client: DSHClient, reconnect: RetryPolicy = .default, logger: any DSHLogSink? = nil) {
+    public init(client: DSHClient, reconnect: RetryPolicy = .default, logger: (any DSHLogSink)? = nil) {
         self.client = client
         self.reconnect = reconnect
         self.logger = logger
