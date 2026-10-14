@@ -163,4 +163,128 @@ final class SessionCacheTests: XCTestCase {
         let stats = await cache.statistics()
         XCTAssertEqual(stats.sessions, 0, "索引要对账掉")
     }
+
+    // MARK: - 归档会话缓存修剪
+
+    /// 存了归档集合之后，`pruneArchived` 应该把已归档的时间线清掉、未归档的保留。
+    func testPruneArchivedRemovesArchivedTimelinesOnly() async throws {
+        let cache = SessionCache(directory: directory)
+        await cache.store(makeSession(seq: 1), for: "session-active")
+        await cache.store(makeSession(seq: 2), for: "session-archived")
+
+        await cache.store(archivedSessionIds: ["session-archived"])
+        await cache.pruneArchived()
+
+        let active = await cache.session(for: "session-active")
+        let archived = await cache.session(for: "session-archived")
+        XCTAssertNotNil(active, "未归档的不能动")
+        XCTAssertNil(archived, "已归档的该被清掉")
+
+        let stats = await cache.statistics()
+        XCTAssertEqual(stats.sessions, 1)
+    }
+
+    /// `except` 里的会话不清 —— 给"用户正在看这个归档会话"的场景用。
+    func testPruneArchivedRespectsExcept() async throws {
+        let cache = SessionCache(directory: directory)
+        await cache.store(makeSession(seq: 1), for: "session-archived")
+
+        await cache.store(archivedSessionIds: ["session-archived"])
+        await cache.pruneArchived(except: ["session-archived"])
+
+        let kept = await cache.session(for: "session-archived")
+        XCTAssertNotNil(kept, "except 里的要留着")
+    }
+
+    /// 没有存过归档集合时，`pruneArchived` 是 no-op（不能误删）。
+    func testPruneArchivedIsNoOpWithoutSnapshot() async throws {
+        let cache = SessionCache(directory: directory)
+        await cache.store(makeSession(seq: 1), for: "session-active")
+
+        await cache.pruneArchived()
+
+        let active = await cache.session(for: "session-active")
+        XCTAssertNotNil(active, "没有归档快照时不能动任何缓存")
+    }
+
+    /// 冷启动过滤：缓存里的列表含已归档的，`activeSessionList()` 只返回未归档的。
+    func testActiveSessionListFiltersArchived() async throws {
+        let cache = SessionCache(directory: directory)
+        let value = Fixture.json(#"""
+        {"items":[
+            {"sessionId":"session-a","title":"活跃的"},
+            {"sessionId":"session-b","title":"归档的"}
+        ]}
+        """#)
+        await cache.store(sessionList: value)
+        await cache.store(archivedSessionIds: ["session-b"])
+
+        let active = await cache.activeSessionList()
+        let items = active?["items"]?.arrayValue ?? []
+        XCTAssertEqual(items.count, 1)
+        XCTAssertEqual(items.first?["sessionId"]?.stringValue, "session-a")
+    }
+
+    /// 没有归档快照时，`activeSessionList()` 返回全量（跟原来一样）。
+    func testActiveSessionListWithoutSnapshotReturnsEverything() async throws {
+        let cache = SessionCache(directory: directory)
+        let value = Fixture.json(#"{"items":[{"sessionId":"session-a"}]}"#)
+        await cache.store(sessionList: value)
+
+        let active = await cache.activeSessionList()
+        XCTAssertEqual(active?["items"]?.arrayValue?.count, 1)
+    }
+
+    /// `activeSessionList()` 会顺手把已归档的时间线从磁盘上清掉。
+    func testActiveSessionListPrunesArchivedTimelinesAsSideEffect() async throws {
+        let cache = SessionCache(directory: directory)
+        let value = Fixture.json(#"{"items":[{"sessionId":"session-b"}]}"#)
+        await cache.store(sessionList: value)
+        await cache.store(makeSession(seq: 1), for: "session-b")
+        await cache.store(archivedSessionIds: ["session-b"])
+
+        _ = await cache.activeSessionList()
+
+        let archived = await cache.session(for: "session-b")
+        XCTAssertNil(archived, "归档的时间线该被顺手清掉")
+    }
+
+    /// 过滤只改 `items`，**不能**把负载里别的字段弄丢。
+    /// 缓存里存的是宿主的原始负载，以后很可能会读别的字段。
+    func testActiveSessionListKeepsOtherTopLevelKeys() async throws {
+        let cache = SessionCache(directory: directory)
+        await cache.store(sessionList: Fixture.json(#"""
+        {"items":[{"sessionId":"session-a"},{"sessionId":"session-b"}],"cursor":42,"hasMore":true}
+        """#))
+        await cache.store(archivedSessionIds: ["session-b"])
+
+        let active = await cache.activeSessionList()
+        XCTAssertEqual(active?["items"]?.arrayValue?.count, 1)
+        XCTAssertEqual(active?["cursor"]?.intValue, 42, "别的字段要原样带回去")
+        XCTAssertEqual(active?["hasMore"]?.boolValue, true)
+    }
+
+    /// 老形态的负载用 `sessions` 而不是 `items`（`decodeSessionList` 两个都认），
+    /// 过滤这边也必须两个都认 —— 只认一个的话会静默退化成"不过滤"。
+    func testActiveSessionListFiltersTheLegacySessionsKeyToo() async throws {
+        let cache = SessionCache(directory: directory)
+        await cache.store(sessionList: Fixture.json(#"""
+        {"sessions":[{"sessionId":"session-a"},{"sessionId":"session-b"}]}
+        """#))
+        await cache.store(archivedSessionIds: ["session-b"])
+
+        let active = await cache.activeSessionList()
+        XCTAssertEqual(active?["sessions"]?.arrayValue?.count, 1)
+        XCTAssertEqual(active?["sessions"]?.arrayValue?.first?["sessionId"]?.stringValue, "session-a")
+    }
+
+    /// 负载里既没有 `items` 也没有 `sessions` 时，原样返回，不要崩也不要吞掉。
+    func testActiveSessionListPassesThroughUnknownShape() async throws {
+        let cache = SessionCache(directory: directory)
+        await cache.store(sessionList: Fixture.json(#"{"somethingElse":1}"#))
+        await cache.store(archivedSessionIds: ["session-b"])
+
+        let active = await cache.activeSessionList()
+        XCTAssertEqual(active?["somethingElse"]?.intValue, 1)
+    }
 }

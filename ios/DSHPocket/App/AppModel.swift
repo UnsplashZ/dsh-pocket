@@ -80,6 +80,8 @@ public final class AppModel {
     private(set) var isLoadingSessions = false
     private(set) var sessionListError: String?
     private(set) var lastRefreshedAt: Date?
+    /// 上次**尝试**刷新会话列表的时间（不管成功与否）。`refreshSessions()` 的节流依据。
+    private var lastRefreshAttemptAt: Date?
 
     // MARK: 主机
 
@@ -228,7 +230,10 @@ public final class AppModel {
         hosts = await tether.hosts()
         await notifier.configure()
         // 冷启动第一屏：先用缓存里的列表，再等 `session/list` 校准。
-        if sessions.isEmpty, let cached = await sessionCache.sessionList() {
+        // 用 `activeSessionList()` 而不是原始 `sessionList()` —— 后者会把已归档的
+        // 会话也铺出来，直到 `workspace/follow` 的 baseline 到达才被剔掉，
+        // 用户看到的就是"一堆已归档的会话闪过"。
+        if sessions.isEmpty, let cached = await sessionCache.activeSessionList() {
             sessions = DSHClient.decodeSessionList(cached)
             if !sessions.isEmpty { logs.log(.info, "会话列表来自缓存（\(sessions.count) 条）") }
         }
@@ -532,9 +537,16 @@ public final class AppModel {
             archivedSessionIds = Set(archived)
             pinnedSessionIds = Set(pinned)
             self.workspaces = workspaces.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+            // 归档集合是冷启动过滤缓存列表的依据，也是修剪归档时间线的依据。
+            await sessionCache.store(archivedSessionIds: archivedSessionIds)
+            await pruneArchivedCache()
+            signalWorkspaceBaseline()
             logs.log(.info, "工作区基线：\(self.workspaces.count) 个工作区、\(archived.count) 个已归档")
         case .archived(let ids):
             archivedSessionIds = Set(ids)
+            // 写入最新快照，并清掉新归档的会话的时间线缓存（几乎不会再有人点开）。
+            await sessionCache.store(archivedSessionIds: archivedSessionIds)
+            await pruneArchivedCache()
         case .pinned(let ids):
             pinnedSessionIds = Set(ids)
         case .workspaces(let upserted):
@@ -584,14 +596,71 @@ public final class AppModel {
 
     // MARK: 会话列表
 
-    func refreshSessions() async {
+    /// 每次刷新至少间隔这么久（给手动的 `refreshSessions()` 做节流）。
+    private static let minimumRefreshInterval: TimeInterval = 15
+
+    /// `workspace/follow` 的首帧（baseline）是否已经到达。
+    ///
+    /// 为什么必须等它：`session/list` 里**没有**归档字段，如果 baseline 还没到
+    /// 就把列表存进缓存，已归档的会话也跟着进去了 —— 下次冷启动
+    /// `activeSessionList()` 虽然能滤掉它们，但那是"事后补救"；存的时候就不该
+    /// 让归档的混进去。baseline 几乎瞬间到达，这里只是一个保险。
+    private var hasAppliedWorkspaceBaseline = false
+
+    /// baseline 最多等这么久。正常几毫秒内就到了；超时意味着这条流根本没起来，
+    /// 那就**不要**把这次 `session/list` 的结果存进缓存，也不把"还没剔掉归档"的
+    /// 列表固化下来。返回是否真的等到了。
+    ///
+    /// 实现上刻意用轮询而不是 continuation + 超时"唤醒"：延续体只能被 resume 一次，
+    /// 而 `withTaskGroup` 在作用域退出时会等所有子任务结束。超时那一刻并没有人
+    /// resume 那个延续体（取消任务不会唤醒它），于是"超时"形同虚设 ——
+    /// 流没起来时这里会**永久挂住**，`refreshSessions()` 的 `defer` 不执行，
+    /// 下拉刷新的转圈就一直转。而且原实现超时后调用方照样把列表写进了缓存，
+    /// 注释里说的"宁可这次不存"并没有真的发生。
+    ///
+    /// 50ms 轮询在"已经到达"的常规路径上零开销（第一个判断就返回），
+    /// 最坏 3 秒，换来的是显然正确、不会挂。
+    private func waitForWorkspaceBaseline() async -> Bool {
+        guard !hasAppliedWorkspaceBaseline else { return true }
+        let deadline = ContinuousClock.now.advanced(by: Self.workspaceBaselineTimeout)
+        while !hasAppliedWorkspaceBaseline, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        return hasAppliedWorkspaceBaseline
+    }
+
+    private static let workspaceBaselineTimeout: Duration = .seconds(3)
+
+    /// 基线到达时置位。
+    private func signalWorkspaceBaseline() { hasAppliedWorkspaceBaseline = true }
+
+    /// 拉取会话列表。
+    ///
+    /// `force` 为 true 时不受下面的节流限制，给"刚改完状态、必须立刻在列表里体现"
+    /// 的调用方用 —— 见 `unarchive(_:)`：它没有本地回填，只靠这次刷新把会话拉回列表，
+    /// 被节流挡掉的话用户要等十几秒才能看到自己刚恢复的会话。
+    func refreshSessions(force: Bool = false) async {
         guard connection.isConnected else { return }
+        // 节流：手动刷新（下拉、进归档页）每 15 秒最多真正发一次 RPC。
+        if !force, let last = lastRefreshAttemptAt, Date().timeIntervalSince(last) < Self.minimumRefreshInterval {
+            logs.log(.debug, "跳过会话列表刷新（15 秒节流）")
+            return
+        }
+        lastRefreshAttemptAt = Date()
         isLoadingSessions = true
         defer { isLoadingSessions = false }
         do {
             let value = try await client.listSessionsValue()
             sessions = DSHClient.decodeSessionList(value)
-            await sessionCache.store(sessionList: value)
+            // **必须先等 baseline**：`session/list` 不带归档字段，如果 workspace 流
+            // 还没到就存缓存，已归档的会被一起写进去 —— 下次冷启动
+            // `activeSessionList()` 能滤掉，但那是"事后补救"，不如存的时候就干净。
+            // 等不到（流没起来）就这次不存：宁可下次再存，也不把脏列表固化下来。
+            if await waitForWorkspaceBaseline() {
+                await sessionCache.store(sessionList: value)
+            } else {
+                logs.log(.debug, "workspace 基线未到，本次不写会话列表缓存")
+            }
             sessionListError = nil
             lastRefreshedAt = Date()
         } catch {
@@ -761,6 +830,10 @@ public final class AppModel {
             // 宿主返回**完整**的已归档集合，直接采纳，不要自己维护增量。
             archivedSessionIds = Set(try await client.archiveSession(sessionId: sessionId, stopActivity: stopActivity))
             sessions.removeAll { $0.sessionId == sessionId }
+            // 同步快照 + 把新归档的那个的时间线清掉（`except` 是空集，没有例外）。
+            // 如果用户马上去归档页点开它，就重拉一次，反正归档的几乎不会再点开。
+            await sessionCache.store(archivedSessionIds: archivedSessionIds)
+            await pruneArchivedCache()
         } catch let error as DSHClientError {
             sessionListError = archiveFailureMessage(error)
         } catch {
@@ -779,8 +852,16 @@ public final class AppModel {
 
     func unarchive(_ sessionId: String) async {
         do {
-            archivedSessionIds = Set(try await client.unarchiveSession(sessionId: sessionId))
-            await refreshSessions()
+            // 宿主返回**完整**的已归档集合，直接采纳，不要自己维护增量。
+            let ids = try await client.unarchiveSession(sessionId: sessionId)
+            archivedSessionIds = Set(ids)
+            // 恢复了就不再清它的时间线缓存（如果还有的话）——pruneArchived
+            // 看的是**当前**快照，这个会话已经不在里面了。
+            await sessionCache.store(archivedSessionIds: archivedSessionIds)
+            await pruneArchivedCache()
+            // `force`：解归档没有本地回填，全靠这次刷新把会话拉回列表。
+            // 被 15 秒节流挡掉的话，用户刚恢复的会话要等十几秒才出现。
+            await refreshSessions(force: true)
         } catch {
             sessionListError = (error as? DSHClientError)?.displayMessage ?? error.localizedDescription
         }
@@ -894,6 +975,24 @@ public final class AppModel {
     func clearSessionCache() async {
         await sessionCache.clear()
         logs.log(.info, "已清空会话缓存")
+    }
+
+    /// 修剪归档会话的缓存，但**永远避开用户正在看的那个会话**。
+    ///
+    /// `SessionModel` 会直接从缓存里铺时间线（`session(for:)`），所以把正在看的那个
+    /// 删掉等于把这一屏的底抽了：轻则重新从宿主拉一遍、重则先白一下。
+    /// `activeSessionId` 由 `SessionView` 的出现/消失维护，正好是"这一刻在屏幕上"的那个。
+    private func pruneArchivedCache() async {
+        await sessionCache.pruneArchived(except: activeSessionId.map { [$0] } ?? [])
+    }
+
+    /// 清掉**已归档会话**的时间线缓存（保留未归档的，也不动正在看的那个）。
+    ///
+    /// 供归档管理页用：归档的会话几乎不会再被点开，但它们的时间线文件可能
+    /// 还占着 LRU 预算。
+    func clearArchivedSessionCache() async {
+        await pruneArchivedCache()
+        logs.log(.info, "已清理归档会话的缓存")
     }
 
     // MARK: 主机管理

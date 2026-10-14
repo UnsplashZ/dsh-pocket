@@ -150,11 +150,73 @@ actor SessionCache {
         return value
     }
 
+    /// 只含**未归档**会话的列表。
+    ///
+    /// 为什么单独有这个方法而不是让调用方自己 filter：`session/list` 里没有归档字段，
+    /// 冷启动第一屏如果直接把缓存里的全量列表铺出来，已归档的会话会**先显示出来**，
+    /// 直到 `workspace/follow` 的 baseline 到达才被剔掉 —— 用户看到的就是"打开 app
+    /// 一堆已归档的会话闪过"。这里用上次存下来的归档集合把缓存**读的时候就**过滤掉，
+    /// 并顺手把磁盘上已归档的时间线文件清掉（它们不再有人读，只会白占预算）。
+    func activeSessionList() -> JSONValue? {
+        guard let archived = archivedSessionList(), !archived.isEmpty else { return sessionList() }
+        // 全清，无例外 —— 这是冷启动路径，没有在浏览任何会话。
+        pruneArchived()
+        guard let list = sessionList() else { return nil }
+        // 宿主用 `items`，老版本是 `sessions`（`decodeSessionList` 两个都认）。
+        // 这里也必须两个都认：只认一个的话，另一种形态下会静默退化成"不过滤"，
+        // 已归档的会话又冒出来 —— 而且是最难查的那种"看起来没问题"。
+        let key = list["items"] != nil ? "items" : "sessions"
+        guard let items = list[key]?.arrayValue else { return list }
+        let filteredItems = items.filter { item in
+            guard let id = item["sessionId"]?.stringValue else { return true }
+            return !archived.contains(id)
+        }
+        // 只替换那一个键再整块还回去，别把"改过 items 的列表"变成"只剩 items 的列表"：
+        // 缓存里存的是宿主的原始负载，以后很可能会读别的字段。
+        guard var object = list.objectValue else { return list }
+        object[key] = .array(filteredItems)
+        return .object(object)
+    }
+
+    /// 上次存下来的归档集合（`session/list` 不带来这个字段，这里存的是上次
+    /// `workspace/follow` 同步过来的快照）。
+    func archivedSessionList() -> Set<String>? {
+        guard let data = try? Data(contentsOf: archivedSessionListURL),
+              let value = try? JSONDecoder.cache.decode([String].self, from: data)
+        else { return nil }
+        return Set(value)
+    }
+
     func store(sessionList value: JSONValue) {
         guard let data = try? JSONEncoder.cache.encode(value) else { return }
         // 列表很小（几十 KB），单独放在预算之外 —— 它决定冷启动第一屏，
         // 被工具输出挤掉是最不划算的。
         try? data.write(to: sessionListURL, options: Data.WritingOptions.atomic)
+    }
+
+    /// 把当前的归档集合存下来，供 `activeSessionList()` 冷启动过滤用。
+    func store(archivedSessionIds: Set<String>) {
+        guard let data = try? JSONEncoder.cache.encode(Array(archivedSessionIds)) else { return }
+        try? data.write(to: archivedSessionListURL, options: Data.WritingOptions.atomic)
+    }
+
+    /// 清掉**已归档会话**的时间线缓存（不动未归档的）。
+    ///
+    /// 归档的语义本来就是"收起来" —— 它们几乎不会再被点开，留着只会挤占 LRU 预算。
+    /// `except` 用于"用户正在看这个归档会话"的场景：把它留着，免得刚从缓存铺出来
+    /// 又被自己清掉。
+    func pruneArchived(except exceptions: Set<String> = []) {
+        loadIndexIfNeeded()
+        let archived = archivedSessionList() ?? []
+        guard !archived.isEmpty else { return }
+        var changed = false
+        for sessionId in archived where !exceptions.contains(sessionId) {
+            guard index[sessionId] != nil else { continue }
+            try? FileManager.default.removeItem(at: timelineURL(sessionId))
+            index[sessionId] = nil
+            changed = true
+        }
+        if changed { saveIndex() }
     }
 
     // MARK: 维护
@@ -175,6 +237,7 @@ actor SessionCache {
         }
         index.removeAll()
         try? FileManager.default.removeItem(at: sessionListURL)
+        try? FileManager.default.removeItem(at: archivedSessionListURL)
         saveIndex()
     }
 
@@ -206,6 +269,13 @@ actor SessionCache {
 
     private var sessionListURL: URL {
         directory.appendingPathComponent("session-list.json")
+    }
+
+    /// 归档集合的快照。`session/list` 里没有这个字段（归档属于工作区），
+    /// 冷启动第一屏要等 `workspace/follow` 的 baseline 才能拿到 —— 在那之前
+    /// 先用上次存下来的快照把已归档的从缓存列表里剔掉。
+    private var archivedSessionListURL: URL {
+        directory.appendingPathComponent("archived-sessions.json")
     }
 
     private var indexPath: URL {

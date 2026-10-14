@@ -52,6 +52,17 @@ struct ArchivedSessionsView: View {
         .searchable(text: $query, prompt: Text("搜索已归档的会话"))
         .navigationTitle("已归档")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    clearArchivedCache()
+                } label: {
+                    Label("清缓存", systemImage: "trash.slash")
+                }
+                .disabled(model.archivedSessions.isEmpty)
+                .help("清掉已归档会话的本地缓存（不影响未归档的）")
+            }
+        }
         .refreshable { await model.refreshSessions() }
         .overlay {
             if isWorking {
@@ -125,6 +136,15 @@ struct ArchivedSessionsView: View {
         isWorking = true
         Task {
             await model.unarchive(summary.sessionId)
+            isWorking = false
+        }
+    }
+
+    /// 清掉所有归档会话的本地缓存（保留未归档的）。
+    private func clearArchivedCache() {
+        isWorking = true
+        Task {
+            await model.clearArchivedSessionCache()
             isWorking = false
         }
     }
