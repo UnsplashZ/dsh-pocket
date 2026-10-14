@@ -22,6 +22,28 @@ All notable changes to this project are documented here.
 
 ---
 
+## [0.4.1] — 2026-10-14
+
+补丁：0.4.0 里新增的「清缓存」按钮漏了英文文案（英文设备上显示成中文）。
+
+### Fixed
+
+- **「清缓存」按钮缺英文翻译**。这是 CI 的本地化检查抓到的：它拿人写的 `EN` 字典与
+  从源码抽出来的 key 对账，缺一条就红。0.4.0 是在这次检查已经变红的情况下发出去的，
+  所以这里补一个补丁版本。
+- **`.help("…")` 不在抽取模式的覆盖范围里**：`.help(_:)` 收的也是 `LocalizedStringKey`，
+  不进目录的话中文机器上一切正常、英文机器上冒出一句中文。现在它也被抽取与检查。
+
+### 文档
+
+- README（中英）不再声称"文案全覆盖"：目录里的 442 条确实两种语言都齐，但源码里还有
+  **约 126 条面向人的中文字面量没进目录**（App 92 / DSHKit 34），英文设备上会显示中文。
+  已实测统计、写明修法，并开成 [#1](https://github.com/UnsplashZ/dsh-pocket/issues/1)。
+- `docs/APP-REVIEW.md` 顶上补了快照说明：那份文档里的「死代码」整条已作废，
+  而 `DSHClient.events()` 其实有人在用，别照着删。
+
+---
+
 ## [0.4.0] — 2026-10-14
 
 **中文摘要**：冷启动不再闪过已归档的会话，归档的时间线缓存可以单独清掉；
@@ -104,6 +126,7 @@ First public release. Unsigned IPA only — you re-sign it with your own Apple I
 - 本项目由 [dsh-tether](https://github.com/zexadev/dsh-tether) 衍生而来，只重写了界面层：
   传输层（iroh 打洞 / 配对 / 中转 / cookie 注入）沿用上游设计。见 [NOTICE.md](NOTICE.md)。
 
-[Unreleased]: https://github.com/UnsplashZ/dsh-pocket/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/UnsplashZ/dsh-pocket/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/UnsplashZ/dsh-pocket/releases/tag/v0.4.1
 [0.4.0]: https://github.com/UnsplashZ/dsh-pocket/releases/tag/v0.4.0
 [0.3.0]: https://github.com/UnsplashZ/dsh-pocket/releases/tag/v0.3.0

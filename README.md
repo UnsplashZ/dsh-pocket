@@ -168,7 +168,9 @@ toggles, scheduled reminders, cache management, archived sessions, notifications
 failures are localized per reason code.
 
 **Accessibility and localization** — dynamic type AX1–AX5, VoiceOver labels, dark mode, 44 pt
-targets; 440 strings fully covered in English and Simplified Chinese.
+targets. The String Catalog (442 strings) is fully covered in both languages, **but a batch of
+secondary strings is still Chinese-only** — dialogs, the diagnostics page, and host error
+messages; measured and tracked in [#1](https://github.com/UnsplashZ/dsh-pocket/issues/1).
 
 ---
 
