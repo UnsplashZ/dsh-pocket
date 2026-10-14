@@ -118,8 +118,14 @@
 
 - [x] `scripts/install-device.sh`：`xcodebuild -allowProvisioningUpdates` + `devicectl install/launch`，
       含描述文件续期提示与"信任开发者证书"指引
-- [x] 版本号与构建号策略（`MARKETING_VERSION` / `CURRENT_PROJECT_VERSION`）
-- [x] README 的"从 0 到可用"步骤复核
+- [x] 版本号与构建号策略：`ios/VERSION` 是唯一真源，`ios/scripts/version.sh` 单向同步进
+      `project.yml` 的 `MARKETING_VERSION`；构建号由构建方给（CI 用 `github.run_number`）
+- [x] **未签名 IPA 打包**：`ios/scripts/make-ipa.sh`（关签名 + 对产物做断言：版本号、
+      `Payload/` 结构、无签名身份），本仓库对外只发这一种形态
+- [x] **CI 与发布流水线**：`.github/workflows/ci.yml`（库单测 + App 单测 + 打包一遍）、
+      `release.yml`（打 tag 时建 Release）、`bump-version.yml`（递增版本 + 打 tag）
+- [x] README 的"从 0 到可用"步骤复核；安装与自签指南见
+      [INSTALL-UNSIGNED-IPA.md](INSTALL-UNSIGNED-IPA.md)
 - [ ] **在一台干净设备上真机走一遍**（含首次「本地网络」权限询问）
 - [ ] 若用 TestFlight：需要付费账号；写清楚审核说明与演示路径
 - [ ] 更新 [GLOSSARY.md](GLOSSARY.md)/[DECISIONS.md](DECISIONS.md) 中产生偏差的部分
@@ -142,22 +148,26 @@
 ## 怎么跑起来（开发者视角）
 
 ```bash
-# 依赖（一次）：把 iroh 的预编译部件取到 ios/vendor/（133 MB，不入库）
+# 依赖（一次）：把 iroh 的预编译部件取到 ios/vendor/（约 42 MB，不入库）
 bash ios/scripts/fetch-iroh.sh
 
 # 库的测试（macOS，不需要模拟器、不需要网络）
-cd ios/DSHKit   && swift test --disable-sandbox      # 47 条
-cd ios/TetherKit && swift test --disable-sandbox     # 27 条
+# --disable-sandbox 只在受限沙箱（容器 / CI / agent 会话）里需要
+cd ios/DSHKit   && swift test --disable-sandbox      # 96 条（+20 条活宿主测试跳过）
+cd ios/TetherKit && swift test --disable-sandbox     # 33 条
 
 # 对着**活着的 DSH** 跑协议回归（需要先起 dev 代理）
 node tools/direct-gateway.mjs &
-cd ios/DSHKit && DSH_LIVE=1 swift test --disable-sandbox --filter LiveIntegration
+cd ios/DSHKit && DSH_LIVE=1 swift test --disable-sandbox --filter LiveIntegration   # 20 条
 
 # App：构建 + 单测 + 跑起来
 bash ios/build.sh                 # 模拟器构建
-bash ios/build.sh --test          # 15 条 App 层单测
+bash ios/build.sh --test          # 40 条 App 层单测
 bash ios/build.sh --run           # 装进模拟器并启动
 bash scripts/install-device.sh    # 装到真机
+
+# 未签名 IPA（本仓库对外分发的形态）
+bash ios/scripts/make-ipa.sh      # → dist/DSHPocket-<版本>-unsigned.ipa
 
 # 传输层互通（M0b）
 node tools/tether-host-dev.mjs --data-dir /tmp/tether --pair
