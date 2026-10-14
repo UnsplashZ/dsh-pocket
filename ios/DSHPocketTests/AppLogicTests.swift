@@ -61,28 +61,30 @@ final class AppLogicTests: XCTestCase {
 
     // MARK: 格式化
 
-    // 本地化文案跟着语言走，所以**不能**假设跑在中文机器上：
-    // CI 的 runner 是 en-US，写死中文的断言到那儿全红。两边都断言，
-    // 顺带把 en 的文案也覆盖上（缺翻译时 `String(localized:)` 会退回 key，
-    // 断言就会在英文那一侧失败）。
-    private static let zhLocale = Locale(identifier: "zh-Hans")
-    private static let enLocale = Locale(identifier: "en")
+    // 这些文案跟着 App 当前语言走，**不能**写死中文：CI 的 runner 是 en-US，
+    // 写死的断言到那儿全红（第一次跑 CI 就是这么红的）。
+    //
+    // 为什么不给 `Format` 加一个 locale 参数来钉死语言：`String(localized:locale:)`
+    // 的 `locale` 只影响文案内部的数字/日期格式，挑不了 `.lproj` ——
+    // 在 en 设备上传 `zh-Hans` 出来还是英文（CI 上实测）。语言由
+    // `Bundle.main.preferredLocalizations` 决定，所以期望值也从那里取。
+    // 另外，两种语言都齐全这件事由 CI 的 `gen-strings.py --check` 保证。
+    private static let expectsChinese = (Bundle.main.preferredLocalizations.first ?? "en").hasPrefix("zh")
 
     func testRelativeTimeReadsNaturally() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
-        XCTAssertEqual(Format.relativeTime(now.addingTimeInterval(-5), now: now, locale: Self.zhLocale), "刚刚")
-        XCTAssertEqual(Format.relativeTime(now.addingTimeInterval(-5), now: now, locale: Self.enLocale), "Just now")
-        XCTAssertFalse(Format.relativeTime(now.addingTimeInterval(-3600), now: now, locale: Self.zhLocale).isEmpty)
-        XCTAssertFalse(Format.relativeTime(now.addingTimeInterval(-86_400 * 30), now: now, locale: Self.zhLocale).isEmpty)
+        XCTAssertEqual(
+            Format.relativeTime(now.addingTimeInterval(-5), now: now),
+            Self.expectsChinese ? "刚刚" : "Just now"
+        )
+        XCTAssertFalse(Format.relativeTime(now.addingTimeInterval(-3600), now: now).isEmpty)
+        XCTAssertFalse(Format.relativeTime(now.addingTimeInterval(-86_400 * 30), now: now).isEmpty)
     }
 
     func testDurationFormatting() {
-        XCTAssertEqual(Format.duration(0.045, locale: Self.zhLocale), "45 毫秒")
-        XCTAssertEqual(Format.duration(2.24, locale: Self.zhLocale), "2.2 秒")
-        XCTAssertEqual(Format.duration(125, locale: Self.zhLocale), "2 分 5 秒")
-        XCTAssertEqual(Format.duration(0.045, locale: Self.enLocale), "45 ms")
-        XCTAssertEqual(Format.duration(2.24, locale: Self.enLocale), "2.2 s")
-        XCTAssertEqual(Format.duration(125, locale: Self.enLocale), "2m 5s")
+        XCTAssertEqual(Format.duration(0.045), Self.expectsChinese ? "45 毫秒" : "45 ms")
+        XCTAssertEqual(Format.duration(2.24), Self.expectsChinese ? "2.2 秒" : "2.2 s")
+        XCTAssertEqual(Format.duration(125), Self.expectsChinese ? "2 分 5 秒" : "2m 5s")
         XCTAssertNil(Format.duration(nil))
         XCTAssertNil(Format.duration(-1))
     }
