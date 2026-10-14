@@ -46,6 +46,11 @@ public final class SessionModel {
     /// 这一轮是什么时候开始的 —— 工作状态那个实时计时器用它。
     /// **是电脑时钟的时间**（`event.time` 来自宿主）。
     private(set) var turnStartedAt: Date?
+    /// `turnStartedAt` 是不是真的 `turn/start`。
+    ///
+    /// 有界快照把 `turn/start` 切在窗口外时，起点只是"窗口里第一条"——
+    /// 比真实开始晚（F5）。false 时 UI 显示「≥」，如实说明这是下界。
+    private(set) var turnStartIsExact = false
 
     /// 电脑时钟与本机的偏移（电脑时间 − 本机时间）。
     ///
@@ -151,7 +156,13 @@ public final class SessionModel {
     /// 打开之后由实时的 `turn/start` / `turn/end` 修正。
     private var summaryIsRunning: Bool
 
-    init(sessionId: String, title: String, isRunning: Bool = false, appModel: AppModel) {
+    /// 这个会话是不是**子代理会话**（`origin == "subagent"` 或投影里有 `subagent` 自述）。
+    ///
+    /// 宿主对子代理会话拒 `session/cancel`（`session/agent-busy`）—— 知道身份就能
+    /// **在发 RPC 之前**给出解释，而不是让用户点一次停止、吃一个原始错误。
+    private(set) var isSubagentSession: Bool
+
+    init(sessionId: String, title: String, isRunning: Bool = false, isSubagent: Bool = false, appModel: AppModel) {
         self.sessionId = sessionId
         self.title = title
         self.summaryIsRunning = isRunning
@@ -159,6 +170,7 @@ public final class SessionModel {
         self.settings = appModel.settings
         self.logs = appModel.logs
         self.isTurnRunning = isRunning
+        self.isSubagentSession = isSubagent
     }
 
     // MARK: 打开 / 关闭
@@ -297,7 +309,14 @@ public final class SessionModel {
     /// 那样计时器就永远不显示（跟队列那个问题同源）。
     private func syncTurnTimer() {
         // 逻辑在 DSHKit 里（纯函数，有测试）—— 这里只管接线。
-        turnStartedAt = TurnTimer.start(items: items, isRunning: isTurnRunning, existing: turnStartedAt)
+        let result = TurnTimer.startWithConfidence(
+            items: items,
+            isRunning: isTurnRunning,
+            existing: turnStartedAt,
+            existingIsExact: turnStartIsExact
+        )
+        turnStartedAt = result?.at
+        turnStartIsExact = result?.isExact ?? false
     }
 
     private func applySnapshot(_ snapshot: SessionSnapshot) async {
@@ -341,14 +360,9 @@ public final class SessionModel {
         applyProjections(snapshot.projections)
         if !hasVisibleContent { publish() }
 
-        // 用快照最后一条事件的时间对齐两边时钟。
-        //
-        // **夹在 ±5 分钟之内**：正常的时钟偏差不会超过这个量级；
-        // 超了说明"最后一条事件"其实很旧（比如宿主正卡在一个长命令上、
-        // 期间没有新事件），拿它当"现在"会把计时器拉偏。
+        // 用快照最后一条事件的时间对齐两边时钟（逻辑在 DSHKit，纯函数有测试）。
         if let hostTime = snapshot.events.last?.time {
-            let raw = hostTime.timeIntervalSinceNow
-            hostClockOffset = abs(raw) < 300 ? raw : 0
+            hostClockOffset = HostClockOffset.clamped(referenceHostTime: hostTime)
         }
         let events = snapshot.events
         let chunkSize = 120
@@ -402,9 +416,11 @@ public final class SessionModel {
             isTurnRunning = true
             summaryIsRunning = true
             turnStartedAt = event.time
+            turnStartIsExact = true
         }
         if event.type == "turn/end" {
             turnStartedAt = nil
+            turnStartIsExact = false
             // 实时的 `turn/end` 是终局判据：它到了就是跑完了，
             // 不再让可能过期的列表标志把它拉回"运行中"。
             isTurnRunning = false
@@ -486,6 +502,8 @@ public final class SessionModel {
         planState = values["plan"].map(PlanState.init(json:))
         sessionStats = SessionStats(json: values["sessionStats"] ?? .object([:]))
         subagentCatalog = (values.array("subagentCatalog") ?? []).map(SubagentInfo.init(json:))
+        // 占位会话打开时列表标志可能缺位 —— 投影里的 `subagent` 自述是另一个判据。
+        if values["subagent"] != nil { isSubagentSession = true }
         contextBreakdown = values["contextBreakdown"].map(ContextBreakdown.init(json:))
         goal = values["goal"].map(SessionGoal.init(json:))
         tokenUsage = TokenUsage(json: values["tokenUsage"] ?? .object([:]))
@@ -678,6 +696,12 @@ public final class SessionModel {
     }
 
     func cancel() async {
+        // 子代理会话：宿主一定拒（`session/agent-busy`），别发这个 RPC，
+        // 直接把"为什么停不了、该去哪停"说清。
+        guard !isSubagentSession else {
+            failureMessage = String(localized: "这个会话由子代理托管，请到它的父会话里操作。")
+            return
+        }
         do {
             _ = try await client.cancel(sessionId: sessionId)
             isTurnRunning = false

@@ -1040,6 +1040,7 @@ EN: dict[str, str] = {
     "这轮还没有待办": "No to-dos for this turn yet",
     "这个会话由子代理托管，请到它的父会话里操作。":
         "This session is managed by a subagent. Use its parent session instead.",
+    "工作中，至少已用时 %@": "Working · at least %@ elapsed",
 }
 
 # 哪些插值表达式是整数。判错的后果是英文界面上显示成 `%lld` 字面量，

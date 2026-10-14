@@ -2476,6 +2476,17 @@
         }
       }
     },
+    "工作中，至少已用时 %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Working · at least %@ elapsed"
+          }
+        }
+      }
+    },
     "工作区": {
       "extractionState": "manual",
       "localizations": {

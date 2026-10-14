@@ -540,6 +540,23 @@ final class AppLogicTests: XCTestCase {
         await model.archive("session-does-not-exist")
         XCTAssertTrue(model.sessions.isEmpty)
     }
+
+    // MARK: 计时器文案
+
+    /// 工作状态那行的已用时格式：`12 秒` / `1 分 23 秒` —— 跟 desktop 的说法一致。
+    /// 负数与零都要被调用方夹过（`max(0, …)`），这里钉住格式本身。
+    func testElapsedTextFormatting() {
+        XCTAssertEqual(Composer.elapsedText(0), String(format: String(localized: "%lld 秒"), 0))
+        XCTAssertEqual(Composer.elapsedText(12), String(format: String(localized: "%lld 秒"), 12))
+        XCTAssertEqual(Composer.elapsedText(59), String(format: String(localized: "%lld 秒"), 59))
+        XCTAssertEqual(Composer.elapsedText(60), String(format: String(localized: "%lld 分 %lld 秒"), 1, 0))
+        XCTAssertEqual(Composer.elapsedText(83), String(format: String(localized: "%lld 分 %lld 秒"), 1, 23))
+        XCTAssertEqual(Composer.elapsedText(3599), String(format: String(localized: "%lld 分 %lld 秒"), 59, 59))
+        // 超过一小时也是"N 分 N 秒"（desktop 没有小时档）
+        XCTAssertEqual(Composer.elapsedText(3661), String(format: String(localized: "%lld 分 %lld 秒"), 61, 1))
+        // 小数截断而不是四舍五入 —— 计时器不该"提前"
+        XCTAssertEqual(Composer.elapsedText(83.9), String(format: String(localized: "%lld 分 %lld 秒"), 1, 23))
+    }
 }
 
 /// 与 DSHKit 测试同款的 JSON 构造助手（这里只需要最简的一个）。

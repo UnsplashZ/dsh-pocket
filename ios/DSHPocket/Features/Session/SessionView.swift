@@ -56,6 +56,7 @@ struct SessionView: View {
                     sessionId: summary.sessionId,
                     title: summary.title,
                     isRunning: summary.isRunning,
+                    isSubagent: summary.category.isSubagent,
                     appModel: model
                 )
                 session = created

@@ -347,7 +347,8 @@ struct Composer: View {
                     Text(session.isStreaming ? "正在生成" : "工作中")
                         .font(.footnote.weight(.medium))
                         .foregroundStyle(.secondary)
-                    Text(Self.elapsedText(elapsed))
+                    // 起点被有界快照截断时只是个下界（F5）—— 如实显示「≥」。
+                    Text(verbatim: (session.turnStartIsExact ? "" : "≥ ") + Self.elapsedText(elapsed))
                         .font(.footnote.monospacedDigit())
                         .foregroundStyle(.tertiary)
                     Spacer(minLength: 0)
@@ -363,10 +364,10 @@ struct Composer: View {
                     Rectangle().fill(Color(.separator)).frame(height: 0.5)
                 }
                 .accessibilityElement(children: .combine)
-                .accessibilityLabel(Text(String(
-                    format: String(localized: "工作中，已用时 %@"),
-                    Self.elapsedText(elapsed)
-                )))
+                .accessibilityLabel(Text(session.turnStartIsExact
+                    ? String(format: String(localized: "工作中，已用时 %@"), Self.elapsedText(elapsed))
+                    : String(format: String(localized: "工作中，至少已用时 %@"), Self.elapsedText(elapsed))
+                ))
             }
         }
     }

@@ -579,6 +579,14 @@ this deployment configures the session-query index with openAt "never"
    映射为「这个会话由子代理托管，请到它的父会话里操作。」；
    实时测试 `testCancelAcceptsBareSessionId` 的选人范围排除子代理会话
    （它验的是"形状校验"，不是这条边界）。
+7. **计时器起点如实显示（F5 的客户端部分）**。`TurnTimer.startWithConfidence` 在
+   `turn/start` 被有界快照切掉时返回"下界 + 不精确"，工作状态行显示「≥」，
+   不再把"比电脑端短"伪装成精确值。时钟偏移校正（±300 秒夹取）抽成
+   `HostClockOffset` 纯函数进 DSHKit —— 这也是 T1（SessionModel 测试债）的首付：
+   计时器起点、偏移、队列合并三块逻辑现都在 DSHKit 有单测。
+8. **子代理会话的停止前置预防**。`SessionModel.isSubagentSession`
+   （列表 `category` + 投影 `subagent` 自述双判据）让 `cancel()` 在**发 RPC 之前**
+   就给出解释 —— 那条错误是确定的，没必要让用户点一次停止、吃一个原始错误。
 
 **后果**：
 - 审批等待的典型场景（App 在后台）不用点进 App 就能决策；

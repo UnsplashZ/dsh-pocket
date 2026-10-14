@@ -806,6 +806,64 @@ final class TimelineBuilderTests: XCTestCase {
         XCTAssertEqual(TurnTimer.start(items: [], isRunning: true, existing: nil, now: now), now)
     }
 
+    /// **计时器起点的置信度**（F5）：起点是不是真的 `turn/start`。
+    ///
+    /// 有界快照把 `turn/start` 切在窗口外时，规则 2 拿到的是当前轮**窗口里**第一条，
+    /// 比真实开始晚 —— UI 据此显示「≥」。窗口里第一条就是 `.turnStart` 才算精确。
+    func testTurnTimerConfidence() throws {
+        let now = Date(timeIntervalSince1970: 1000)
+        func item(_ seq: Double, _ secondsAgo: TimeInterval, turn: Int?, isTurnStart: Bool = false) -> TimelineItem {
+            TimelineItem(
+                id: "i\(seq)", seq: seq, time: now.addingTimeInterval(-secondsAgo), turn: turn,
+                kind: isTurnStart
+                    ? .turnStart(turn: turn ?? 0)
+                    : .note(.init(text: "n\(seq)", symbolName: "x", tone: .neutral,
+                                  sourceEventType: "x", isProminent: false))
+            )
+        }
+
+        // ① 窗口里第一条就是 turn/start → 精确
+        let full = [item(1, 120, turn: 2, isTurnStart: true), item(2, 10, turn: 2)]
+        let exact = TurnTimer.startWithConfidence(items: full, isRunning: true, existing: nil, existingIsExact: false, now: now)
+        XCTAssertEqual(exact?.at, now.addingTimeInterval(-120))
+        XCTAssertEqual(exact?.isExact, true)
+
+        // ② turn/start 被切在窗口外 → 下界（同一点位，但不精确）
+        let truncated = [item(2, 60, turn: 2), item(3, 10, turn: 2)]
+        let lower = TurnTimer.startWithConfidence(items: truncated, isRunning: true, existing: nil, existingIsExact: false, now: now)
+        XCTAssertEqual(lower?.at, now.addingTimeInterval(-60))
+        XCTAssertEqual(lower?.isExact, false)
+
+        // ③ 已有起点：原样保留（含它自己的置信度）
+        let given = now.addingTimeInterval(-30)
+        let kept = TurnTimer.startWithConfidence(items: truncated, isRunning: true, existing: given, existingIsExact: true, now: now)
+        XCTAssertEqual(kept?.at, given)
+        XCTAssertEqual(kept?.isExact, true)
+
+        // ④ 退回最后一条 / 现在 → 不精确
+        let noTurn = [item(1, 90, turn: nil)]
+        let fallback = TurnTimer.startWithConfidence(items: noTurn, isRunning: true, existing: nil, existingIsExact: false, now: now)
+        XCTAssertEqual(fallback?.isExact, false)
+
+        // ⑤ 不跑着 → nil
+        XCTAssertNil(TurnTimer.startWithConfidence(items: full, isRunning: false, existing: nil, existingIsExact: false, now: now))
+    }
+
+    /// **时钟偏移校正**：合理偏差照用，离谱的归零（参照事件太旧时会拉偏计时器）。
+    func testHostClockOffsetClamping() throws {
+        let now = Date(timeIntervalSince1970: 1000)
+
+        // 电脑快 3 秒 → +3
+        XCTAssertEqual(HostClockOffset.clamped(referenceHostTime: now.addingTimeInterval(3), now: now), 3, accuracy: 0.001)
+        // 电脑慢 2.5 秒 → -2.5
+        XCTAssertEqual(HostClockOffset.clamped(referenceHostTime: now.addingTimeInterval(-2.5), now: now), -2.5, accuracy: 0.001)
+        // 参照事件是 20 分钟前的（宿主卡在长命令上）→ 不校正
+        XCTAssertEqual(HostClockOffset.clamped(referenceHostTime: now.addingTimeInterval(-1200), now: now), 0)
+        // 边界：正好 300 秒算离谱（`<` 是严格小于）
+        XCTAssertEqual(HostClockOffset.clamped(referenceHostTime: now.addingTimeInterval(300), now: now), 0)
+        XCTAssertEqual(HostClockOffset.clamped(referenceHostTime: now.addingTimeInterval(299), now: now), 299, accuracy: 0.001)
+    }
+
     // MARK: 落盘 / 续拉
 
     /// 折叠状态必须能**原样**往返 —— 恢复之后还能继续增量折叠，而不是只能画。

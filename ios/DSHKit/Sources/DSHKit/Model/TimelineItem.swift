@@ -558,11 +558,45 @@ public enum TurnTimer {
         existing: Date?,
         now: Date = Date()
     ) -> Date? {
+        startWithConfidence(items: items, isRunning: isRunning, existing: existing, existingIsExact: true, now: now)?.at
+    }
+
+    /// `start` 的完整版：顺带回答"这个起点**是不是**真的 `turn/start`"。
+    ///
+    /// 有界快照（`maxMessages`）可能把 `turn/start` 切在窗口外 —— 规则 2 拿到的
+    /// 是当前轮**窗口里**第一条，比真实开始晚，计时器就比电脑端短
+    ///（KNOWN-ISSUES F5）。客户端拿不到真实起点，但至少能**如实显示**：
+    /// 窗口里第一条就是 `.turnStart` → 精确；否则是下界，UI 显示「≥」。
+    public static func startWithConfidence(
+        items: [TimelineItem],
+        isRunning: Bool,
+        existing: Date?,
+        existingIsExact: Bool,
+        now: Date = Date()
+    ) -> (at: Date, isExact: Bool)? {
         guard isRunning else { return nil }
-        if let existing { return existing }
+        if let existing { return (existing, existingIsExact) }
         if let turn = items.last?.turn, let first = items.first(where: { $0.turn == turn }) {
-            return first.time
+            if case .turnStart = first.kind { return (first.time, true) }
+            return (first.time, false)
         }
-        return items.last?.time ?? now
+        return (items.last?.time ?? now, false)
+    }
+}
+
+/// 电脑时钟与本机时钟的偏移校正。
+///
+/// 计时器起点是**电脑的时间**（`event.time` 来自宿主），而"现在"用的是本机时钟 ——
+/// 两边差几秒，计时器就跟电脑上对不上（用户："工作中计时器和电脑上不一致"）。
+public enum HostClockOffset {
+    /// 可接受的最大偏差。正常的时钟偏差不会超过这个量级；超了说明参照事件
+    /// 其实很旧（比如宿主正卡在一个长命令上、期间没有新事件），拿它当"现在"
+    /// 会把计时器拉偏 —— 这时宁可不校正。
+    public static let maximumPlausible: TimeInterval = 300
+
+    /// 由参照事件的时间算偏移（宿主时间 − 本机时间），超出合理范围就归零。
+    public static func clamped(referenceHostTime: Date, now: Date = Date()) -> TimeInterval {
+        let raw = referenceHostTime.timeIntervalSince(now)
+        return abs(raw) < maximumPlausible ? raw : 0
     }
 }
