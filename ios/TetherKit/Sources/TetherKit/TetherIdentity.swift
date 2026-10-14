@@ -60,15 +60,15 @@ extension TetherError: LocalizedError {
         case .pairingFailed(let failure):
             return failure.localizedDescription
         case .invalidEndpointId(let value):
-            return "端点 ID 不合法（应为 64 位十六进制）：\(value.prefix(16))"
+            return String(localized: "端点 ID 不合法（应为 64 位十六进制）：\(value.prefix(16))")
         case .transport(let detail):
-            return "连接失败：\(detail)"
+            return String(localized: "连接失败：\(detail)")
         case .proxyUnavailable(let detail):
-            return "本地代理启动失败：\(detail)"
+            return String(localized: "本地代理启动失败：\(detail)")
         case .proxyRefused:
-            return "电脑端拒绝了代理流（插件可能没在正常状态）"
+            return String(localized: "电脑端拒绝了代理流（插件可能没在正常状态）")
         case .controlClosed(let detail):
-            return "与电脑的连接已断开：\(detail)"
+            return String(localized: "与电脑的连接已断开：\(detail)")
         }
     }
 }

@@ -137,7 +137,7 @@ actor TetherLink: TetherStreamFactory {
     }
 
     func connect(hostEndpointId: String, firstMessage: TetherFirstMessage) async throws {
-        guard !connecting else { throw TetherError.transport("已有一次连接正在进行") }
+        guard !connecting else { throw TetherError.transport(String(localized: "已有一次连接正在进行")) }
         guard let peerBytes = TetherProxyPort.bytes(fromHex: hostEndpointId), peerBytes.count == 32 else {
             throw TetherError.invalidEndpointId(hostEndpointId)
         }
@@ -187,10 +187,10 @@ actor TetherLink: TetherStreamFactory {
                     throw TetherError.pairingFailed(TetherPairFailure(reason: reason))
                 case .some(let other):
                     await teardownConnection()
-                    throw TetherError.transport("配对时收到意外消息：\(other)")
+                    throw TetherError.transport(String(localized: "配对时收到意外消息：\(other)"))
                 case .none:
                     await teardownConnection()
-                    throw TetherError.transport("配对应答无法解析：\(reply.prefix(80))")
+                    throw TetherError.transport(String(localized: "配对应答无法解析：\(reply.prefix(80))"))
                 }
             }
 
@@ -216,7 +216,7 @@ actor TetherLink: TetherStreamFactory {
                 alpns: [Data(TetherWire.alpn.utf8)]                  // 与电脑端 ALPN 一致
             ))
         } catch {
-            throw TetherError.transport("iroh 端点绑定失败：\(error.localizedDescription)")
+            throw TetherError.transport(String(localized: "iroh 端点绑定失败：\(error.localizedDescription)"))
         }
     }
 
@@ -279,7 +279,7 @@ actor TetherLink: TetherStreamFactory {
                     return
                 }
                 if chunk.isEmpty {
-                    await self?.controlFailed("电脑端关闭了控制流")
+                    await self?.controlFailed(String(localized: "电脑端关闭了控制流"))
                     return
                 }
                 for line in buffer.append(chunk) {
@@ -307,7 +307,7 @@ actor TetherLink: TetherStreamFactory {
 
     /// 读一行控制消息（带超时）。只用于配对握手这种一次性的同步读。
     private func readControlLine(timeout: Duration) async throws -> String {
-        guard let recv = controlRecv else { throw TetherError.controlClosed("控制流未建立") }
+        guard let recv = controlRecv else { throw TetherError.controlClosed(String(localized: "控制流未建立")) }
         return try await withThrowingTaskGroup(of: String.self) { group in
             group.addTask {
                 var buffer = JsonLineBuffer()
@@ -320,7 +320,7 @@ actor TetherLink: TetherStreamFactory {
             }
             group.addTask {
                 try await Task.sleep(for: timeout)
-                throw TetherError.transport("等待电脑端应答超时")
+                throw TetherError.transport(String(localized: "等待电脑端应答超时"))
             }
             let result = try await group.next()!
             group.cancelAll()
@@ -350,7 +350,7 @@ actor TetherLink: TetherStreamFactory {
             try await send.writeAll(buf: TetherWire.proxy)
             return TetherProxyStream(send: send, recv: recv)
         } catch {
-            throw TetherError.transport("开代理流失败：\(error.localizedDescription)")
+            throw TetherError.transport(String(localized: "开代理流失败：\(error.localizedDescription)"))
         }
     }
 

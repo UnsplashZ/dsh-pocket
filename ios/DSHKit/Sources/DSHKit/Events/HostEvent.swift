@@ -50,7 +50,7 @@ public struct WaterfallRequest: Sendable, Identifiable {
 
     // MARK: 审批
 
-    public var approvalToolName: String { request.string("toolName") ?? "工具" }
+    public var approvalToolName: String { request.string("toolName") ?? String(localized: "工具") }
 
     /// 审批理由。
     ///

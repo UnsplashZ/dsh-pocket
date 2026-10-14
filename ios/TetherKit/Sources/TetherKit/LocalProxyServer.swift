@@ -73,7 +73,7 @@ actor LocalProxyServer {
         do {
             if let preferredPort {
                 guard let candidate = NWEndpoint.Port(rawValue: preferredPort) else {
-                    throw TetherError.proxyUnavailable("端口 \(preferredPort) 不在合法范围")
+                    throw TetherError.proxyUnavailable(String(localized: "端口 \(preferredPort) 不在合法范围"))
                 }
                 listener = try NWListener(using: parameters, on: candidate)
             } else {
@@ -98,7 +98,7 @@ actor LocalProxyServer {
                         gate.resumeOnce { continuation.resume(throwing: error) }
                     case .cancelled:
                         gate.resumeOnce {
-                            continuation.resume(throwing: TetherError.proxyUnavailable("监听被取消"))
+                            continuation.resume(throwing: TetherError.proxyUnavailable(String(localized: "监听被取消")))
                         }
                     default:
                         break

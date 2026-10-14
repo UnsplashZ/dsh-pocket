@@ -135,7 +135,7 @@ extension JSONValue: Codable {
         } else {
             throw DecodingError.dataCorruptedError(
                 in: container,
-                debugDescription: "不是合法的 JSON 值"
+                debugDescription: String(localized: "不是合法的 JSON 值")
             )
         }
     }

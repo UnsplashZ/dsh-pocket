@@ -242,7 +242,7 @@ public actor TetherSession {
             connectedHostId = hostId
             setState(.connected(hostId: hostId, baseURL: base.absoluteString))
 
-            var record = hostBook.host(id: hostId) ?? TetherHostRecord(id: hostId, label: "电脑 \(hostId.prefix(6))")
+            var record = hostBook.host(id: hostId) ?? TetherHostRecord(id: hostId, label: String(localized: "电脑 \(hostId.prefix(6))"))
             record.lastConnectedAt = Date()
             hostBook.upsert(record)
             hostBook.save()

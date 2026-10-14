@@ -42,7 +42,7 @@ public struct SessionSummary: Sendable, Identifiable, Hashable {
     }
 
     public var workspaceName: String {
-        guard let cwd, !cwd.isEmpty else { return "其它" }
+        guard let cwd, !cwd.isEmpty else { return String(localized: "其它") }
         return (cwd as NSString).lastPathComponent
     }
 

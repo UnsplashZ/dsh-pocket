@@ -1002,12 +1002,12 @@ public final class SessionModel {
         for item in items where !item.isShadowed {
             switch item.kind {
             case .userMessage(let message):
-                lines.append("## 你\n\(message.text)\n")
+                lines.append(String(localized: "## 你\n\(message.text)\n"))
             case .assistantMessage(let message):
                 let text = message.renderableBlocks.map(\.plainText).joined()
-                if !text.isEmpty { lines.append("## 助手\n\(text)\n") }
+                if !text.isEmpty { lines.append(String(localized: "## 助手\n\(text)\n")) }
             case .toolCall(let call):
-                lines.append("· 工具 \(call.name) (\(call.status))\n\(call.output)\n")
+                lines.append(String(localized: "· 工具 \(call.name) (\(call.status))\n\(call.output)\n"))
             case .note(let note):
                 lines.append("· \(note.text)")
             default:

@@ -238,7 +238,7 @@ public actor MuxClient {
             let error = frame["error"] ?? .null
             let remote = DSHError(
                 code: error.string("code") ?? "stream/unknown",
-                message: error.string("message") ?? "流错误",
+                message: error.string("message") ?? String(localized: "流错误"),
                 details: error["details"] ?? .object([:])
             )
             continuations[streamId] = nil
@@ -285,7 +285,7 @@ public actor MuxClient {
     private func send(_ value: JSONValue, on task: URLSessionWebSocketTask) async throws {
         let data = try JSONEncoder.dshCompact.encode(value)
         guard let text = String(data: data, encoding: .utf8) else {
-            throw DSHTransportError.malformedResponse("无法编码为 UTF-8")
+            throw DSHTransportError.malformedResponse(String(localized: "无法编码为 UTF-8"))
         }
         try await task.send(.string(text))
     }

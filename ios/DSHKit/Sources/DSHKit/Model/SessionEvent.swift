@@ -74,13 +74,13 @@ public struct SessionEvent: Sendable, Identifiable, Hashable {
     /// 从 wire JSON 解码。失败时抛 `DSHTransportError.malformedResponse`。
     public static func decode(_ value: JSONValue) throws -> SessionEvent {
         guard let type = value.string("type") else {
-            throw DSHTransportError.malformedResponse("会话事件缺少 type")
+            throw DSHTransportError.malformedResponse(String(localized: "会话事件缺少 type"))
         }
         guard let rawSeq = value["seq"]?.doubleValue else {
-            throw DSHTransportError.malformedResponse("会话事件 \(type) 缺少 seq")
+            throw DSHTransportError.malformedResponse(String(localized: "会话事件 \(type) 缺少 seq"))
         }
         guard let rawTime = value["time"]?.doubleValue else {
-            throw DSHTransportError.malformedResponse("会话事件 \(type) 缺少 time")
+            throw DSHTransportError.malformedResponse(String(localized: "会话事件 \(type) 缺少 time"))
         }
         return SessionEvent(
             type: type,
@@ -106,7 +106,7 @@ public struct SessionSnapshot: Sendable {
 
     public static func decode(_ value: JSONValue) throws -> SessionSnapshot {
         guard value.string("type") == "snapshot" else {
-            throw DSHTransportError.malformedResponse("首个 follow 帧不是 snapshot")
+            throw DSHTransportError.malformedResponse(String(localized: "首个 follow 帧不是 snapshot"))
         }
         let records = value.array("records") ?? []
         var events: [SessionEvent] = []

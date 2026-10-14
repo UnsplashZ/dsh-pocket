@@ -36,7 +36,7 @@ struct FilesSheet: View {
                     ContentUnavailableView(
                         "这个目录是空的",
                         systemImage: "folder",
-                        description: Text(path.isEmpty ? "工作区根目录" : path)
+                        description: Text(path.isEmpty ? String(localized: "工作区根目录") : path)
                     )
                 } else {
                     ForEach(entries) { entry in

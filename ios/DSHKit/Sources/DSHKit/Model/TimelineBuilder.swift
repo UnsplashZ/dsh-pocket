@@ -524,7 +524,7 @@ public struct TimelineBuilder: Sendable {
             )
 
         case "subagent/descriptor":
-            let name = event.string("data.name") ?? event.string("data.agentId") ?? "子 agent"
+            let name = event.string("data.name") ?? event.string("data.agentId") ?? String(localized: "子 agent")
             upsert(
                 TimelineItem(
                     id: Self.durableId(event.seq), seq: event.seq, time: event.time,
@@ -544,7 +544,7 @@ public struct TimelineBuilder: Sendable {
                 TimelineItem(
                     id: Self.durableId(event.seq), seq: event.seq, time: event.time,
                     kind: .note(.init(
-                        text: event.string("data.name") ?? "命令",
+                        text: event.string("data.name") ?? String(localized: "命令"),
                         symbolName: "command",
                         tone: .neutral,
                         sourceEventType: event.type,

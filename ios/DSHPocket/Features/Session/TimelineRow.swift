@@ -622,20 +622,20 @@ struct AssistantCard: View {
                 if !messageId.isEmpty {
                     actionIcon(
                     feedback == .positive ? "hand.thumbsup.fill" : "hand.thumbsup",
-                    label: "赞",
+                    label: String(localized: "赞"),
                     tint: feedback == .positive ? .accentColor : nil
                     ) {
                         Task { await session.toggleFeedback(messageId: messageId, rating: .positive) }
                     }
                     actionIcon(
                     feedback == .negative ? "hand.thumbsdown.fill" : "hand.thumbsdown",
-                    label: "踩",
+                    label: String(localized: "踩"),
                     tint: feedback == .negative ? .orange : nil
                     ) {
                         Task { await session.toggleFeedback(messageId: messageId, rating: .negative) }
                     }
                 }
-                actionIcon("arrow.triangle.branch", label: "从这里分支") {
+                actionIcon("arrow.triangle.branch", label: String(localized: "从这里分支")) {
                     Task {
                         guard let id = await session.fork(atSeq: Int(seq)) else { return }
                         await model.refreshSessions()
@@ -929,7 +929,7 @@ struct RawEventRow: View {
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
                 if isUnknown {
-                    StatusBadge("认不出", symbol: "questionmark", tone: .warning)
+                    StatusBadge(String(localized: "认不出"), symbol: "questionmark", tone: .warning)
                 }
             }
         }

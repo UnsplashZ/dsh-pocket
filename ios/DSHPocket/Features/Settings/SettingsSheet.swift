@@ -126,7 +126,7 @@ struct SettingsSheet: View {
                         }
                         Spacer()
                         if model.settings.activeHostId == host.id, model.connection.isConnected {
-                            StatusBadge("当前", symbol: "checkmark.circle.fill", tone: .success)
+                            StatusBadge(String(localized: "当前"), symbol: "checkmark.circle.fill", tone: .success)
                         }
                     }
                 }
@@ -397,8 +397,8 @@ struct LicenseView: View {
     private let components: [(String, String, String)] = [
         ("iroh / iroh-ffi", "n0-computer", "MIT / Apache-2.0"),
         ("dsh-plugin-tether", "zexadev", "MIT"),
-        ("DSH_Mobile 协议文档", "jayantTang", "MIT"),
-        ("DeepSeek Harness", "deepseek-ai", "上游协议，不改源码"),
+        (String(localized: "DSH_Mobile 协议文档"), "jayantTang", "MIT"),
+        ("DeepSeek Harness", "deepseek-ai", String(localized: "上游协议，不改源码")),
     ]
 
     var body: some View {
@@ -426,9 +426,9 @@ struct PrivacyView: View {
     var body: some View {
         List {
             Section("我们做什么") {
-                bullet("不采集任何分析数据，不联网发送遥测。", symbol: "hand.raised")
-                bullet("所有流量都发往你自己已配对的电脑。", symbol: "arrow.left.arrow.right")
-                bullet("凭证与数据都在你自己的机器上。", symbol: "externaldrive")
+                bullet(String(localized: "不采集任何分析数据，不联网发送遥测。"), symbol: "hand.raised")
+                bullet(String(localized: "所有流量都发往你自己已配对的电脑。"), symbol: "arrow.left.arrow.right")
+                bullet(String(localized: "凭证与数据都在你自己的机器上。"), symbol: "externaldrive")
             }
 
             Section {
@@ -448,9 +448,9 @@ struct PrivacyView: View {
             }
 
             Section("端到端加密") {
-                bullet("打洞成功时数据不经过任何第三方。", symbol: "point.3.connected.trianglepath.dotted")
-                bullet("回退中转时，中转只能看到密文。", symbol: "lock.fill")
-                bullet("配对码 6 位、10 分钟、3 次尝试；配对后访问权由这台手机的公钥决定。", symbol: "key")
+                bullet(String(localized: "打洞成功时数据不经过任何第三方。"), symbol: "point.3.connected.trianglepath.dotted")
+                bullet(String(localized: "回退中转时，中转只能看到密文。"), symbol: "lock.fill")
+                bullet(String(localized: "配对码 6 位、10 分钟、3 次尝试；配对后访问权由这台手机的公钥决定。"), symbol: "key")
             }
         }
         .navigationTitle("隐私与安全边界")

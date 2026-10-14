@@ -127,13 +127,13 @@ public actor DSHClient {
             return .snapshot(try SessionSnapshot.decode(value))
         case "event":
             guard let event = value["event"] else {
-                throw DSHTransportError.malformedResponse("follow 的 event 帧缺少 event")
+                throw DSHTransportError.malformedResponse(String(localized: "follow 的 event 帧缺少 event"))
             }
             return .event(try SessionEvent.decode(event))
         case "assistant-stream":
             return .assistantStream(AssistantStreamFrame.decode(value))
         default:
-            throw DSHTransportError.malformedResponse("未知的 follow 帧：\(value.string("type") ?? "?")")
+            throw DSHTransportError.malformedResponse(String(localized: "未知的 follow 帧：\(value.string("type") ?? "?")"))
         }
     }
 
@@ -291,7 +291,7 @@ public actor DSHClient {
         if let agentPreset { request["agentPreset"] = .string(agentPreset) }
         let value = try await rpc.call(method: "session/create", payload: ["args": .object(["request": .object(request)])])
         guard let sessionId = value.string("sessionId") else {
-            throw DSHClientError.transport(.malformedResponse("session/create 没有返回 sessionId"))
+            throw DSHClientError.transport(.malformedResponse(String(localized: "session/create 没有返回 sessionId")))
         }
         return sessionId
     }
@@ -690,7 +690,7 @@ public actor DSHClient {
         // **业务级拒绝也是 200**：`{ok:false, error:{code,current?}}`。
         // 最典型的是 `version-conflict` —— 别人在你之后改过。不显式抛出来的话
         // 调用方会以为"保存成功了"，而实际上什么都没写。
-        try Self.throwIfBusinessRejected(value, fallbackMessage: "评价被拒")
+        try Self.throwIfBusinessRejected(value, fallbackMessage: String(localized: "评价被拒"))
         return MessageFeedback(json: value["value"] ?? value)
     }
 
@@ -708,7 +708,7 @@ public actor DSHClient {
                 "ifVersion": .string(ifVersion),
             ])])
         ])
-        try Self.throwIfBusinessRejected(value, fallbackMessage: "撤销评价被拒")
+        try Self.throwIfBusinessRejected(value, fallbackMessage: String(localized: "撤销评价被拒"))
         let inner = value["value"] ?? value
         return inner.bool("absent") ?? false
     }
@@ -739,7 +739,7 @@ public actor DSHClient {
             "args": .object(["request": .object(request)])
         ])
         guard let id = value.string("sessionId"), !id.isEmpty else {
-            throw DSHTransportError.malformedResponse("fork 没有返回 sessionId")
+            throw DSHTransportError.malformedResponse(String(localized: "fork 没有返回 sessionId"))
         }
         return id
     }
@@ -861,7 +861,7 @@ public actor DSHClient {
             ])
         ])
         guard let base64 = value.string("data"), let data = Data(base64Encoded: base64) else {
-            throw DSHClientError.transport(.malformedResponse("附件数据不是合法 base64"))
+            throw DSHClientError.transport(.malformedResponse(String(localized: "附件数据不是合法 base64")))
         }
         return (DSHAttachmentRef(json: value["attachment"] ?? .object([:])), data)
     }
@@ -879,7 +879,7 @@ public actor DSHClient {
         if let name { query.append(URLQueryItem(name: "name", value: name)) }
         components?.queryItems = query
         guard let url = components?.url else {
-            throw DSHClientError.transport(.malformedResponse("无法构造上传 URL"))
+            throw DSHClientError.transport(.malformedResponse(String(localized: "无法构造上传 URL")))
         }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -900,13 +900,13 @@ public actor DSHClient {
             let error = value["error"] ?? .null
             throw DSHClientError.remote(DSHError(
                 code: error.string("code") ?? "upload/failed",
-                message: error.string("message") ?? "上传失败",
+                message: error.string("message") ?? String(localized: "上传失败"),
                 details: error["details"] ?? .object([:])
             ))
         }
         let payload = value["value"] ?? .null
         guard let receiptId = payload.string("receiptId") else {
-            throw DSHClientError.transport(.malformedResponse("上传结果缺少 receiptId"))
+            throw DSHClientError.transport(.malformedResponse(String(localized: "上传结果缺少 receiptId")))
         }
         return UploadResult(receiptId: receiptId, file: DSHAttachmentRef(json: payload["file"] ?? .object([:])))
     }

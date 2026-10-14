@@ -235,7 +235,7 @@ extension TimelineItem {
         public var plainText: String {
             switch self {
             case .text(let value), .reasoning(let value): return value
-            case .image: return "[图片]"
+            case .image: return String(localized: "[图片]")
             case .toolCall(_, let name): return name
             }
         }

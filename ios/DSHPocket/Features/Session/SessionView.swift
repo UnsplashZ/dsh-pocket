@@ -353,9 +353,9 @@ struct SessionView: View {
             ForEach(0..<6, id: \.self) { index in
                 Card {
                     VStack(alignment: .leading, spacing: Token.Spacing.tight) {
-                        Text(String(repeating: "正在读取这条会话的内容 ", count: 2))
+                        Text(String(repeating: String(localized: "正在读取这条会话的内容 "), count: 2))
                             .font(.body)
-                        Text(String(repeating: "从电脑上把历史取回来 ", count: 3))
+                        Text(String(repeating: String(localized: "从电脑上把历史取回来 "), count: 3))
                             .font(.footnote)
                     }
                     .redacted(reason: .placeholder)

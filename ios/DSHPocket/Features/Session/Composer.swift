@@ -674,14 +674,14 @@ struct Composer: View {
             }
             Spacer(minLength: Token.Spacing.hairline)
 
-            queueAction("pencil", label: "编辑") {
+            queueAction("pencil", label: String(localized: "编辑")) {
                 editingQueueItem = item
                 queueEditText = item.text
             }
             queueAction("trash", label: "删除", tint: .red) {
                 Task { await session.updateQueue(itemId: item.id, action: .remove) }
             }
-            queueAction("arrow.up", label: "插进这一轮") {
+            queueAction("arrow.up", label: String(localized: "插进这一轮")) {
                 Task { await session.updateQueue(itemId: item.id, action: .steer) }
             }
         }

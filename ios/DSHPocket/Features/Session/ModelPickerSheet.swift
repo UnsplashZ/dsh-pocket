@@ -53,7 +53,7 @@ struct ModelPickerSheet: View {
                             Label("这台电脑上没有可用模型", systemImage: "cpu")
                         } description: {
                             Text(catalog.failures.isEmpty
-                                 ? "先在你电脑上的 DSH 里登录一个模型服务。"
+                                 ? String(localized: "先在你电脑上的 DSH 里登录一个模型服务。")
                                  : catalog.failures.joined(separator: "\n"))
                         }
                     } else {

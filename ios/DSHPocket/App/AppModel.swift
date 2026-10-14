@@ -1173,7 +1173,7 @@ actor NotificationCenterAdapter {
         guard isAuthorized else { return }
         let content = UNMutableNotificationContent()
         content.title = String(localized: "有一条操作在等你批准")
-        content.body = reason.isEmpty ? toolName : "\(toolName)：\(reason)"
+        content.body = reason.isEmpty ? toolName : String(localized: "\(toolName)：\(reason)")
         content.sound = .default
         content.userInfo = ["approvalId": eventId]
         await deliver(content, identifier: "approval-\(eventId)")

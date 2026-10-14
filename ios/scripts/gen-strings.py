@@ -41,10 +41,62 @@ EXTRACTION_PATTERNS = [
     r'Toggle\("((?:[^"\\]|\\.)*)"',
     r'TextField\("((?:[^"\\]|\\.)*)"',
     r'Picker\("((?:[^"\\]|\\.)*)"',
+    r'SecureField\(\s*"((?:[^"\\]|\\.)*)"',
     # `.help(_:)` 收的是 `LocalizedStringKey`，字面量同样要进 catalog ——
     # 不进的话中文机器上一切正常，英文机器上冒出一句中文。
-    r'\.help\("((?:[^"\\]|\\.)*)"\)',
+    #
+    # 这几个都允许 `(` 与字面量之间换行：真实调用点常写成
+    # `.confirmationDialog(\n    "标题",`，写死 `\("` 会整片漏掉。
+    r'\.help\(\s*"((?:[^"\\]|\\.)*)"\s*\)',
+    r'\.alert\(\s*"((?:[^"\\]|\\.)*)"',
+    r'\.confirmationDialog\(\s*"((?:[^"\\]|\\.)*)"',
+    r'\.accessibilityLabel\(\s*"((?:[^"\\]|\\.)*)"',
+    r'LabeledContent\(\s*"((?:[^"\\]|\\.)*)"',
+    r'ProgressView\(\s*"((?:[^"\\]|\\.)*)"',
+    # 三元的两半：`cond ? "A" : "B"`。两个分支都要本地化，而只认调用点形状的模式看不出来
+    # ——"发送 / 排队发送"那颗主按钮就是这种形状（见 #1）。
+    r'\?\s*"((?:[^"\\]|\\.)*)"\s*:\s*"((?:[^"\\]|\\.)*)"',
+    # `return "文案"`：返回位置的字面量（枚举的 `var label` 之类）。
+    # 返回类型是 `LocalizedStringKey` 的已经是对的，返回类型是 `String` 的必须自己
+    # 包一层 `String(localized:)` —— `Text(String)` 是 verbatim 语义，不查目录。
+    r'return\s+"((?:[^"\\]|\\.)*)"',
+    # 单独成行的字面量：`private var placeholder: LocalizedStringKey { "…" }` 的隐式返回。
+    r'^\s*"((?:[^"\\]|\\.)*)"\s*,?$',
 ]
+
+# 兜底扫描用：日志、断言、调试输出里的中文字面量不会进界面，不该要求翻译。
+NOT_USER_FACING_LINE = re.compile(r"logs\.log\(|logger\??\.log\(|XCTAssert|\bprint\(|fatalError|\bassert\(")
+
+# 只给人看的机器文本（诊断导出的纯文本、协议里的字段名等）。每一条都写理由 ——
+# 这个名单本身就是"为什么它可以不翻译"的记录。空着是有意的：宁可多翻译几条，
+# 也别靠名单把漏网的字面量悄悄放过去。
+NOT_LOCALIZED: dict[str, str] = {
+    # `statTexts(...).joined(separator: "，")` —— 这是**分隔符**，不是写给读者的话。
+    "，": "分隔符（拼接 accessibilityLabel 用），不是文案",
+    # 附件落盘用的文件名，会写进会话数据。翻译它等于改数据，不是改界面。
+    "照片.\\(ext)": "附件文件名（会写进会话数据），不是界面文案",
+}
+
+# 含中文的字面量。**允许 `\(…)` 插值**（`"状态：\(x)"` 也是面向人的文案，
+# 早期版本把它排除在外，于是整个诊断导出页都从这条兜底扫描里漏掉了）。
+# 代价是插值里再嵌一对引号的那种（`"RTT：\(m.map { "\($0)ms" } ?? "—")"`）会被截断成
+# 一个假的 key —— 那种会被报出来，人工判断即可，好过整类漏掉。
+LITERAL = re.compile(r'"((?:[^"\\\n]|\\.)*)"')
+# 中文（含扩展区）、CJK 标点、全角形式。用 `[^\x00-\x7F]` 更省事，但那会把
+# `"—"`、`"…"` 这种纯排版的字面量也算进来 —— 它们不需要翻译，只会制造噪声。
+HAS_CJK = re.compile(r"[\u2e80-\u9fff\u3000-\u303f\uff00-\uffef]")
+# 只要汉字（不含标点）：单字文案（"小" / "大"）靠它才能被当成文案收下，
+# 而 `"—"`、`"："` 这类纯标点字面量不会被误收。
+HAS_IDEOGRAPH = re.compile(r"[\u4e00-\u9fff]")
+
+# `return "文案"` 有两种命运，抽取模式认不出类型，所以这里单独兜一条：
+#   · 返回类型是 `LocalizedStringKey` —— 本来就有效（SwiftUI 会去查目录），放行；
+#   · 返回类型是 `String` —— 只进目录、运行时不查（`Text(String)` 是 verbatim 语义），
+#     必须写成 `return String(localized: "文案")`。
+RETURN_LITERAL_LINE = re.compile(r'\breturn\s+"')
+DECLARATION_LINE = re.compile(
+    r"^\s*(?:(?:public|private|internal|fileprivate|open|static|final)\s+)*(?:var|func)\s+\w+[^{]*\{\s*$"
+)
 
 # 中 → 英。插值文案里的 \(x) 在 catalog 里是 %lld（Int）或 %@（字符串）。
 EN: dict[str, str] = {
@@ -902,6 +954,87 @@ EN: dict[str, str] = {
     "新对话": "New chat",
     "目录": "Folder",
     "删除": "Delete",
+
+    # ── #1 的收尾：过去靠调用点形状抽取，漏掉了一整批面向人的文案 ──────────
+    # 现在抽取模式与兜底扫描都补上了，这些是随之补写的英文。
+    "# DSH Pocket 诊断": "# DSH Pocket diagnostics",
+    "## 你\n%@\n": "## You\n%@\n",
+    "## 助手\n%@\n": "## Assistant\n%@\n",
+    "## 日志": "## Log",
+    "DSH_Mobile 协议文档": "DSH_Mobile protocol docs",
+    "RTT：%@": "RTT: %@",
+    "[图片]": "[image]",
+    "%@，%@，%@": "%@, %@, %@",
+    "%@：%@": "%@: %@",
+    "：%@": ": %@",
+    "follow 的 event 帧缺少 event": "follow event frame is missing \"event\"",
+    "fork 没有返回 sessionId": "fork did not return a sessionId",
+    "iroh 端点绑定失败：%@": "iroh endpoint bind failed: %@",
+    "mux：%@": "mux: %@",
+    "result 缺少 ok": "result is missing ok",
+    "session/create 没有返回 sessionId": "session/create did not return a sessionId",
+    "· 工具 %@ (%@)\n%@\n": "· Tool %@ (%@)\n%@\n",
+    "一次尝试未产出内容": "A turn produced no output",
+    "上传失败": "Upload failed",
+    "上传结果缺少 receiptId": "Upload result is missing receiptId",
+    "上游协议，不改源码": "Upstream protocol; source not modified",
+    "不是 HTTP 响应": "Not an HTTP response",
+    "不是合法的 JSON 值": "Not a valid JSON value",
+    "与电脑的连接已断开：%@": "Connection to your computer was lost: %@",
+    "从电脑上把历史取回来 ": "Fetching history from your computer ",
+    "代理：%@": "Proxy: %@",
+    "会话事件 %@ 缺少 seq": "Session event %@ is missing seq",
+    "会话事件 %@ 缺少 time": "Session event %@ is missing time",
+    "会话事件缺少 type": "Session event is missing type",
+    "保存失败": "Save failed",
+    "信封 type 不是 server-response": "Envelope type is not server-response",
+    "信封缺少 result": "Envelope is missing result",
+    "其它": "Other",
+    "启用": "Enabled",
+    "命令": "Command",
+    "命令失败": "Command failed",
+    "命令完成": "Command finished",
+    "响应不是 JSON：%@": "Response is not JSON: %@",
+    "子 agent": "Sub-agent",
+    "宿主响应无法解析：%@": "Could not parse the host response: %@",
+    "宿主返回 HTTP %@%@": "Host returned HTTP %@%@",
+    "宿主返回了一个未说明的错误": "The host returned an unexplained error",
+    "密钥名": "Key name",
+    "尚未连接到电脑": "Not connected to your computer yet",
+    "工具": "Tool",
+    "已有一次连接正在进行": "A connection is already in progress",
+    "开代理流失败：%@": "Failed to open the proxy stream: %@",
+    "把排队里的第一条插进正在跑的这一轮": "Move the first queued message into the running turn",
+    "把输入框里的内容插进正在跑的这一轮": "Insert the composer content into the running turn",
+    "控制流未建立": "Control stream was not established",
+    "撤销评价被拒": "Un-rating was rejected",
+    "无法构造上传 URL": "Could not build the upload URL",
+    "无法编码为 UTF-8": "Could not encode as UTF-8",
+    "未知的 follow 帧：%@": "Unknown follow frame: %@",
+    "本地代理启动失败：%@": "Local proxy failed to start: %@",
+    "模型 id": "Model id",
+    "正在读取这条会话的内容 ": "Loading this session ",
+    "流出错：%@": "Stream error: %@",
+    "流错误": "Stream error",
+    "状态：%@": "Status: %@",
+    "电脑 %@": "Computer %@",
+    "电脑端关闭了控制流": "The computer closed the control stream",
+    "监听被取消": "Listening was cancelled",
+    "端口 %@ 不在合法范围": "Port %@ is out of range",
+    "端点 ID 不合法（应为 64 位十六进制）：%@": "Invalid endpoint ID (expected 64 hex digits): %@",
+    "等待电脑端应答超时": "Timed out waiting for the computer to reply",
+    "绑定套接字：%@": "Bound sockets: %@",
+    "认不出": "Unrecognized",
+    "设备 ID：%@": "Device ID: %@",
+    "评价被拒": "Rating was rejected",
+    "路径：%@": "Path: %@",
+    "这一轮被中断": "This turn was interrupted",
+    "远端拒绝了这次应答": "The remote rejected this response",
+    "连接已断开：%@": "Connection closed: %@",
+    "配对应答无法解析：%@": "Could not parse the pairing reply: %@",
+    "配对时收到意外消息：%@": "Unexpected message during pairing: %@",
+    "附件数据不是合法 base64": "Attachment data is not valid base64",
+    "首个 follow 帧不是 snapshot": "The first follow frame is not a snapshot",
 }
 
 # 哪些插值表达式是整数。判错的后果是英文界面上显示成 `%lld` 字面量，
@@ -1001,11 +1134,72 @@ def extract() -> dict[str, str]:
     for path in sorted([p for base in [SOURCE_DIR, *EXTRA_SOURCE_DIRS] for p in base.rglob("*.swift")]):
         text = strip_comments(path.read_text())
         for pattern in EXTRACTION_PATTERNS:
-            for match in re.finditer(pattern, text):
-                raw = match.group(1)
-                if len(raw) < 2:
+            # MULTILINE：有模式靠行首/行尾锚定（单独成行的字面量）。
+            for match in re.finditer(pattern, text, re.MULTILINE):
+                # 一个模式可以抓多个字面量（三元的两半都要），所以遍历所有捕获组。
+                # 模式内部一律用非捕获组 `(?:…)`，免得插进来多余的组。
+                for group in match.groups():
+                    if group is None:
+                        continue
+                    raw = unescape(group)
+                    # 只收**面向人**的字面量：含中文，或者本来就在 EN 里管着
+                    #（`"%@% · %@ / %@"` 这种纯格式 key 就是这样保住的）。
+                    # 少了这一条，放宽后的模式会把 `"Hm"`、`"MMMdHm"`（日期模板）、
+                    # `"DEBUG"`（日志级别）这些技术字符串也当成待翻译文案。
+                    if not HAS_CJK.search(raw) and key_for(raw) not in EN:
+                        continue
+                    found[raw] = str(path.relative_to(ROOT))
+    return found
+
+
+def unwrapped_string_returns() -> list[str]:
+    """`return "文案"` 落在**非** `LocalizedStringKey` 的返回位置上 —— 抽取得到、运行时查不到。
+
+    这是这个工具唯一不能只靠正则解决的类型问题：同一个 `return "浅色"`，
+    在 `var label: LocalizedStringKey` 里是对的，在 `var message: String` 里就是白搭。
+    所以这一条单独判：往回找最近的声明行，看它有没有写 `LocalizedStringKey`。
+    找不到声明就放行（宁可漏报，也别在没法判断时报一堆假警）。
+    """
+    complaints: list[str] = []
+    for path in sorted([p for base in [SOURCE_DIR, *EXTRA_SOURCE_DIRS] for p in base.rglob("*.swift")]):
+        lines = strip_comments(path.read_text()).splitlines()
+        for index, line in enumerate(lines):
+            if not RETURN_LITERAL_LINE.search(line):
+                continue
+            # 已经包好的、或本来就不含中文的，都放行。
+            if "String(localized:" in line or not HAS_CJK.search(line):
+                continue
+            declaration = None
+            for back in range(index - 1, max(-1, index - 60), -1):
+                if DECLARATION_LINE.match(lines[back]):
+                    declaration = lines[back]
+                    break
+            if declaration is None or "LocalizedStringKey" in declaration:
+                continue
+            complaints.append(f"{path.relative_to(ROOT)}:{index + 1}  {line.strip()[:88]}")
+    return complaints
+
+
+def scan_chinese_literals() -> dict[str, str]:
+    """独立扫一遍源码里所有含中文的双引号字面量，不管它长在什么调用形状上。
+
+    抽取模式只能覆盖它列出来的形状，而漏掉的形状在界面上表现为"英文设备上显示中文"——
+    不会有人去数，只能靠这条兜底扫描把它顶出来。它和抽取是**两件事**：
+    抽取回答"要翻译哪些"，兜底回答"还有没有没被抽取的"。
+    """
+    found: dict[str, str] = {}
+    for path in sorted([p for base in [SOURCE_DIR, *EXTRA_SOURCE_DIRS] for p in base.rglob("*.swift")]):
+        text = strip_comments(path.read_text())
+        for number, line in enumerate(text.splitlines(), 1):
+            if NOT_USER_FACING_LINE.search(line):
+                continue
+            for match in LITERAL.finditer(line):
+                raw = unescape(match.group(1))
+                if not HAS_CJK.search(raw):
                     continue
-                found[unescape(raw)] = str(path.relative_to(ROOT))
+                if raw in NOT_LOCALIZED:
+                    continue
+                found.setdefault(raw, f"{path.relative_to(ROOT)}:{number}")
     return found
 
 
@@ -1060,6 +1254,27 @@ def main() -> int:
     ]
 
     problems = []
+    # 兜底：源码里有中文字面量，但抽取模式没看见它 —— 它在英文设备上会显示中文。
+    extracted_keys = {key_for(raw) for raw in found}
+    missed = {
+        raw: where
+        for raw, where in scan_chinese_literals().items()
+        if key_for(raw) not in extracted_keys
+    }
+    if missed:
+        problems.append(
+            f"有 {len(missed)} 条面向人的中文字面量没被抽取（英文设备上会显示中文）。"
+            "要么把调用点写成 `String(localized:)`，要么给抽取模式补上这个形状，"
+            "确实不该翻译的加进 NOT_LOCALIZED 并写明理由：\n  "
+            + "\n  ".join(f"{raw}   ← {where}" for raw, where in sorted(missed.items()))
+        )
+    ineffective = unwrapped_string_returns()
+    if ineffective:
+        problems.append(
+            f"有 {len(ineffective)} 处 `return \"中文\"` 落在 `String` 返回位置上（只进目录、"
+            "运行时不查）。改成 `return String(localized: \"…\")`：\n  "
+            + "\n  ".join(ineffective)
+        )
     if literal_interpolation:
         problems.append(
             f"值里出现了源码形式的插值 {len(literal_interpolation)} 条（应该写成 %@ / %lld）：\n  "

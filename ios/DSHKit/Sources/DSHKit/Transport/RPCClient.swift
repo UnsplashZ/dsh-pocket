@@ -79,7 +79,7 @@ public actor RPCClient {
         }
 
         guard let http = response as? HTTPURLResponse else {
-            throw DSHClientError.transport(.malformedResponse("不是 HTTP 响应"))
+            throw DSHClientError.transport(.malformedResponse(String(localized: "不是 HTTP 响应")))
         }
         guard http.statusCode == 200 else {
             let body = String(data: data, encoding: .utf8) ?? ""
@@ -93,19 +93,19 @@ public actor RPCClient {
         } catch {
             // 200 但不是 JSON：DSH 的 SPA 回退或代理层故障。
             throw DSHClientError.transport(
-                .malformedResponse("响应不是 JSON：\(String(data: data.prefix(120), encoding: .utf8) ?? "")")
+                .malformedResponse(String(localized: "响应不是 JSON：\(String(data: data.prefix(120), encoding: .utf8) ?? "")"))
             )
         }
 
         // 信封校验：type 必须是 server-response，rpcId 必须回显。
         guard decoded.string("type") == "server-response" else {
-            throw DSHClientError.transport(.malformedResponse("信封 type 不是 server-response"))
+            throw DSHClientError.transport(.malformedResponse(String(localized: "信封 type 不是 server-response")))
         }
         guard let result = decoded["result"]?.objectValue else {
-            throw DSHClientError.transport(.malformedResponse("信封缺少 result"))
+            throw DSHClientError.transport(.malformedResponse(String(localized: "信封缺少 result")))
         }
         guard let ok = result["ok"]?.boolValue else {
-            throw DSHClientError.transport(.malformedResponse("result 缺少 ok"))
+            throw DSHClientError.transport(.malformedResponse(String(localized: "result 缺少 ok")))
         }
         if ok {
             logger?.log(.debug, "rpc ✓ \(method) \(rpcId)")
@@ -114,7 +114,7 @@ public actor RPCClient {
         let error = result["error"] ?? .null
         let remote = DSHError(
             code: error.string("code") ?? "unknown",
-            message: error.string("message") ?? "宿主返回了一个未说明的错误",
+            message: error.string("message") ?? String(localized: "宿主返回了一个未说明的错误"),
             details: error["details"] ?? .object([:])
         )
         logger?.log(.warning, "rpc ✗ \(method)：\(remote.code) \(remote.message)")

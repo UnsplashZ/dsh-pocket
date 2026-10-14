@@ -16,7 +16,7 @@ public struct DSHError: Error, Sendable, Equatable {
     /// 事件应答被宿主拒绝时的形状（`parseRemoteEventRejection`）。
     public init(rejection: JSONValue) {
         self.code = rejection.string("code") ?? rejection.string("name") ?? "remote/rejected"
-        self.message = rejection.string("message") ?? "远端拒绝了这次应答"
+        self.message = rejection.string("message") ?? String(localized: "远端拒绝了这次应答")
         self.details = rejection["details"] ?? .object([:])
     }
 
@@ -49,17 +49,17 @@ extension DSHTransportError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .http(let status, let body):
-            return "宿主返回 HTTP \(status)\(body.isEmpty ? "" : "：\(body.prefix(200))")"
+            return String(localized: "宿主返回 HTTP \(status)\(body.isEmpty ? "" : "：\(body.prefix(200))")")
         case .malformedResponse(let detail):
-            return "宿主响应无法解析：\(detail)"
+            return String(localized: "宿主响应无法解析：\(detail)")
         case .notConnected:
-            return "尚未连接到电脑"
+            return String(localized: "尚未连接到电脑")
         case .socketClosed(let reason):
-            return "连接已断开：\(reason)"
+            return String(localized: "连接已断开：\(reason)")
         case .streamFailed(let error):
-            return "流出错：\(error.message)"
+            return String(localized: "流出错：\(error.message)")
         case .cancelled:
-            return "请求已取消"
+            return String(localized: "请求已取消")
         case .underlying(let detail):
             return detail
         }
@@ -75,7 +75,7 @@ public enum DSHClientError: Error, Sendable {
     public var displayMessage: String {
         switch self {
         case .remote(let error): return error.message
-        case .transport(let error): return error.errorDescription ?? "未知错误"
+        case .transport(let error): return error.errorDescription ?? String(localized: "未知错误")
         }
     }
 

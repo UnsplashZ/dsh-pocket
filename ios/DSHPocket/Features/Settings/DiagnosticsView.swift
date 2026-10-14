@@ -251,18 +251,18 @@ struct DiagnosticsView: View {
     }
 
     private var exportText: String {
-        var lines: [String] = ["# DSH Pocket 诊断", ""]
-        lines.append("状态：\(model.connection.label)")
-        lines.append("mux：\(muxLabel)")
+        var lines: [String] = [String(localized: "# DSH Pocket 诊断"), ""]
+        lines.append(String(localized: "状态：\(model.connection.label)"))
+        lines.append(String(localized: "mux：\(muxLabel)"))
         if let diagnostics = model.diagnostics {
-            lines.append("路径：\(pathLabel)")
-            lines.append("代理：\(diagnostics.proxyURL ?? "—")")
-            lines.append("RTT：\(diagnostics.rttMilliseconds.map { "\($0)ms" } ?? "—")")
-            lines.append("绑定套接字：\(diagnostics.boundSockets.joined(separator: ", "))")
+            lines.append(String(localized: "路径：\(pathLabel)"))
+            lines.append(String(localized: "代理：\(diagnostics.proxyURL ?? "—")"))
+            lines.append(String(localized: "RTT：\(diagnostics.rttMilliseconds.map { "\($0)ms" } ?? "—")"))
+            lines.append(String(localized: "绑定套接字：\(diagnostics.boundSockets.joined(separator: ", "))"))
         }
-        lines.append("设备 ID：\(model.localEndpointId)")
+        lines.append(String(localized: "设备 ID：\(model.localEndpointId)"))
         lines.append("")
-        lines.append("## 日志")
+        lines.append(String(localized: "## 日志"))
         lines.append(contentsOf: logEntries.map { "[\($0.level.label)] \($0.message)" })
         return lines.joined(separator: "\n")
     }
