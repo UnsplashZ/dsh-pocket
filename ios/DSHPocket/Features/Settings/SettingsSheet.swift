@@ -9,12 +9,18 @@ struct SettingsSheet: View {
 
     @State private var showPairing = false
     @State private var renamingHost: TetherHostRecord?
-    #if DEBUG
-    /// 调试用：`defaults write cc.unsplashz.dshpocket DSHShowArchived -bool YES` 直接打开归档页。
-    @State private var showArchived = false
+
+    // 这三个是**功能**状态，不是调试状态，所以必须在 DEBUG 之外：
+    // 缓存页会读 `cacheStats`，电脑设置那个 sheet 会绑另外两个。
+    // （它们曾经被一起放进下面的 `#if DEBUG` 里 —— Debug 编得过、Release 编不过，
+    //  而本仓库对外发的未签名 IPA 正是 Release 构建。）
     @State private var showHostSettings = false
     @State private var showHostSettingsFromDebug = false
     @State private var cacheStats: (sessions: Int, bytes: Int) = (0, 0)
+
+    #if DEBUG
+    /// 调试用：`defaults write cc.unsplashz.dshpocket DSHShowArchived -bool YES` 直接打开归档页。
+    @State private var showArchived = false
     #endif
 
     var body: some View {
