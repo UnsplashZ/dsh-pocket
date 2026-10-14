@@ -19,6 +19,7 @@
 | `version.sh check 0.4.2` | ✅ 一致 |
 | GitHub CI 最近 4 次运行 | ✅ 全部 success |
 | 未关闭 issue / 工作区 | ✅ 无 open issue；`main` 与远端同步 |
+| 真机冒烟（M1 首轮，iPhone 15 Pro） | ✅ 安装/启动/缓存首屏/连接态横幅/配对/蜂窝网络下实时会话同步全部通过；发现 1 个真机新 bug（F7）；截图见 `docs/artifacts/m1-device/` |
 
 ### 本次验证新发现（尚在处理中）
 
@@ -44,6 +45,16 @@
 4. **devicehub 未找到**：本机与 Kimi 插件市场均无 devicehub。真机通道目前
    可用的是 `xcrun devicectl`（已能连到本机 iPhone 15 Pro）+ 已就位的
    dsh-tether 链路（见 三-1），若 devicehub 是另一套工具需补充安装信息。
+5. **真机实测：电脑端重装插件后旧设备 ID 永久超时（2026-10-14）**。
+   tether 插件中午重装后 sidecar 的 `identity.key` 重建（`~/Library/Application Support/dsh-tether/`，
+   14:16 生成），设备 ID 整个换掉，配对白名单同时清空。手机拿着缓存里的旧 ID 去连，
+   iroh 层 `Connect timed out`、连续失败 6 次——与 App 内报错文案预设的场景一致，
+   文案指引（「设置 → 主机」删旧电脑重新配对）有效。
+   用 `node tools/tether-status.mjs --pair` 重开配对窗口、真机重新配对后即恢复。
+   **但配对成功后 App 卡在「连接中」**——根因不是"配对没唤醒重连"，
+   而是一个早前排队的自动重连迟到醒来：`connect()` 无条件把 UI 打成「连接中」，
+   而 `TetherSession.connect` 对已连接的同 id 是空操作、不会再广播 `.connected`，
+   界面从此无人救回，需杀进程重启。已修（F7，2026-10-14），修复包已装真机复验。
 
 ---
 
@@ -53,7 +64,7 @@
 
 | # | 项 | 说明 | 状态 |
 | --- | --- | --- | --- |
-| M1 | 真机逐项过 HIG | VoiceOver 全流程、动态字体 AX1/AX3/AX5、Increase Contrast、Voice Control | 未做；设备已连（devicectl），见 §三-1 |
+| M1 | 真机逐项过 HIG | VoiceOver 全流程、动态字体 AX1/AX3/AX5、Increase Contrast、Voice Control | **冒烟已过（2026-10-14）**：安装/启动/配对/实时同步通过（见 §三-1）；交互式 HIG 项仍需人工在机上操作（devicectl 无触控能力） |
 | M2 | 干净设备首跑 | 含首次「本地网络」权限询问的完整首次体验 | 未做 |
 | M3 | ~~TestFlight 上架~~ | **已决定不做**（需付费开发者账号；项目定位即未签名 IPA 自行签名） | 不做 |
 
@@ -67,6 +78,7 @@
 | F4 | ~~切换权限在时间线留 `⌘ permission` note~~ **已修（2026-10-14，ADR-0027-3）** | 抑制标志进 `TimelineBuilder.State`（缓存 schema 4→5），跨快照重建不再漏；有单测钉住。电脑端改权限的 note 照常显示（有意设计） | 时间线噪音 → 已解决 |
 | F5 | 计时器起点在"有界快照切掉本轮开头"时偏短 | **已做客户端能做的部分（2026-10-14，ADR-0027-7）**：起点非真实 `turn/start` 时显示「≥」如实说明是下界（`TurnTimer.startWithConfidence`，有单测）；时钟偏移校正抽成 `HostClockOffset` 纯函数 | 精确起点仍需宿主协议补"本轮从何时开始"字段，客户端单方面做不到与电脑端完全一致 |
 | F6 | ~~`refreshSessions()` 15 秒节流同样作用于下拉刷新~~ **已修（2026-10-14，ADR-0027-4）** | 下拉走 `refreshSessions(force: true)`；节流只作用于程序性刷新 | 下拉静默无反应 → 已解决 |
+| F7 | ~~配对成功后 App 卡在「连接中」，需重启才完成握手~~ **已修（2026-10-14）** | 根因：早前排队的自动重连迟到醒来，`connect()` 无条件把 UI 打成「连接中」，而 `TetherSession.connect` 对同 id 是空操作、不会再广播 `.connected`，界面无人救回。修复：`connect()` 入口对已连接同 id 直接收工并对齐 UI；已装真机验证正常重连路径不受影响 | 配对流程最后一环体验断裂 → 已解决 |
 
 ### 3. 实时集成测试欠账（本次已部分清账）
 
@@ -86,10 +98,25 @@
 - **配对码**：`node tools/tether-status.mjs --pair` 打开配对窗口并打印完整配对串
   （10 分钟有效）；`--pairing` 之外还可 `--watch` / `--forget`。
   本机 tether 插件在线（`http://127.0.0.1:19387`），已有 1 台 iPhone 配对且**在线**。
-- **真机连接**：`xcrun devicectl list devices` 可见本机 iPhone 15 Pro（已连接），
-  可经 `devicectl` 安装 / 启动 / 截图；`bash ios/build.sh --device` 为真机构建入口
-  （需签名）。用户另有本地 Xcode 应用 **devicehub.app**（自称与 devicectl 等价），
+  **真机实测（2026-10-14）**：电脑端重装插件会重建 `~/Library/Application Support/dsh-tether/identity.key`，
+  设备 ID 与配对白名单一起作废，手机端表现为 iroh `Connect timed out`；重开配对窗口重新配对即恢复。
+- **真机连接**：`xcrun devicectl list devices` 可见本机 iPhone 15 Pro（UDID `00008130-001475D90EE3803A`），
+  可经 `devicectl` 安装 / 启动 / 截图；`bash ios/build.sh --device` 为真机构建入口（需签名）。
+  用户另有本地 Xcode 应用 **devicehub.app**（自称与 devicectl 等价），
   尚未在本机定位到路径，确认后补记于此。
+- **真机签名（无 Xcode 登录账号时的可行路径，2026-10-14 验证）**：
+  Xcode 无登录账号，但 keychain 有有效 `Apple Development` 证书、
+  `~/Library/Developer/Xcode/UserData/Provisioning Profiles/` 有有效描述文件（团队 JQLTF5R83N）。
+  仓库 bundle id `cc.unsplashz.dshpocket` 无对应描述文件，现成有效的是 `cc.zexa.dshpocket`；
+  **不能**用命令行全局覆盖 `PRODUCT_BUNDLE_IDENTIFIER`（内嵌 Frameworks 会撞 id）。
+  做法：临时改 `ios/project.yml` App target 的 bundle id → `xcodegen` →
+  构建（`CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=JQLTF5R83N`，不加 `-allowProvisioningUpdates`）→
+  成功后立即 `git checkout -- ios/project.yml ios/DSHPocket.xcodeproj/project.pbxproj` 并重新 `xcodegen` 还原。
+  注意：换 bundle id 后钥匙串里的 iroh 身份不随包迁移（按 App 隔离），**相当于一台新手机，必须重新配对**。
+- **真机冒烟结果（2026-10-14，M1 首轮）**：安装 → 启动 → 缓存会话列表 + 「连接中」横幅 →
+  重新配对 → 蜂窝网络（5G，走 relay）下实时会话同步，全链路通过。
+  截图证据在 `docs/artifacts/m1-device/`（01–05，含 iroh 超时报错屏）。
+  devicectl 无触控/滚动能力，VoiceOver、动态字体等交互式 HIG 项仍需人工在机上操作。
 - **协议层验证不需要手机**：`tools/direct-gateway.mjs` + `DSH_LIVE=1`（见 一-3）。
 
 ### 2. 仍欠的测试债

@@ -301,6 +301,22 @@ public final class AppModel {
         isConnecting = true
         defer { isConnecting = false }
 
+        // 已经连在同一台电脑上时直接收工：`TetherSession.connect` 对同 id 是空操作、
+        // 不会再广播 `.connected`，若照常往下走把 UI 打成「连接中」，
+        // 就再也没有事件把它改回来 —— 真机 F7：配对成功后，一个早前排队的自动重连
+        // 迟了几秒醒来，把界面永久卡在「连接中」（传输层其实一直在线）。
+        if pairingCode == nil,
+           case .connected(let current, _) = await tether.currentState(),
+           current == hostId {
+            reconnectAttempt = 0
+            consecutiveTransportFailures = 0
+            if !connection.isConnected {
+                // UI 与传输层脱节时顺手对齐（传输一直在线，只是界面没被救回来）
+                connection = .connected(mode: String(localized: "远端连接"))
+            }
+            return nil
+        }
+
         connection = .connecting(hostId: hostId)
         if !silent {
             pendingApprovals.removeAll()
