@@ -178,7 +178,7 @@ targets; 440 strings fully covered in English and Simplified Chinese.
 |---|---|---|
 | Protocol layer (`DSHKit`) | `cd ios/DSHKit && swift test` | **96 passing** (+20 live tests skipped without a host) |
 | Transport layer (`TetherKit`) | `cd ios/TetherKit && swift test` | **33 passing** (port derivation compared bit-for-bit against the Rust implementation, wire-protocol text, pairing-string parsing) |
-| App layer | `bash ios/build.sh --test` | **40 tests** |
+| App layer | `bash ios/build.sh --test` | **49 tests** |
 | Against a **live** DSH host | `DSH_LIVE=1 swift test --filter LiveIntegration` | **20 passing** (unary, `$events`, follow, page, prompt/cancel/selectModel round-trips) |
 | Transport interop | `cd ios/spikes/M0BInterop && swift run m0b-interop …` | **passing** — raw output in [docs/artifacts/M0B-EVIDENCE.md](docs/artifacts/M0B-EVIDENCE.md) |
 
@@ -299,7 +299,7 @@ dsh-pocket/
     project.yml            xcodegen project definition (App + 3 in-project frameworks)
     build.sh               one command to build / test / run
     DSHPocket/             the app
-    DSHPocketTests/        app-layer unit tests (40)
+    DSHPocketTests/        app-layer unit tests (49)
     DSHKit/                SwiftPM: DSH client protocol (116 tests)
     TetherKit/             SwiftPM: iroh wrapper + DLP + local proxy (33 tests)
     scripts/               fetch-iroh.sh · make-ipa.sh · version.sh · select-xcode.sh · pick-simulator.sh

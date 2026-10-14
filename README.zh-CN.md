@@ -165,7 +165,7 @@ shasum -a 256 -c DSHPocket-0.3.0-unsigned.ipa.sha256
 |---|---|---|
 | 协议层 `DSHKit` | `cd ios/DSHKit && swift test` | **96 条通过**（另有 20 条活宿主测试在无宿主时跳过） |
 | 传输层 `TetherKit` | `cd ios/TetherKit && swift test` | **33 条通过**（端口公式与 Rust 实现逐位对齐、线协议文本、配对串解析） |
-| App 层 | `bash ios/build.sh --test` | **40 条** |
+| App 层 | `bash ios/build.sh --test` | **49 条** |
 | 对着**活宿主** | `DSH_LIVE=1 swift test --filter LiveIntegration` | **20 条通过**（unary、`$events`、follow、page、prompt/cancel/selectModel 实跑） |
 | 传输互通 M0b | `cd ios/spikes/M0BInterop && swift run m0b-interop …` | **通过** —— 原始输出见 [docs/artifacts/M0B-EVIDENCE.md](docs/artifacts/M0B-EVIDENCE.md) |
 
@@ -280,7 +280,7 @@ dsh-pocket/
     project.yml            xcodegen 工程定义（App + 三个工程内静态框架）
     build.sh               一条命令构建 / 单测 / 跑起来
     DSHPocket/             App：App / DesignSystem / Features / Resources
-    DSHPocketTests/        App 层单测（40 条）
+    DSHPocketTests/        App 层单测（49 条）
     DSHKit/                SwiftPM：DSH 客户端协议层（116 条单测）
     TetherKit/             SwiftPM：iroh 封装 + DLP + 本地代理（33 条单测）
     scripts/               fetch-iroh.sh · make-ipa.sh · version.sh · select-xcode.sh · pick-simulator.sh

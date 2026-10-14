@@ -22,10 +22,43 @@ All notable changes to this project are documented here.
 
 ---
 
+## [0.4.0] — 2026-10-14
+
+**中文摘要**：冷启动不再闪过已归档的会话，归档的时间线缓存可以单独清掉；
+修掉一处会让刷新卡死的等待逻辑、一处解归档后列表不刷新的问题，以及缓存过滤的两个漏洞。
+
+### Added
+
+- **冷启动不再闪过已归档的会话**：`session/list` 不带归档字段，以前打开 App 会先把
+  缓存里的全量列表（含已归档的）铺出来，直到 `workspace/follow` 的基线到达才剔掉 ——
+  看上去就是"一堆已归档的会话闪一下"。现在把上次同步的归档集合落成快照，
+  **读缓存的时候就过滤掉**，并且顺手清掉已归档会话的时间线缓存（它们几乎不会再被点开，
+  留着只占 LRU 预算）。
+- **「已归档」页新增「清缓存」**：可以一次清掉所有归档会话的本地缓存，不影响未归档的。
+
+### Fixed
+
+- **刷新可能永久挂住**：等 workspace 基线的那段逻辑原本用"延续体 + 超时唤醒"，
+  但延续体只能被 resume 一次，超时那一刻并没有人唤醒它（取消任务不会唤醒它），
+  而 `withTaskGroup` 在作用域退出时会等所有子任务结束 —— 于是"超时"形同虚设，
+  流没起来时这个函数会一直等下去，`refreshSessions()` 的 `defer` 不执行，
+  下拉刷新的转圈就一直转。改成有界等待，并如实返回"是否真的等到了"；
+  等不到就这次不写缓存（这也正是注释里声称要做、而实际没做的事）。
+- **解归档后列表不更新**：会话列表刷新有 15 秒节流，而解归档只有"重新拉一次列表"
+  这一条路把会话拉回来，被节流挡掉时用户刚恢复的会话要等十几秒才出现。
+  现在这类"刚改完状态必须立刻体现"的刷新会绕过节流。
+- **会话列表缓存的过滤有两个漏洞**：只认 `items` 键，遇到老形态的 `sessions` 会
+  **静默退化成不过滤**（已归档的又冒出来）；过滤时会把负载里其它字段丢掉。
+  现在两个键都认，并且只替换那一个键、其余原样带回去。
+- 发布说明里的安装指南链接改成绝对地址 —— GitHub Release 页面不解析相对链接，
+  而那个链接恰好是"这个包怎么装"的唯一入口。
+
+---
+
 ## [0.3.0] — 2026-10-13
 
 首个公开版本。**只发布未签名的 IPA**，安装时由使用者用自己的 Apple ID 重签
-（见 [docs/INSTALL-UNSIGNED-IPA.md](docs/INSTALL-UNSIGNED-IPA.md)）。
+（见 [docs/INSTALL-UNSIGNED-IPA.md](https://github.com/UnsplashZ/dsh-pocket/blob/main/docs/INSTALL-UNSIGNED-IPA.md)）。
 
 First public release. Unsigned IPA only — you re-sign it with your own Apple ID.
 
@@ -71,5 +104,6 @@ First public release. Unsigned IPA only — you re-sign it with your own Apple I
 - 本项目由 [dsh-tether](https://github.com/zexadev/dsh-tether) 衍生而来，只重写了界面层：
   传输层（iroh 打洞 / 配对 / 中转 / cookie 注入）沿用上游设计。见 [NOTICE.md](NOTICE.md)。
 
-[Unreleased]: https://github.com/UnsplashZ/dsh-pocket/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/UnsplashZ/dsh-pocket/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/UnsplashZ/dsh-pocket/releases/tag/v0.4.0
 [0.3.0]: https://github.com/UnsplashZ/dsh-pocket/releases/tag/v0.3.0

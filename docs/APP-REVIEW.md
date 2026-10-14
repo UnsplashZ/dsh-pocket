@@ -3,6 +3,14 @@
 **范围**：`ios/DSHPocket`（11,096 行）+ `ios/DSHKit`（6,293 行）
 **测试**：DSHKit 113 · App 40 · TetherKit 33 · 活宿主 20 · 本地化 440 条 —— **全绿**
 
+> **这是快照，不是现状**（2026-10-14 补注）。后来对着代码复核过一遍，其中一部分已经不成立：
+>
+> - **第二节「死代码」整条作废**：`statFile` / `listProjections` / `commands` / `TodoCard`
+>   都已经不存在了。而 `DSHClient.events()` **不是**死代码 —— `EventStreamCoordinator`
+>   （生产路径）、一条活宿主测试和 M0b spike 都在用它，别照着这份文档删。
+> - 测试数字已变（现在 DSHKit 116 · App 49 · TetherKit 33），见 README。
+> - 第二节「界面空态缺引导」与第四节「已知但未修」仍然成立；第二节第 3 条是结论而不是问题。
+
 ---
 
 ## 一、功能清单（都有入口、都可达）

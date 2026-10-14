@@ -163,7 +163,7 @@ cd ios/DSHKit && DSH_LIVE=1 swift test --disable-sandbox --filter LiveIntegratio
 
 # App：构建 + 单测 + 跑起来
 bash ios/build.sh                 # 模拟器构建
-bash ios/build.sh --test          # 40 条 App 层单测
+bash ios/build.sh --test          # 49 条 App 层单测
 bash ios/build.sh --run           # 装进模拟器并启动
 bash scripts/install-device.sh    # 装到真机
 
