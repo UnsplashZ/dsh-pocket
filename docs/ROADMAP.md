@@ -122,8 +122,9 @@
       `project.yml` 的 `MARKETING_VERSION`；构建号由构建方给（CI 用 `github.run_number`）
 - [x] **未签名 IPA 打包**：`ios/scripts/make-ipa.sh`（关签名 + 对产物做断言：版本号、
       `Payload/` 结构、无签名身份），本仓库对外只发这一种形态
-- [x] **CI 与发布流水线**：`.github/workflows/ci.yml`（库单测 + App 单测 + 打包一遍）、
-      `release.yml`（打 tag 时建 Release）、`bump-version.yml`（递增版本 + 打 tag）
+- [x] **CI 与发布流水线**：`.github/workflows/ci.yml`（静态检查 + 库单测 + App 单测 + 打包一遍）、
+      `release.yml`（唯一发版入口：校验 tag 与 ios/VERSION 一致 → 打包 → 建 Release；
+      手动触发时还能递增版本号并提交）
 - [x] README 的"从 0 到可用"步骤复核；安装与自签指南见
       [INSTALL-UNSIGNED-IPA.md](INSTALL-UNSIGNED-IPA.md)
 - [ ] **在一台干净设备上真机走一遍**（含首次「本地网络」权限询问）

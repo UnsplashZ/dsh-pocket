@@ -53,7 +53,7 @@ First public release. Unsigned IPA only — you re-sign it with your own Apple I
 - **工具链**：`ios/scripts/version.sh`（版本号单一真源）、`ios/scripts/make-ipa.sh`
   （带断言的未签名 IPA 打包）、`ios/scripts/select-xcode.sh`（runner 上挑够新的 Xcode）、
   `ios/scripts/pick-simulator.sh`（机型名不再写死），以及 GitHub Actions 的
-  CI / 发版 / 版本递增三条流水线。
+  CI 与发版流水线。
 
 ### Changed
 

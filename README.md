@@ -266,17 +266,24 @@ version gets built many times. Locally it keeps whatever `project.yml` says; CI 
 
 | Workflow | Trigger | Does |
 |---|---|---|
-| [`ci.yml`](.github/workflows/ci.yml) | push to `main`, PR, manual | Library unit tests · App unit tests · unsigned IPA as an artifact |
-| [`release.yml`](.github/workflows/release.yml) | tag `v*`, or manual | Builds the unsigned IPA; on a tag it creates the GitHub Release with the IPA, its `.sha256`, and release notes taken from `CHANGELOG.md`. Manual runs only produce an artifact — no release. |
-| [`bump-version.yml`](.github/workflows/bump-version.yml) | manual | Bumps `ios/VERSION`, refuses if `CHANGELOG.md` has no section for the new version, commits, tags and pushes — which triggers `release.yml`. `dry_run` just prints the next version. |
+| [`ci.yml`](.github/workflows/ci.yml) | push to `main`, PR, manual | Localization + version-drift checks · library unit tests · App unit tests · unsigned IPA as an artifact |
+| [`release.yml`](.github/workflows/release.yml) | tag `v*`, or manual | The only release path. Verifies the tag against `ios/VERSION`, builds the unsigned IPA, and publishes the GitHub Release with the IPA, its `.sha256`, and release notes taken from `CHANGELOG.md`. A manual run can also bump the version (`bump`/`version` inputs) and commit it for you. |
+
+> Version bumping lives **inside** `release.yml` on purpose: a tag pushed with the repository's
+> own `GITHUB_TOKEN` does **not** trigger another workflow (GitHub's recursion guard). Split into
+> two workflows, the bump would push a tag and then silently release nothing. Kept in one run, the
+> tag is just a label and the subsequent steps happen in the same run — no PAT, no
+> `workflow_dispatch` workaround.
 
 ### Cutting a release
 
 1. Move the `Unreleased` entries in [CHANGELOG.md](CHANGELOG.md) into a new `## [X.Y.Z]` section
-   and merge it.
-2. Run **bump-version** (Actions → bump-version → Run workflow) with `patch` / `minor` / `major`.
-3. That's it: the tag triggers `release.yml`, which builds, checks the tag against `ios/VERSION`,
-   and publishes the Release.
+   and merge it. The workflow refuses to release a version that has no changelog section.
+2. Actions → **release** → Run workflow → pick `patch` / `minor` / `major`
+   (or type an explicit `version`). It bumps `ios/VERSION`, syncs `project.yml`, commits, tags,
+   builds, and publishes.
+3. Or do it by hand: `bash ios/scripts/version.sh bump minor`, commit, `git tag v0.4.0`,
+   `git push origin v0.4.0` — the tag push runs the same pipeline.
 
 ---
 
@@ -285,7 +292,7 @@ version gets built many times. Locally it keeps whatever `project.yml` says; CI 
 ```
 dsh-pocket/
   README.md · README.zh-CN.md · CHANGELOG.md · LICENSE · NOTICE.md
-  .github/workflows/       ci · release · bump-version
+  .github/workflows/       ci · release
   docs/                    design notes and evidence (mostly Chinese)
   ios/
     VERSION                ← the single source of truth for the version

@@ -1,20 +1,31 @@
 name: release
 
-# 两条入口：
-#   · 推 tag（v0.3.0）→ 打包 + 建 GitHub Release。这是正式发版路径。
-#   · 手动触发（workflow_dispatch）→ 只打包并上传为 CI 产物，不动 Release。
-#     想"打一个 iOS 包来看看"时用这条，不用先想版本号。
+# 唯一的发版入口。两种触发：
+#   · 推 tag（v0.3.1）→ 校验 tag 与 ios/VERSION 一致 → 打包 → 建 Release
+#   · 手动 Run workflow → 可以顺手把版本号递增并提交（bump / version），
+#     然后在本次运行里继续打包并建 Release
 #
-# 版本号的唯一真源是 ios/VERSION（见 ios/scripts/version.sh）。
-# 打 tag 时脚本会断言 tag 与 ios/VERSION 一致 —— 否则会出现
-# "tag 是 v0.4.0、包里却印着 0.3.0" 这种最难解释的发布事故。
+# 为什么"递增版本号"和"发版"必须在同一条流水线里，而不是拆成两条：
+# 用仓库自带的 GITHUB_TOKEN 推出去的 tag **不会再触发别的 workflow**
+# （GitHub 防止工作流递归的规则）。拆开的话，bump 那条推完 tag 就静默没有下文了 ——
+# 看起来一切都成功，Release 页面却什么都不会出现。
+# 合在一条里，tag 只是一个标签，后面几步在**本次运行**内继续走，不依赖任何二次触发，
+# 也就完全不用碰 PAT 或者 `gh workflow run` 那套绕法。
+#
+# 想"只打一个包看看、不发版"：用 ci.yml —— 它每次都会把未签名 IPA 传成 CI 产物。
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
     inputs:
+      bump:
+        description: '先把版本号递增这一位（none = 沿用仓库里现有的 ios/VERSION）'
+        required: true
+        type: choice
+        options: [none, patch, minor, major]
+        default: none
       version:
-        description: '仅本次打包覆盖版本号（不改仓库里的 ios/VERSION，留空则用它）'
+        description: '直接用这个版本号，形如 0.4.0（优先于 bump）'
         required: false
         type: string
 
@@ -26,13 +37,83 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  ipa:
-    name: 未签名 IPA
-    runs-on: macos-latest
+  prepare:
+    name: 版本号
+    runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: 解析版本号（打 tag 时同时校验一致）
+        id: version
+        run: |
+          set -euo pipefail
+          bump="${{ inputs.bump }}"
+          override="${{ inputs.version }}"
+
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            # tag 与 ios/VERSION 必须一致，否则会出现"tag 是 v0.4.0、包里却印着 0.3.0"
+            # 这种最难向用户解释的发布事故。
+            bash ios/scripts/version.sh check "${GITHUB_REF_NAME}"
+            version="$(bash ios/scripts/version.sh get)"
+          elif [ -n "${override}" ]; then
+            version="${override#v}"
+            bash ios/scripts/version.sh set "${version}"
+          elif [ "${bump}" != "none" ]; then
+            version="$(bash ios/scripts/version.sh bump "${bump}")"
+          else
+            version="$(bash ios/scripts/version.sh get)"
+          fi
+
+          # Release 说明取自 CHANGELOG 这一节；没有就直接失败，先补 changelog 再发版。
+          node scripts/changelog-section.mjs "${version}" > /dev/null
+
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "tag=v${version}" >> "${GITHUB_OUTPUT}"
+          echo "本次版本：${version}"
+
+      - name: 版本号有改动就提交到 main
+        run: |
+          set -euo pipefail
+          if [ -z "$(git status --porcelain -- ios/VERSION ios/project.yml)" ]; then
+            echo "版本号没有变化（沿用仓库里的 ${GITHUB_REF_NAME}），不提交"
+            exit 0
+          fi
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add ios/VERSION ios/project.yml
+          git diff --cached --stat
+          git commit -m "chore(release): ${{ steps.version.outputs.tag }}"
+          git push origin HEAD:main
+          echo "已提交并推送版本号：${{ steps.version.outputs.version }}"
+
+      - name: 打 tag（不存在时）
+        run: |
+          set -euo pipefail
+          tag="${{ steps.version.outputs.tag }}"
+          git fetch -q --tags origin
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            echo "tag ${tag} 已存在，沿用"
+            exit 0
+          fi
+          git tag -a "${tag}" -m "DSH Pocket ${tag}"
+          git push origin "${tag}"
+          echo "已推送 ${tag}"
+
+  ipa:
+    name: 未签名 IPA
+    needs: prepare
+    runs-on: macos-latest
+    steps:
+      # 显式 checkout 目标 tag：手动递增版本号时本 job 是对新提交（也就是新 tag）构建的，
+      # 而不是触发这次运行的那个旧 commit。
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
 
       - name: 选 Xcode（需要 16 或更新）
         run: bash ios/scripts/select-xcode.sh
@@ -40,32 +121,18 @@ jobs:
       - name: 装 xcodegen
         run: HOMEBREW_NO_AUTO_UPDATE=1 brew install xcodegen
 
+      # iroh 的预编译部件约 42 MB，键跟着 fetch-iroh.sh 走：脚本一改（版本或 sha256）
+      # 缓存就自动失效，不会出现"缓存里的旧二进制 + 新的校验和"这种最难查的错配。
       - name: 缓存 iroh 预编译部件
         uses: actions/cache@v4
         with:
           path: ios/vendor
           key: iroh-${{ runner.os }}-${{ hashFiles('ios/scripts/fetch-iroh.sh') }}
 
-      - name: 解析版本号（打 tag 时同时校验一致）
-        id: version
-        run: |
-          set -euo pipefail
-          override="${{ inputs.version }}"
-          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
-            bash ios/scripts/version.sh check "${GITHUB_REF_NAME}"
-            v="$(bash ios/scripts/version.sh get)"
-          elif [ -n "${override}" ]; then
-            v="${override#v}"
-          else
-            v="$(bash ios/scripts/version.sh get)"
-          fi
-          echo "version=${v}" >> "${GITHUB_OUTPUT}"
-          echo "本次版本：${v}"
-
-      - name: 打未签名 IPA
+      - name: 打未签名 IPA（构建号用 CI 的 run number）
         run: |
           bash ios/scripts/make-ipa.sh \
-            --version "${{ steps.version.outputs.version }}" \
+            --version "${{ needs.prepare.outputs.version }}" \
             --build "${GITHUB_RUN_NUMBER}"
 
       - name: 上传 IPA
@@ -87,12 +154,12 @@ jobs:
 
   release:
     name: 建 Release
-    needs: ipa
-    # 手动触发时只到上一步为止；正式发布只在 tag 上发生
-    if: github.ref_type == 'tag'
+    needs: [prepare, ipa]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
 
       - uses: actions/download-artifact@v8
         with:
@@ -105,7 +172,7 @@ jobs:
       - name: 生成发布说明
         run: |
           set -euo pipefail
-          node scripts/changelog-section.mjs "${{ needs.ipa.outputs.version }}" release-notes.md
+          node scripts/changelog-section.mjs "${{ needs.prepare.outputs.version }}" release-notes.md
           printf '\n---\n\n' >> release-notes.md
           cat .github/release-footer.md >> release-notes.md
           echo "=== release-notes.md ==="
@@ -114,7 +181,8 @@ jobs:
       - name: 建 Release 并挂上 IPA
         uses: softprops/action-gh-release@v3
         with:
-          name: DSH Pocket ${{ github.ref_name }}
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: DSH Pocket ${{ needs.prepare.outputs.tag }}
           body_path: release-notes.md
           generate_release_notes: true
           files: |

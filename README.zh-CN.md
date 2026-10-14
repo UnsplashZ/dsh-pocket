@@ -245,19 +245,26 @@ bash ios/scripts/version.sh check v0.4.0     # 断言一致（CI 用）
 构建号（`CURRENT_PROJECT_VERSION`）**故意不属于版本内容**：同一个版本会被反复构建。
 本地沿用 `project.yml` 里的值，CI 用 `github.run_number` 覆盖。
 
-### 三条流水线
+### 两条流水线
 
 | 流水线 | 触发 | 做什么 |
 |---|---|---|
-| [`ci.yml`](.github/workflows/ci.yml) | push 到 `main`、PR、手动 | 库单测 · App 单测 · 未签名 IPA（作为 CI 产物） |
-| [`release.yml`](.github/workflows/release.yml) | tag `v*`，或手动 | 打未签名 IPA；在 tag 上建 GitHub Release，挂上 IPA、`.sha256` 与取自 `CHANGELOG.md` 的发布说明。手动触发只出产物、不建 Release |
-| [`bump-version.yml`](.github/workflows/bump-version.yml) | 手动 | 递增 `ios/VERSION`；**`CHANGELOG.md` 里没有这一节就直接失败**；提交、打 tag、推送 → 触发 `release.yml`。`dry_run` 只算不写 |
+| [`ci.yml`](.github/workflows/ci.yml) | push 到 `main`、PR、手动 | 文案完整性与版本号一致性检查 · 库单测 · App 单测 · 未签名 IPA（作为 CI 产物） |
+| [`release.yml`](.github/workflows/release.yml) | tag `v*`，或手动 | **唯一的发版入口**。校验 tag 与 `ios/VERSION` 一致 → 打未签名 IPA → 建 GitHub Release（挂上 IPA、`.sha256` 与取自 `CHANGELOG.md` 的发布说明）。手动触发时还可以顺手递增版本号（`bump` / `version` 输入）并替你提交 |
+
+> 版本号递增**故意**和发版放在同一条流水线里：用仓库自带的 `GITHUB_TOKEN` 推出去的 tag
+> **不会再触发别的 workflow**（GitHub 防止递归的规则）。拆成两条的话，bump 推完 tag 就静默没有下文 ——
+> 看起来一切成功，Release 页面却什么都没有。合在一条里，tag 只是个标签，后面几步在本次运行内继续走，
+> 不用 PAT，也不用 `gh workflow run` 那套绕法。
 
 ### 发一个版本
 
 1. 把 [CHANGELOG.md](CHANGELOG.md) 里 `Unreleased` 的内容整理进新的 `## [X.Y.Z]` 一节，合并。
-2. 跑 **bump-version**（Actions → bump-version → Run workflow），选 `patch` / `minor` / `major`。
-3. 就这样：tag 会触发 `release.yml`，它会构建、校验 tag 与 `ios/VERSION` 一致、然后发布 Release。
+   （没有这一节，流水线会拒绝发版。）
+2. Actions → **release** → Run workflow → 选 `patch` / `minor` / `major`
+   （或直接填一个 `version`）。它会递增 `ios/VERSION`、同步 `project.yml`、提交、打 tag、打包并发布。
+3. 也可以手动来：`bash ios/scripts/version.sh bump minor` → 提交 → `git tag v0.4.0`
+   → `git push origin v0.4.0`，tag 推送会跑同一条流水线。
 
 ---
 
@@ -266,7 +273,7 @@ bash ios/scripts/version.sh check v0.4.0     # 断言一致（CI 用）
 ```
 dsh-pocket/
   README.md · README.zh-CN.md · CHANGELOG.md · LICENSE · NOTICE.md
-  .github/workflows/       ci · release · bump-version
+  .github/workflows/       ci · release
   docs/                    设计文档与证据；artifacts/ 放证据与截图
   ios/
     VERSION                ← 版本号的唯一真源
