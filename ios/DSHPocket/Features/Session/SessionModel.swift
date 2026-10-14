@@ -433,24 +433,23 @@ public final class SessionModel {
 
     private func applyStream(_ frame: AssistantStreamFrame) {
         let delta = builder.apply(assistantStream: frame)
-        switch frame {
-        case .start:
-            isStreaming = true
-        case .end:
-            isStreaming = false
-        default:
-            break
-        }
-        guard !delta.isEmpty else { return }
-        if case .chunk = frame { isStreaming = true }
-
-        switch frame {
-        case .end:
+        // 决策表在 DSHKit 的纯函数里（有单测钉住）：什么帧亮灯/灭灯、
+        // 什么时候合帧、什么时候必须立刻落屏。
+        let decision = StreamFlowPolicy.decide(
+            frame: frame,
+            isStreaming: isStreaming,
+            deltaIsEmpty: delta.isEmpty
+        )
+        isStreaming = decision.isStreaming
+        switch decision.publish {
+        case .none:
+            return
+        case .immediate:
             // 收尾必须**立刻**落屏，否则最后一段文字会晚一帧才出现。
             pendingStreamPublish?.cancel()
             pendingStreamPublish = nil
             publish()
-        default:
+        case .coalesced:
             scheduleStreamPublish()
         }
     }

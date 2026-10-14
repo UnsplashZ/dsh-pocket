@@ -757,6 +757,148 @@ final class LiveIntegrationTests: XCTestCase {
             XCTAssertTrue([.remote, .notFound, .transport, .disconnected].contains(error.kind))
         }
     }
+
+    /// **端到端**验证"批准一次"这条链路真的通（T2 的 M0a 探针之一）。
+    ///
+    /// 与 `testUserQuestionRoundTripActuallyReachesTheAgent` 同构，但抓的是
+    /// `approval/request`：先把会话切成 `read-only` 档位（此时任何写盘命令都必须
+    /// 走审批——实测 `workspace-write` + 写 /tmp 在 policy=ask 下**不会**触发审批，
+    /// 宿主对 bash 写临时目录是放行的），拿到 waterfall 后挂起，再用 `allowed-once`
+    /// 应答，断言 agent 收到授权、把工具跑完、轮次结束。
+    ///
+    /// 会真的起一轮 agent 并真的执行一条写 /tmp 的命令，默认跳过：`DSH_LIVE_PROMPT=1`。
+    func testApprovalRoundTripActuallyReachesTheAgent() async throws {
+        try requireLive()
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["DSH_LIVE_PROMPT"] == "1",
+            "会真的起 agent。设 DSH_LIVE_PROMPT=1 才跑。"
+        )
+        let client = makeClient()
+        let sessionId = try await client.createSession(cwd: NSHomeDirectory())
+        defer { Task { _ = try? await client.cancel(sessionId: sessionId) } }
+
+        let probeFile = "/tmp/dsh-pocket-approval-probe.txt"
+        try? FileManager.default.removeItem(atPath: probeFile)
+        defer { try? FileManager.default.removeItem(atPath: probeFile) }
+
+        // 新会话没有默认模型，不选会直接 `session/model-unavailable`。
+        let catalog = try await client.modelCatalog()
+        if let fallback = catalog.defaultSelection {
+            try await client.selectModel(
+                sessionId: sessionId,
+                provider: fallback.provider,
+                model: fallback.model,
+                reasoningEffort: fallback.reasoningEffort
+            )
+        }
+
+        // 切到 read-only：这档位下写盘命令必须问。只作用在这条一次性会话上。
+        let permission = try await client.executeCommand(sessionId: sessionId, line: "/permission read-only")
+        XCTAssertTrue(permission.isSuccess, "/permission read-only 应当成功，实际：\(permission.text)")
+
+        let coordinator = EventStreamCoordinator(client: client)
+        let seen = AsyncStream.makeStream(of: WaterfallRequest.self)
+        await coordinator.setAnswerer { request in
+            // 只认这个会话的审批：宿主会把别的会话未决的 waterfall 一并重放给新客户端。
+            guard request.isApproval, request.agentId == sessionId else { return .next }
+            seen.continuation.yield(request)
+            return .deferred
+        }
+        await coordinator.start()
+        defer { Task { await coordinator.stop() } }
+
+        _ = try await client.prompt(
+            sessionId: sessionId,
+            requestId: RpcId.make(),
+            text: """
+            Use the bash tool to run exactly this command: \
+            sh -c 'echo probe-ok > /tmp/dsh-pocket-approval-probe.txt' \
+            Do not do anything else.
+            """,
+            mode: .queue
+        )
+
+        // **必须有界**：宿主可能根本不发审批（档位/策略变了），无界的 for await
+        // 会把测试永久挂住 —— 第一次跑这条时就踩到了。
+        let request: WaterfallRequest? = try await withTimeout(75) {
+            for await candidate in seen.stream { return candidate }
+            return nil
+        } ?? nil
+        let approval = try XCTUnwrap(
+            request,
+            "75 秒内应当收到 approval/request（read-only 档位下写盘命令必须走审批；没收到说明宿主的审批触发面变了，要重新摸）"
+        )
+        XCTAssertFalse(approval.eventId.isEmpty)
+
+        // 挂起状态：这时候批准，必须还能送达。
+        let pending = await coordinator.isPending(eventId: approval.eventId)
+        XCTAssertTrue(pending, "deferred 之后这条 waterfall 必须还挂着，否则批准就是白发")
+
+        await coordinator.respond(approval, outcome: WaterfallRequest.approvalOutcome(.allowedOnce))
+
+        // agent 应当收到授权、把命令跑完（文件真的落盘）、轮次结束
+        var finished = false
+        for _ in 0..<45 {
+            try await Task.sleep(for: .seconds(2))
+            let sessions = try await client.listSessions()
+            if sessions.first(where: { $0.sessionId == sessionId })?.isRunning == false {
+                finished = true
+                break
+            }
+        }
+        XCTAssertTrue(finished, "批准之后 agent 应当恢复并跑完（否则就是授权没送到，它会一直等到超时）")
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: probeFile),
+            "批准之后那条命令应当真的被执行（\(probeFile) 落盘）"
+        )
+
+        _ = try? await client.archiveSession(sessionId: sessionId)
+    }
+
+    /// **图片 / 文件附件的线上形状**（T2 的 M0a 探针之一）：
+    /// 图片是内联 base64（`{type:'image', mediaType, data}`），
+    /// 文件是先 `session/uploadFileBinary` 拿 receiptId 再 `{type:'file', receiptId}`。
+    /// 两个曾经靠读源码猜、猜错过两次的地方 —— 这里验"宿主真的收"。
+    ///
+    /// 两种附件放进**同一条** prompt（省一轮 agent），会真的起一轮，默认跳过。
+    func testPromptWithImageAndFileAttachmentsIsAccepted() async throws {
+        try requireLive()
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["DSH_LIVE_PROMPT"] == "1",
+            "会真的起一轮 agent。设 DSH_LIVE_PROMPT=1 才跑。"
+        )
+        let client = makeClient()
+        let sessionId = try await client.createSession(cwd: NSHomeDirectory())
+        defer { Task { _ = try? await client.cancel(sessionId: sessionId) } }
+
+        // 1×1 透明 PNG
+        let png = try XCTUnwrap(
+            Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="),
+            "内置的 1×1 PNG 应当能解码"
+        )
+
+        let upload = try await client.uploadFile(
+            sessionId: sessionId,
+            name: "probe-note.txt",
+            data: Data("attachment probe\n".utf8)
+        )
+        XCTAssertFalse(upload.receiptId.isEmpty, "上传应当返回 receiptId")
+
+        let accepted = try await client.prompt(
+            sessionId: sessionId,
+            requestId: RpcId.make(),
+            text: "Reply with exactly: pong",
+            attachments: [
+                .image(data: png, mediaType: "image/png", name: "dot.png"),
+                .file(receiptId: upload.receiptId),
+            ],
+            mode: .queue
+        )
+        XCTAssertTrue(accepted, "带图片 + 文件附件的 prompt 应当被接受（形状对了才会被接受）")
+
+        _ = try await client.cancel(sessionId: sessionId)
+        _ = try? await client.archiveSession(sessionId: sessionId)
+    }
 }
 
 private extension Optional where Wrapped == String {

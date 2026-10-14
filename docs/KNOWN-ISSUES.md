@@ -26,9 +26,8 @@
 1. **仓库内 `project.pbxproj` 的 MARKETING_VERSION 漂移为 0.4.1**（应为 0.4.2）。
    根因在 `release.yml` 的"版本号有改动就提交到 main"步骤只 `git add ios/VERSION ios/project.yml`，
    没有把 `version.sh` 已同步好的 `project.pbxproj` 一起提交；且 GITHUB_TOKEN 推送不触发 ci，
-   漂移从未被 CI 抓到。**下次普通推送 main 时，ci 的"版本号与 project.yml / pbxproj 是否同步"
-   检查会红。** 修复方向：release.yml 提交步骤补上 pbxproj（已改，待提交）；
-   工作区里重新生成的 0.4.2 pbxproj 需一并提交。
+   漂移从未被 CI 抓到。**已修（db9d667，已在 origin/main）**：release.yml 提交步骤补上 pbxproj；
+   `version.sh check 0.4.2` 复核一致（2026-10-14）。
 2. **实时集成测试 `testCancelAcceptsBareSessionId` 对活宿主失败**：对一个
    "列表快照里非运行、但属 subagent routing 管辖"的会话调 `session/cancel`，
    宿主返回 `session/agent-busy`（要求走 subagent delivery），与测试
@@ -80,14 +79,16 @@
 | F6 | ~~`refreshSessions()` 15 秒节流同样作用于下拉刷新~~ **已修（2026-10-14，ADR-0027-4）** | 下拉走 `refreshSessions(force: true)`；节流只作用于程序性刷新 | 下拉静默无反应 → 已解决 |
 | F7 | ~~配对成功后 App 卡在「连接中」，需重启才完成握手~~ **已修（2026-10-14）** | 根因：早前排队的自动重连迟到醒来，`connect()` 无条件把 UI 打成「连接中」，而 `TetherSession.connect` 对同 id 是空操作、不会再广播 `.connected`，界面无人救回。修复：`connect()` 入口对已连接同 id 直接收工并对齐 UI；已装真机验证正常重连路径不受影响 | 配对流程最后一环体验断裂 → 已解决 |
 
-### 3. 实时集成测试欠账（本次已部分清账）
+### 3. 实时集成测试欠账（已清账）
 
-- 20 条 `LiveIntegrationTests` 之前从未在发版时跑过（默认跳过）。本次对活宿主实测：
-  **15 通过 / 1 失败（见 一-2）/ 4 跳过**。4 条跳过的是需 `DSH_LIVE_PROMPT=1`
-  的用例——会真实起 agent 轮次、写真实会话，发版验证时需显式决定要不要跑。
+- 20 条 `LiveIntegrationTests` 之前从未在发版时跑过（默认跳过）。2026-10-14 对活宿主实测：
+  首轮 15 通过 / 1 失败（见 一-2，客户端侧已收口）/ 4 跳过；
+  宿主在线后补跑 `DSH_LIVE_PROMPT=1` 的 3 条 prompt 级用例**全部通过**，
+  并新增 2 条探针（审批往返、图片/文件附件，见 T2）——现共 22 条，
+  `DSH_LIVE=1` + `DSH_LIVE_PROMPT=1` 下 **22 通过 / 0 失败**。
 - **注意副作用**：这批测试会在宿主上真实建会话 / fork 会话（如
   `testCreateSessionLandsInTheChosenWorkspace`、`testForkCreatesANewSession`），
-  跑完应清理。
+  各用例结束时会自行归档；跑挂（超时强杀）的残留要手动补归档。
 
 ---
 
@@ -123,10 +124,10 @@
 
 | # | 项 | 说明 |
 | --- | --- | --- |
-| T1 | `SessionModel`（900+ 行）几乎无单测 | APP-REVIEW 建议：把队列合并、计时器起点、折叠后滚动抽成纯函数下沉 DSHKit 后再测。**首付（2026-10-14）**：计时器起点（`TurnTimer`，含置信度）与时钟偏移（`HostClockOffset`）已在 DSHKit 有单测，`Composer.elapsedText` 有 App 层测试；队列合并（`applyingInboxSplice`）此前已在 DSHKit。剩余：流帧累积与发布合帧的抽取 |
-| T2 | M0a 三条协议探针未做 | 抓真实 `approval/request` 并用 `$events/result` 应答；抓 `user-questions/request` 并应答；图片/文件路径确认。**2026-10-14 尝试执行时宿主不在线**（tether 端口无监听），待宿主运行时跑 `DSH_LIVE=1 DSH_LIVE_PROMPT=1` |
+| T1 | ~~`SessionModel`（900+ 行）几乎无单测~~ | APP-REVIEW 建议：把队列合并、计时器起点、折叠后滚动抽成纯函数下沉 DSHKit 后再测。**已清（2026-10-14 两批）**：计时器起点（`TurnTimer`，含置信度）与时钟偏移（`HostClockOffset`）已在 DSHKit 有单测，`Composer.elapsedText` 有 App 层测试；队列合并（`applyingInboxSplice`）此前已在 DSHKit；流帧处置（`StreamFlowPolicy`：什么帧亮灯/灭灯、合帧还是立刻落屏）已抽成 DSHKit 纯函数，8 条决策表单测。16ms 合帧定时器本身是 MainActor Task，留在 App 层 |
+| T2 | ~~M0a 三条协议探针未做~~ | **已做（2026-10-14，宿主在线实测）**：① `approval/request` 抓真 + `$events/result` 应答往返——新增 `testApprovalRoundTripActuallyReachesTheAgent`（read-only 档位下写盘必触发审批；实测发现 `workspace-write` + 写 /tmp 在 policy=ask 下宿主**不**审批，已写进测试注释）；② `user-questions/request` 往返——`testUserQuestionRoundTripActuallyReachesTheAgent` 通过；③ 图片（内联 base64）/文件（uploadFileBinary → receiptId）——新增 `testPromptWithImageAndFileAttachmentsIsAccepted` 通过。三条全绿，探针会话已清理归档 |
 | T3 | 真机 HIG 走查 | 见 M1；可用 devicectl 驱动真机逐屏验证 |
-| T4 | `gen-strings.py` 已知边界 | 插值内再嵌引号的字面量会截成假 key（会报出、不静默）；日志/断言跨多行理论上可漏网。脚本注释已写明 |
+| T4 | ~~`gen-strings.py` 已知边界~~ | **已修（2026-10-14）**：抽取与兜底扫描改用配对感知的字面量扫描器（`read_string_literal`，插值内嵌引号/嵌套括号递归处理），不再截出假 key；三引号多行块整块跳过。新增 `--selftest` 钉住扫描器行为。实测对照：清掉 8 条假 key/误收（插值碎片、「启用」来自日志行），补回 6 条完整字面量；目录 key 净变化 = 删 `启用`、删 `：%@`（均为旧误收），无新增遗漏 |
 
 ---
 

@@ -1840,17 +1840,6 @@
         }
       }
     },
-    "启用": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Enabled"
-          }
-        }
-      }
-    },
     "命令": {
       "extractionState": "manual",
       "localizations": {
@@ -6974,23 +6963,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Default model"
-          }
-        }
-      }
-    },
-    "：%@": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": ": %@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "：%@"
           }
         }
       }

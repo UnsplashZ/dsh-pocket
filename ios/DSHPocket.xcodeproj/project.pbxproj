@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		005CFDE5664DBDDAF58B382F /* StreamFlowPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = B16F1734F870C61F4CE7ADE9 /* StreamFlowPolicy.swift */; };
 		07D4AFEDDD493F17EDB21685 /* DSHPocketApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 924598A2E62CF91E30377D87 /* DSHPocketApp.swift */; };
 		0C3DD51E547C02C0C94F342A /* LLMProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 629A0D2486C00C6FD8CB3A91 /* LLMProvider.swift */; };
 		1124AFA07CF308417A5A1867 /* SessionCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD212F40CEBB2E882DB37AE2 /* SessionCacheTests.swift */; };
@@ -215,6 +216,7 @@
 		A61720A16CF30E3539C3DDD3 /* ApprovalViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalViews.swift; sourceTree = "<group>"; };
 		AB8FD867EC3110B3BB52E461 /* TetherProxyPort.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TetherProxyPort.swift; sourceTree = "<group>"; };
 		AD7894845FFE4AECBFFF46BF /* RPCClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPCClient.swift; sourceTree = "<group>"; };
+		B16F1734F870C61F4CE7ADE9 /* StreamFlowPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamFlowPolicy.swift; sourceTree = "<group>"; };
 		B225F0688C4A99917EBDD4AE /* SessionCategory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCategory.swift; sourceTree = "<group>"; };
 		B3E177347AB2BA195EBD899C /* TetherSecretStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TetherSecretStore.swift; sourceTree = "<group>"; };
 		B624E63D100EADA66BC73883 /* EventStreamCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventStreamCoordinator.swift; sourceTree = "<group>"; };
@@ -326,6 +328,7 @@
 				F345924C6640FF3AAB53E779 /* PromptMode.swift */,
 				B225F0688C4A99917EBDD4AE /* SessionCategory.swift */,
 				E67688A27EA05DFC126FA9D6 /* SessionEvent.swift */,
+				B16F1734F870C61F4CE7ADE9 /* StreamFlowPolicy.swift */,
 				79B7887EBC326BB1948E7ABE /* TimelineBuilder.swift */,
 				332E9727DA5B522FCF725E72 /* TimelineItem.swift */,
 				890CF718E11E93024E730F42 /* TimelineTurn.swift */,
@@ -768,6 +771,7 @@
 				3379AE831FF66E5DA0E09FB1 /* Retry.swift in Sources */,
 				B2C68D45F6D1B2B35D9ED533 /* SessionCategory.swift in Sources */,
 				F4CD12090587030CFFD87AF8 /* SessionEvent.swift in Sources */,
+				005CFDE5664DBDDAF58B382F /* StreamFlowPolicy.swift in Sources */,
 				78E396D2D850FB21020E1833 /* TimelineBuilder.swift in Sources */,
 				122EA2D82CF1FAF439A5C61E /* TimelineItem.swift in Sources */,
 				3373030D910B08CE8381EE79 /* TimelineTurn.swift in Sources */,

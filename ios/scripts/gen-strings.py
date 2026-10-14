@@ -29,8 +29,10 @@ EXTRA_SOURCE_DIRS = [ROOT / "DSHKit" / "Sources", ROOT / "TetherKit" / "Sources"
 CATALOG = SOURCE_DIR / "Resources" / "Localizable.xcstrings"
 SOURCE_LANGUAGE = "zh-Hans"
 
-# 源码里会被抽成 key 的调用点。宁可多列几种，也别漏（漏了就不会被本地化）。
-EXTRACTION_PATTERNS = [
+# 旧正则抽取模式（已弃用，仅留作形状对照参考；三元 / return / 单独成行三种
+# 形状当时也在其中）。正则的字符类会在插值内层引号上停下、把字面量截成假 key；
+# 现在的抽取是**配对感知的扫描器 + 前后文核对**（见 read_string_literal / extract()）。
+EXTRACTION_PATTERNS_DEPRECATED = [
     r'String\(localized:\s*"((?:[^"\\]|\\.)*)"',
     r'Text\("((?:[^"\\]|\\.)*)"\)',
     r'Label\("((?:[^"\\]|\\.)*)"',
@@ -45,24 +47,50 @@ EXTRACTION_PATTERNS = [
     # `.help(_:)` 收的是 `LocalizedStringKey`，字面量同样要进 catalog ——
     # 不进的话中文机器上一切正常，英文机器上冒出一句中文。
     #
-    # 这几个都允许 `(` 与字面量之间换行：真实调用点常写成
-    # `.confirmationDialog(\n    "标题",`，写死 `\("` 会整片漏掉。
+    # 这几个都允许 `(` 与字面量之间换行：真实调用点常写成多行形式，写死 `\("` 会整片漏掉。
     r'\.help\(\s*"((?:[^"\\]|\\.)*)"\s*\)',
     r'\.alert\(\s*"((?:[^"\\]|\\.)*)"',
     r'\.confirmationDialog\(\s*"((?:[^"\\]|\\.)*)"',
     r'\.accessibilityLabel\(\s*"((?:[^"\\]|\\.)*)"',
     r'LabeledContent\(\s*"((?:[^"\\]|\\.)*)"',
     r'ProgressView\(\s*"((?:[^"\\]|\\.)*)"',
-    # 三元的两半：`cond ? "A" : "B"`。两个分支都要本地化，而只认调用点形状的模式看不出来
-    # ——"发送 / 排队发送"那颗主按钮就是这种形状（见 #1）。
-    r'\?\s*"((?:[^"\\]|\\.)*)"\s*:\s*"((?:[^"\\]|\\.)*)"',
+]
+
+# 现在的调用形状表：字面量**之前**的形状（`$` 锚定）+ 字面量**之后**必须紧跟的
+# 形状（`^` 锚定；None 表示不查）。与上面的弃用列表一一对应。
+CALL_SHAPES = [
+    (r"String\(localized:\s*$", None),
+    (r"Text\($", r"\)"),
+    (r"Label\($", None),
+    (r"\.navigationTitle\($", r"\)"),
+    (r"ContentUnavailableView\(\s*$", None),
+    (r"Button\($", None),
+    (r"Section\($", r"\)"),
+    (r"Toggle\($", None),
+    (r"TextField\($", None),
+    (r"Picker\($", None),
+    (r"SecureField\(\s*$", None),
+    # `.help(_:)` 收的是 `LocalizedStringKey`，字面量同样要进 catalog ——
+    # 不进的话中文机器上一切正常，英文机器上冒出一句中文。
+    (r"\.help\(\s*$", r"\s*\)"),
+    (r"\.alert\(\s*$", None),
+    (r"\.confirmationDialog\(\s*$", None),
+    (r"\.accessibilityLabel\(\s*$", None),
+    (r"LabeledContent\(\s*$", None),
+    (r"ProgressView\(\s*$", None),
     # `return "文案"`：返回位置的字面量（枚举的 `var label` 之类）。
     # 返回类型是 `LocalizedStringKey` 的已经是对的，返回类型是 `String` 的必须自己
     # 包一层 `String(localized:)` —— `Text(String)` 是 verbatim 语义，不查目录。
-    r'return\s+"((?:[^"\\]|\\.)*)"',
-    # 单独成行的字面量：`private var placeholder: LocalizedStringKey { "…" }` 的隐式返回。
-    r'^\s*"((?:[^"\\]|\\.)*)"\s*,?$',
+    (r"\breturn\s+$", None),
 ]
+COMPILED_CALL_SHAPES = [(re.compile(prefix), None if tail is None else re.compile(tail))
+                        for prefix, tail in CALL_SHAPES]
+
+# 三元的两半：`cond ? "A" : "B"`。两个分支都要本地化，而调用形状看不出来
+# ——"发送 / 排队发送"那颗主按钮就是这种形状（见 #1）。
+TERNARY_BEFORE = re.compile(r"\?\s*$")
+# 配不到 `: "B"` 的 `?`（比如 `x ?? "默认"`）不收 —— 那是空合并，不是二元文案。
+TERNARY_BETWEEN = re.compile(r"\s*:\s*")
 
 # 兜底扫描用：日志、断言、调试输出里的中文字面量不会进界面，不该要求翻译。
 NOT_USER_FACING_LINE = re.compile(r"logs\.log\(|logger\??\.log\(|XCTAssert|\bprint\(|fatalError|\bassert\(")
@@ -77,11 +105,9 @@ NOT_LOCALIZED: dict[str, str] = {
     "照片.\\(ext)": "附件文件名（会写进会话数据），不是界面文案",
 }
 
-# 含中文的字面量。**允许 `\(…)` 插值**（`"状态：\(x)"` 也是面向人的文案，
-# 早期版本把它排除在外，于是整个诊断导出页都从这条兜底扫描里漏掉了）。
-# 代价是插值里再嵌一对引号的那种（`"RTT：\(m.map { "\($0)ms" } ?? "—")"`）会被截断成
-# 一个假的 key —— 那种会被报出来，人工判断即可，好过整类漏掉。
-LITERAL = re.compile(r'"((?:[^"\\\n]|\\.)*)"')
+# 字面量扫描统一走 `read_string_literal` / `iter_string_literals`（配对感知）。
+# 曾经用正则 `[^"\\]` 扫，插值里再嵌一对引号的那种
+# （`"RTT：\(m.map { "\($0)ms" } ?? "—")"`）会被截断成一个假 key —— 已修。
 # 中文（含扩展区）、CJK 标点、全角形式。用 `[^\x00-\x7F]` 更省事，但那会把
 # `"—"`、`"…"` 这种纯排版的字面量也算进来 —— 它们不需要翻译，只会制造噪声。
 HAS_CJK = re.compile(r"[\u2e80-\u9fff\u3000-\u303f\uff00-\uffef]")
@@ -1135,26 +1161,135 @@ def strip_comments(text: str) -> str:
     return "\n".join(out)
 
 
+def read_string_literal(text: str, start: int) -> tuple[str, int] | None:
+    """从 `text[start] == '"'` 开始读一个 Swift 字符串字面量。
+
+    返回 `(raw, end)`：raw 是引号之间的原文（转义序列与 `\\(…)` 插值都保持原样，
+    留给 `unescape` / `key_for` 处理），end 是闭合引号的下一个下标。
+    读不到闭合引号（换行 / 文件尾）返回 None。
+
+    与正则的本质区别：插值 `\\(…)` 里可以再嵌**带引号的字符串**
+    （`"RTT：\\(m.map { "\\($0)ms" } ?? "—")"`），这里按括号配对 + 递归跳过嵌套
+    字面量处理，不会在内层引号上截断。三引号多行字符串不属于这个函数
+    （调用方在 `iter_string_literals` 里整块跳过）。
+    """
+    if text.startswith('"""', start):
+        return None
+    cursor = start + 1
+    out: list[str] = []
+    while cursor < len(text):
+        character = text[cursor]
+        if character == "\\":
+            if cursor + 1 < len(text) and text[cursor + 1] == "(":
+                # 插值：括号配对扫描，嵌套字符串字面量递归跳过（里面的引号不算数）。
+                depth = 1
+                probe = cursor + 2
+                while probe < len(text) and depth > 0:
+                    symbol = text[probe]
+                    if symbol == '"':
+                        nested = read_string_literal(text, probe)
+                        if nested is None:
+                            return None
+                        probe = nested[1]
+                        continue
+                    if symbol == "\\":
+                        probe += 2
+                        continue
+                    if symbol == "(":
+                        depth += 1
+                    elif symbol == ")":
+                        depth -= 1
+                    probe += 1
+                if depth != 0:
+                    return None
+                out.append(text[cursor:probe])
+                cursor = probe
+                continue
+            out.append(text[cursor:cursor + 2])
+            cursor += 2
+            continue
+        if character == '"':
+            return "".join(out), cursor + 1
+        if character == "\n":
+            return None
+        out.append(character)
+        cursor += 1
+    return None
+
+
+def iter_string_literals(text: str) -> list[tuple[int, str, int]]:
+    """产出全文所有单行字符串字面量 `(start, raw, end)`；三引号多行块整块跳过。
+
+    旧实现按行跑正则，插值里嵌引号的字面量会被截断。这里按扫描器走，
+    拿到的永远是完整字面量。
+    """
+    found: list[tuple[int, str, int]] = []
+    cursor = 0
+    while cursor < len(text):
+        if text.startswith('"""', cursor):
+            closing = text.find('"""', cursor + 3)
+            cursor = len(text) if closing == -1 else closing + 3
+            continue
+        if text[cursor] == '"':
+            result = read_string_literal(text, cursor)
+            if result is None:
+                cursor += 1
+                continue
+            raw, end = result
+            found.append((cursor, raw, end))
+            cursor = end
+            continue
+        cursor += 1
+    return found
+
+
+def is_standalone_line(text: str, start: int, end: int) -> bool:
+    """字面量单独成行：`{ "…" }` 隐式返回那种（旧模式 `^\\s*"…"\\s*,?$`）。**"""
+    line_start = text.rfind("\n", 0, start) + 1
+    line_end = text.find("\n", end)
+    if line_end == -1:
+        line_end = len(text)
+    before = text[line_start:start].strip()
+    after = text[end:line_end].strip()
+    return before == "" and after in ("", ",")
+
+
 def extract() -> dict[str, str]:
     found: dict[str, str] = {}
     for path in sorted([p for base in [SOURCE_DIR, *EXTRA_SOURCE_DIRS] for p in base.rglob("*.swift")]):
         text = strip_comments(path.read_text())
-        for pattern in EXTRACTION_PATTERNS:
-            # MULTILINE：有模式靠行首/行尾锚定（单独成行的字面量）。
-            for match in re.finditer(pattern, text, re.MULTILINE):
-                # 一个模式可以抓多个字面量（三元的两半都要），所以遍历所有捕获组。
-                # 模式内部一律用非捕获组 `(?:…)`，免得插进来多余的组。
-                for group in match.groups():
-                    if group is None:
-                        continue
-                    raw = unescape(group)
-                    # 只收**面向人**的字面量：含中文，或者本来就在 EN 里管着
-                    #（`"%@% · %@ / %@"` 这种纯格式 key 就是这样保住的）。
-                    # 少了这一条，放宽后的模式会把 `"Hm"`、`"MMMdHm"`（日期模板）、
-                    # `"DEBUG"`（日志级别）这些技术字符串也当成待翻译文案。
-                    if not HAS_CJK.search(raw) and key_for(raw) not in EN:
-                        continue
-                    found[raw] = str(path.relative_to(ROOT))
+        relative = str(path.relative_to(ROOT))
+        for start, raw, end in iter_string_literals(text):
+            candidates = [raw]
+            before = text[max(0, start - 200):start]
+            matched = False
+            # 三元：`? "A" : "B"` 两半都收；配不到 `: "B"` 的 `?`（`x ?? "默认"`）不收。
+            if TERNARY_BEFORE.search(before):
+                gap = TERNARY_BETWEEN.match(text, end)
+                if gap and gap.end() < len(text) and text[gap.end()] == '"':
+                    second = read_string_literal(text, gap.end())
+                    if second is not None:
+                        candidates.append(second[0])
+                        matched = True
+            if not matched:
+                after = text[end:end + 64]
+                matched = any(
+                    prefix.search(before) and (tail is None or tail.match(after))
+                    for prefix, tail in COMPILED_CALL_SHAPES
+                )
+            if not matched:
+                matched = is_standalone_line(text, start, end)
+            if not matched:
+                continue
+            for candidate in candidates:
+                value = unescape(candidate)
+                # 只收**面向人**的字面量：含中文，或者本来就在 EN 里管着
+                #（`"%@% · %@ / %@"` 这种纯格式 key 就是这样保住的）。
+                # 少了这一条，放宽后的形状会把 `"Hm"`、`"MMMdHm"`（日期模板）、
+                # `"DEBUG"`（日志级别）这些技术字符串也当成待翻译文案。
+                if not HAS_CJK.search(value) and key_for(value) not in EN:
+                    continue
+                found[value] = relative
     return found
 
 
@@ -1199,8 +1334,8 @@ def scan_chinese_literals() -> dict[str, str]:
         for number, line in enumerate(text.splitlines(), 1):
             if NOT_USER_FACING_LINE.search(line):
                 continue
-            for match in LITERAL.finditer(line):
-                raw = unescape(match.group(1))
+            for _, literal, _ in iter_string_literals(line):
+                raw = unescape(literal)
                 if not HAS_CJK.search(raw):
                     continue
                 if raw in NOT_LOCALIZED:
@@ -1213,7 +1348,55 @@ def placeholders(text: str) -> list[str]:
     return re.findall(r"%[@dlsf]", text)
 
 
+def selftest() -> int:
+    """扫描器的自测（`--selftest`）：插值嵌引号这类曾经的截断点全部钉住。**"""
+    cases: list[tuple[str, str | None]] = [
+        # (输入, 期望的 raw；None 表示应当读不出来)
+        ('"普通文案"', "普通文案"),
+        ('"状态：\\(x)"', "状态：\\(x)"),
+        # 插值里嵌一层字符串 —— 旧正则在这里截断
+        ('"RTT：\\(m.map { "\\($0)ms" } ?? "—")"',
+         'RTT：\\(m.map { "\\($0)ms" } ?? "—")'),
+        # 插值里嵌套括号
+        ('"共 \\(Format.time(item.time)) 条"', "共 \\(Format.time(item.time)) 条"),
+        # 转义引号不是结束
+        ('"他说 \\"你好\\""', '他说 \\"你好\\"'),
+        # 空合并里的引号不被当成字面量边界
+        ('"值：\\(dict["k"] ?? "—")"', '值：\\(dict["k"] ?? "—")'),
+        # 未闭合（读到换行）
+        ('"断了\n"', None),
+    ]
+    failures = 0
+    for source, expected in cases:
+        result = read_string_literal(source, 0)
+        got = None if result is None else result[0]
+        if got != expected:
+            failures += 1
+            print(f"selftest 失败：{source[:40]}… → {got!r}（期望 {expected!r}）", file=sys.stderr)
+
+    # 迭代器：三引号块整块跳过，后面的字面量照常收
+    triple = 'let a = """\n多行\n"""\nlet b = "之后的"'
+    literals = [raw for _, raw, _ in iter_string_literals(triple)]
+    if literals != ["之后的"]:
+        failures += 1
+        print(f"selftest 失败：三引号块跳过 → {literals!r}", file=sys.stderr)
+
+    # 迭代器：插值里的引号不会把一个字面量劈成两个
+    nested = 'Text("RTT：\\(m.map { "\\($0)ms" } ?? "—")")'
+    literals = [raw for _, raw, _ in iter_string_literals(nested)]
+    if len(literals) != 1:
+        failures += 1
+        print(f"selftest 失败：嵌套引号劈开了字面量 → {literals!r}", file=sys.stderr)
+
+    if failures:
+        return 1
+    print("selftest 通过：扫描器行为符合预期")
+    return 0
+
+
 def main() -> int:
+    if "--selftest" in sys.argv:
+        return selftest()
     check_only = "--check" in sys.argv
     found = extract()
 
