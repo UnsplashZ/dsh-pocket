@@ -49,7 +49,7 @@
 
 | # | 项 | 说明 | 状态 |
 | --- | --- | --- | --- |
-| M1 | 真机逐项过 HIG | VoiceOver 全流程、动态字体 AX1/AX3/AX5、Increase Contrast、Voice Control | 未做 |
+| M1 | 真机逐项过 HIG | VoiceOver 全流程、动态字体 AX1/AX3/AX5、Increase Contrast、Voice Control | 未做；设备已连（devicectl），见 §三-1 |
 | M2 | 干净设备首跑 | 含首次「本地网络」权限询问的完整首次体验 | 未做 |
 | M3 | ~~TestFlight 上架~~ | **已决定不做**（需付费开发者账号；项目定位即未签名 IPA 自行签名） | 不做 |
 
@@ -58,9 +58,9 @@
 | # | 项 | 位置 / 证据 | 影响 |
 | --- | --- | --- | --- |
 | F1 | 审批推送通知没有操作按钮 | 全仓无 `UNNotificationAction` / 通知 category；应用内「待处理」页有 拒绝/批准一次，通知横幅只能点进去 | 审批类通知体验打折 |
-| F2 | 计划模式输入框占位文案未接 | `Composer.swift` `placeholder` 注释："计划模式的开关状态还没接进来" | 计划模式下占位文案与桌面端不一致 |
-| F3 | 待办面板无空态引导 | 无待办时整块消失 | 新用户不知道有这功能 |
-| F4 | 切换权限在时间线留 `⌘ permission` note | — | 时间线噪音 |
+| F2 | 计划模式输入框占位文案未接 | `Composer.swift` `placeholder` 注释："计划模式的开关状态还没接进来"。**协议侧其实已有 `Projections.plan: PlanState`（active/pending）**，改接是客户端小改 | 计划模式下占位文案与桌面端不一致 |
+| F3 | 待办面板无空态引导 | 无待办时整块消失（`Composer.swift` `todoPanel` 以 `if !entries.isEmpty` 门控） | 新用户不知道有这功能 |
+| F4 | ~~切换权限在时间线留 `⌘ permission` note~~ **已部分修复** | `TimelineBuilder` 已抑制 `/permission` 命令引发的整组配置 note（含 `⌘ permission`）；**剩余**：从电脑端改权限的 note 仍照常显示（代码注释标明为有意设计） | 时间线噪音（残留部分） |
 | F5 | 计时器起点在"有界快照切掉本轮开头"时偏短 | 宿主协议未提供"本轮从何时开始"字段 | **客户端单方面修不了**，需宿主协议补字段 |
 | F6 | `refreshSessions()` 15 秒节流同样作用于下拉刷新 | `AppModel.swift` 节流处：15 秒内第二次下拉静默无反应（仅 debug 日志） | 有意保留的毛刺；一行可改成只节流程序性刷新 |
 
@@ -84,7 +84,8 @@
   本机 tether 插件在线（`http://127.0.0.1:19387`），已有 1 台 iPhone 配对且**在线**。
 - **真机连接**：`xcrun devicectl list devices` 可见本机 iPhone 15 Pro（已连接），
   可经 `devicectl` 安装 / 启动 / 截图；`bash ios/build.sh --device` 为真机构建入口
-  （需签名）。
+  （需签名）。用户另有本地 Xcode 应用 **devicehub.app**（自称与 devicectl 等价），
+  尚未在本机定位到路径，确认后补记于此。
 - **协议层验证不需要手机**：`tools/direct-gateway.mjs` + `DSH_LIVE=1`（见 一-3）。
 
 ### 2. 仍欠的测试债
@@ -104,7 +105,7 @@
 | --- | --- | --- |
 | D1 | ROADMAP 中"更新 GLOSSARY/DECISIONS 中产生偏差的部分" | 未做（ROADMAP 里仍是未勾选） |
 | D2 | `docs/` 设计文档仅中文 | 英文 README 已如实注明 |
-| D3 | `LiveIntegrationTests` 注释引用已更名 `dev-proxy.mjs` | 见 一-3，待改 |
+| D3 | ~~`LiveIntegrationTests` 注释引用已更名 `dev-proxy.mjs`~~ | 已改（2026-10-14，与 KNOWN-ISSUES 同批提交） |
 
 ## 五、项目主动延后的方向（非缺陷）
 
