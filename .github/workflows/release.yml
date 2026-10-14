@@ -1,0 +1,131 @@
+name: release
+
+# 两条入口：
+#   · 推 tag（v0.3.0）→ 打包 + 建 GitHub Release。这是正式发版路径。
+#   · 手动触发（workflow_dispatch）→ 只打包并上传为 CI 产物，不动 Release。
+#     想"打一个 iOS 包来看看"时用这条，不用先想版本号。
+#
+# 版本号的唯一真源是 ios/VERSION（见 ios/scripts/version.sh）。
+# 打 tag 时脚本会断言 tag 与 ios/VERSION 一致 —— 否则会出现
+# "tag 是 v0.4.0、包里却印着 0.3.0" 这种最难解释的发布事故。
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '仅本次打包覆盖版本号（不改仓库里的 ios/VERSION，留空则用它）'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ipa:
+    name: 未签名 IPA
+    runs-on: macos-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: 选 Xcode（需要 16 或更新）
+        run: |
+          set -euo pipefail
+          current="$(xcodebuild -version | head -1 | awk '{print $2}')"
+          if [ "${current%%.*}" -lt 16 ]; then
+            newest="$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1 || true)"
+            if [ -n "${newest}" ]; then
+              sudo xcode-select -s "${newest}"
+            fi
+          fi
+          xcodebuild -version
+
+      - name: 装 xcodegen
+        run: HOMEBREW_NO_AUTO_UPDATE=1 brew install xcodegen
+
+      - name: 缓存 iroh 预编译部件
+        uses: actions/cache@v4
+        with:
+          path: ios/vendor
+          key: iroh-${{ runner.os }}-${{ hashFiles('ios/scripts/fetch-iroh.sh') }}
+
+      - name: 解析版本号（打 tag 时同时校验一致）
+        id: version
+        run: |
+          set -euo pipefail
+          override="${{ inputs.version }}"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            bash ios/scripts/version.sh check "${GITHUB_REF_NAME}"
+            v="$(bash ios/scripts/version.sh get)"
+          elif [ -n "${override}" ]; then
+            v="${override#v}"
+          else
+            v="$(bash ios/scripts/version.sh get)"
+          fi
+          echo "version=${v}" >> "${GITHUB_OUTPUT}"
+          echo "本次版本：${v}"
+
+      - name: 打未签名 IPA
+        run: |
+          bash ios/scripts/make-ipa.sh \
+            --version "${{ steps.version.outputs.version }}" \
+            --build "${GITHUB_RUN_NUMBER}"
+
+      - name: 上传 IPA
+        uses: actions/upload-artifact@v7
+        with:
+          name: ipa-unsigned
+          path: |
+            dist/*.ipa
+            dist/*.sha256
+          if-no-files-found: error
+
+      - name: 上传构建日志
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-log
+          path: dist/*.log
+          if-no-files-found: ignore
+
+  release:
+    name: 建 Release
+    needs: ipa
+    # 手动触发时只到上一步为止；正式发布只在 tag 上发生
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: ipa-unsigned
+          path: dist
+
+      # 发布说明取自 CHANGELOG.md 里这一版的那一节，而不是自动生成的提交列表：
+      # 提交信息是写给维护者看的，发布说明是写给使用者看的，受众不同。
+      # 自动生成的内容仍会作为补充附在后面（generate_release_notes）。
+      - name: 生成发布说明
+        run: |
+          set -euo pipefail
+          node scripts/changelog-section.mjs "${{ needs.ipa.outputs.version }}" release-notes.md
+          printf '\n---\n\n' >> release-notes.md
+          cat .github/release-footer.md >> release-notes.md
+          echo "=== release-notes.md ==="
+          cat release-notes.md
+
+      - name: 建 Release 并挂上 IPA
+        uses: softprops/action-gh-release@v3
+        with:
+          name: DSH Pocket ${{ github.ref_name }}
+          body_path: release-notes.md
+          generate_release_notes: true
+          files: |
+            dist/*.ipa
+            dist/*.sha256

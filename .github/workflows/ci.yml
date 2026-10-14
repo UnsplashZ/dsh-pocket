@@ -1,0 +1,107 @@
+name: ci
+
+# 每次推到 main / 每个 PR 都跑：
+#   libs —— 两个 SwiftPM 包的单测（macOS，不需要模拟器，最快给出反馈）
+#   app  —— App 层的模拟器单测 **加上** 真正走一遍未签名 IPA 的打包路径
+# 打包也放进 CI 是刻意的：发布路径只有在每次改动时都被执行过，
+# 打 tag 那一刻才不会第一次发现它坏了。
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  libs:
+    name: 库单测（DSHKit / TetherKit）
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: 选 Xcode（需要 16 或更新）
+        run: |
+          set -euo pipefail
+          current="$(xcodebuild -version | head -1 | awk '{print $2}')"
+          if [ "${current%%.*}" -lt 16 ]; then
+            newest="$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1 || true)"
+            if [ -n "${newest}" ]; then
+              sudo xcode-select -s "${newest}"
+            fi
+          fi
+          xcodebuild -version
+
+      # TetherKit 依赖 iroh-ffi（从 GitHub 拉），缓存命中时不必重新解析
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ios/DSHKit/.build
+            ios/TetherKit/.build
+          key: spm-${{ runner.os }}-${{ hashFiles('ios/DSHKit/Package.swift', 'ios/TetherKit/Package.swift') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      - name: DSHKit 单测（协议层，无需网络）
+        working-directory: ios/DSHKit
+        run: swift test
+
+      - name: TetherKit 单测（传输层，无需网络）
+        working-directory: ios/TetherKit
+        run: swift test
+
+  app:
+    name: App 单测 + 未签名 IPA
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: 选 Xcode（需要 16 或更新）
+        run: |
+          set -euo pipefail
+          current="$(xcodebuild -version | head -1 | awk '{print $2}')"
+          if [ "${current%%.*}" -lt 16 ]; then
+            newest="$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1 || true)"
+            if [ -n "${newest}" ]; then
+              sudo xcode-select -s "${newest}"
+            fi
+          fi
+          xcodebuild -version
+
+      - name: 装 xcodegen
+        run: HOMEBREW_NO_AUTO_UPDATE=1 brew install xcodegen
+
+      # iroh 的预编译部件约 42 MB，键跟着 fetch-iroh.sh 走：脚本一改（版本或 sha256）
+      # 缓存就自动失效，不会出现"缓存里的旧二进制 + 新的校验和"这种最难查的错配。
+      - name: 缓存 iroh 预编译部件
+        uses: actions/cache@v4
+        with:
+          path: ios/vendor
+          key: iroh-${{ runner.os }}-${{ hashFiles('ios/scripts/fetch-iroh.sh') }}
+
+      - name: App 层单测（模拟器）
+        run: bash ios/build.sh --test
+
+      - name: 打未签名 IPA（构建号用 CI 的 run number）
+        run: bash ios/scripts/make-ipa.sh --build "${GITHUB_RUN_NUMBER}"
+
+      - name: 上传 IPA
+        uses: actions/upload-artifact@v7
+        with:
+          name: ipa-unsigned
+          path: |
+            dist/*.ipa
+            dist/*.sha256
+          if-no-files-found: error
+
+      - name: 上传构建日志（失败时排障用）
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-log
+          path: dist/*.log
+          if-no-files-found: ignore

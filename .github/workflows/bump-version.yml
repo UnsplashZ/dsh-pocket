@@ -1,0 +1,84 @@
+name: bump-version
+
+# 版本号管理的唯一入口。手工改 ios/VERSION 再打 tag 当然也行，
+# 但那样容易漏掉「CHANGELOG 里还没有这一节」和「tag 与 ios/VERSION 不一致」两件事，
+# 而这两件事都要等到用户下载了包才会发现。
+#
+# 这条流水线做的事：
+#   1. 递增 ios/VERSION（patch / minor / major），并同步进 project.yml
+#   2. 断言 CHANGELOG.md 里已经有这一版的段落 —— 没有就直接失败，先补 changelog
+#   3. 提交、打 tag、推送 → tag 会触发 release.yml 去打包并建 Release
+#
+# dry_run = true 时只算不写，用来先看看下一个版本号是什么。
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: '递增哪一位'
+        required: true
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+      dry_run:
+        description: '只计算，不提交、不打 tag'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bump-version
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    name: 递增版本号并打 tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: 递增并校验
+        id: next
+        run: |
+          set -euo pipefail
+          old="$(bash ios/scripts/version.sh get)"
+          new="$(bash ios/scripts/version.sh bump "${{ inputs.bump }}")"
+          echo "from=${old}" >> "${GITHUB_OUTPUT}"
+          echo "to=${new}" >> "${GITHUB_OUTPUT}"
+          echo "版本号：${old} → ${new}"
+
+          # CHANGELOG 必须先有这一节，否则 Release 说明会是空的
+          if ! node scripts/changelog-section.mjs "${new}" > /dev/null; then
+            echo "::error::CHANGELOG.md 里还没有 ${new} 这一节，先在 PR 里补上再发版。"
+            exit 1
+          fi
+
+          if git rev-parse "v${new}" >/dev/null 2>&1; then
+            echo "::error::tag v${new} 已经存在。"
+            exit 1
+          fi
+
+      - name: 提交、打 tag、推送
+        if: ${{ inputs.dry_run != true }}
+        run: |
+          set -euo pipefail
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add ios/VERSION ios/project.yml
+          git diff --cached --stat
+          git commit -m "chore(release): v${{ steps.next.outputs.to }}"
+          git tag -a "v${{ steps.next.outputs.to }}" -m "DSH Pocket v${{ steps.next.outputs.to }}"
+          git push origin HEAD:main
+          git push origin "v${{ steps.next.outputs.to }}"
+          echo "已推送 v${{ steps.next.outputs.to }} —— release.yml 会接着打包并建 Release。"
+
+      - name: dry run：把改动退回去
+        if: ${{ inputs.dry_run == true }}
+        run: |
+          git checkout -- ios/VERSION ios/project.yml
+          echo "dry run 结束，下一个版本号会是 ${{ steps.next.outputs.to }}（未写入仓库）"
