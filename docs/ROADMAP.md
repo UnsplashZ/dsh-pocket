@@ -112,7 +112,8 @@
       收掉了 [#1](https://github.com/UnsplashZ/dsh-pocket/issues/1)
 - [x] 配对失败原因码本地化（四种码都有文案，且有"文案里不能出现码本身"的断言）
 - [ ] **真机逐项走一遍**：VoiceOver 全流程、AX1/AX3/AX5 三档、Increase Contrast、Voice Control
-- [ ] 审批通知的三个操作按钮（批准一次 / 拒绝 / 稍后）—— 目前通知只是提醒，点开回到 App
+- [x] 审批通知的操作按钮（批准一次 / 拒绝）—— 通知上直接决策，决策仍走原生通道；
+      「稍后」由点横幅回 App 后的全局待处理横幅承载（ADR-0027）
 
 **验收**：自检清单全绿；无 P0/P1 级无障碍问题。
 
@@ -133,7 +134,8 @@
       [INSTALL-UNSIGNED-IPA.md](INSTALL-UNSIGNED-IPA.md)
 - [ ] **在一台干净设备上真机走一遍**（含首次「本地网络」权限询问）
 - [ ] 若用 TestFlight：需要付费账号；写清楚审核说明与演示路径
-- [ ] 更新 [GLOSSARY.md](GLOSSARY.md)/[DECISIONS.md](DECISIONS.md) 中产生偏差的部分
+- [x] 更新 [GLOSSARY.md](GLOSSARY.md)/[DECISIONS.md](DECISIONS.md) 中产生偏差的部分
+      （2026-10-14 勾稽完成：易漂移点逐项与代码核对一致，新增偏差记入 ADR-0027）
 
 **验收**：全新设备 0 → 可用 ≤ 10 分钟（含信任开发者证书）。
 

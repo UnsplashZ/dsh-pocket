@@ -17,8 +17,10 @@ import Foundation
 public struct TimelineBuilder: Sendable {
     /// 正在丢掉"`/permission` 引发的那一组配置 note"。
     ///
-    /// **不持久化**（不进 `State`）：它只在一次命令的几毫秒内有效，
-    /// 跨会话/跨缓存没有意义。
+    /// **要进 `State`**：手机端发起 `/permission` 后，如果事件流跨过快照边界
+    /// （缓存重建 builder）时这组 note 还没到齐，内存标志会丢、note 就漏出来
+    /// （KNOWN-ISSUES F4 的残留项）。它只在一次命令的几毫秒内为 true，
+    /// 持久化的代价几乎为零。
     private var suppressConfigNotes = false
     // MARK: - 输出
 
@@ -88,7 +90,7 @@ public struct TimelineBuilder: Sendable {
         /// 注意不只是"字段变了"要升版：`isShadowed` 这类**折叠结果**也存进来了，
         /// 所以修好一个"错误地标成已隐藏"的 bug 之后，旧缓存里那个错误的标记
         /// 会一直生效 —— 界面上看不出任何变化，会以为修复没生效（实测踩过）。
-        public static let currentSchemaVersion = 4
+        public static let currentSchemaVersion = 5
 
         public var schemaVersion: Int = State.currentSchemaVersion
         public var header: SessionHeader?
@@ -103,6 +105,8 @@ public struct TimelineBuilder: Sendable {
         public var inboxItems: [String: String]
         public var optimisticItems: [String: String]
         public var transientCounter: Int
+        /// `/permission` 抑制窗口是否还开着（见 `suppressConfigNotes`）。
+        public var suppressConfigNotes: Bool
 
         // 显式公开 memberwise init：`State` 要跨模块构造（App 侧的缓存）。
         public init(
@@ -118,7 +122,8 @@ public struct TimelineBuilder: Sendable {
             approvals: [String: String] = [:],
             inboxItems: [String: String] = [:],
             optimisticItems: [String: String] = [:],
-            transientCounter: Int = 0
+            transientCounter: Int = 0,
+            suppressConfigNotes: Bool = false
         ) {
             self.schemaVersion = schemaVersion
             self.header = header
@@ -133,6 +138,7 @@ public struct TimelineBuilder: Sendable {
             self.inboxItems = inboxItems
             self.optimisticItems = optimisticItems
             self.transientCounter = transientCounter
+            self.suppressConfigNotes = suppressConfigNotes
         }
     }
 
@@ -149,7 +155,8 @@ public struct TimelineBuilder: Sendable {
             approvals: approvals,
             inboxItems: inboxItems,
             optimisticItems: optimisticItems,
-            transientCounter: transientCounter
+            transientCounter: transientCounter,
+            suppressConfigNotes: suppressConfigNotes
         )
     }
 
@@ -168,6 +175,7 @@ public struct TimelineBuilder: Sendable {
         inboxItems = state.inboxItems
         optimisticItems = state.optimisticItems
         transientCounter = state.transientCounter
+        suppressConfigNotes = state.suppressConfigNotes
         rebuildIndex()
     }
 

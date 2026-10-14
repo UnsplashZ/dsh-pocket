@@ -101,7 +101,9 @@ struct SessionListView: View {
             guard !Task.isCancelled else { return }
             await model.searchHistory(query)
         }
-        .refreshable { await model.refreshSessions() }
+        // 下拉是**用户显式要最新数据**，不受 15 秒节流限制（KNOWN-ISSUES F6）——
+        // 被节流挡掉的话，拉了下转圈停、列表不动，看起来像坏了。
+        .refreshable { await model.refreshSessions(force: true) }
         .navigationTitle("会话")
         .toolbar { toolbar }
         .overlay { emptyOverlay }

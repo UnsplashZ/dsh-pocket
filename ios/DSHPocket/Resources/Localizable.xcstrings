@@ -3612,6 +3612,17 @@
         }
       }
     },
+    "描述你的任务以生成计划": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Describe your task to generate a plan"
+          }
+        }
+      }
+    },
     "描述你要它持续做什么": {
       "extractionState": "manual",
       "localizations": {
@@ -6205,6 +6216,17 @@
         }
       }
     },
+    "这个会话由子代理托管，请到它的父会话里操作。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This session is managed by a subagent. Use its parent session instead."
+          }
+        }
+      }
+    },
     "这个会话还是空的": {
       "extractionState": "manual",
       "localizations": {
@@ -6339,6 +6361,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "This one can no longer be answered here (the connection dropped; your computer will use its default)."
+          }
+        }
+      }
+    },
+    "这轮还没有待办": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No to-dos for this turn yet"
           }
         }
       }

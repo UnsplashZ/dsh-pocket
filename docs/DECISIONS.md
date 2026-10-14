@@ -545,3 +545,44 @@ this deployment configures the session-query index with openAt "never"
 用户："复制点赞等功能按钮和时间放到一行，左对齐，不要留这么多空。"
 之前时间单独右对齐、操作另起一行，中间空一大片。现在
 `[复制] [👍] [👎] [分支] [用量] [时间]` **全在一行、整行左对齐**。
+
+## ADR-0027 · 缺口收口：通知操作按钮、计划模式占位、抑制标志持久化、下拉强制刷新
+
+**日期**：2026-10-14
+
+**背景**：[KNOWN-ISSUES.md](KNOWN-ISSUES.md) 逐项分析后收掉的一批小缺口
+（F1 / F2 / F3 / F4 / F6 与实时测试暴露的 cancel 边界）。逐条的代码证据见该文档，
+这里只记**决策**部分。
+
+**决定**：
+
+1. **审批通知带操作按钮（F1）**。注册 `UNNotificationCategory`（「批准一次」/「拒绝」），
+   通知响应经 `UNUserNotificationCenterDelegate` 路由回 `AppModel.decide(approval:decision:)` ——
+   **决策仍只走 DSH 原生通道**，不违反 ADR-0007/0012（按钮就是用户决策，不是自动决策）。
+   请求已不在待处理里（通知比状态旧）就**忽略**，不对不存在的 waterfall 发应答。
+   提问通知不带按钮 —— 提问需要看完整选项，点横幅回 App 走全局待处理横幅。
+2. **计划模式占位文案接 `projections.plan`（F2）**。协议侧早有 `PlanState(active/pending)`，
+   之前是客户端没接。`active == true` 时占位换「描述你的任务以生成计划」（照 desktop 的说法），
+   并由统计轮询顺带对齐（桌面端切了模式手机不滞后）。
+3. **`/permission` 抑制标志进 `TimelineBuilder.State`（F4，缓存 schema 4 → 5）**。
+   手机端发起 `/permission` 后事件流跨过快照边界时，内存标志会丢、整组配置 note 漏出来。
+   标志只在一次命令的几毫秒内为 true，持久化代价为零；旧缓存按版本号规则直接丢弃重拉
+  （ADR-0016 原则 3）。有单测钉住（`testPermissionSuppressionSurvivesStateRebuild`）。
+4. **下拉刷新绕过 15 秒节流（F6）**。节流只作用于**程序性**刷新（20 秒轮询、事件通知）；
+   下拉是用户显式要最新数据，走 `refreshSessions(force: true)`，与 `unarchive` 的先例一致。
+5. **待办面板空态只给"用过待办"的会话看（F3）**。会话页出现过待办、之后被清空
+   且轮次在跑时，显示一行不可点的「这轮还没有待办」；从没用过待办的会话不显示 ——
+   常驻提示对他们是纯噪音。
+6. **`session/cancel` 对子代理会话的拒绝翻译成人话**。宿主对 subagent 管辖的会话拒
+   `session/cancel`（`session/agent-busy`，要求走 subagent delivery）—— 这是协议边界
+   （宿主侧是否做自动转发是 dsh 本体的行为决策，留待上游）。客户端按 `code` 分支
+   映射为「这个会话由子代理托管，请到它的父会话里操作。」；
+   实时测试 `testCancelAcceptsBareSessionId` 的选人范围排除子代理会话
+   （它验的是"形状校验"，不是这条边界）。
+
+**后果**：
+- 审批等待的典型场景（App 在后台）不用点进 App 就能决策；
+- 文档勾稽（ROADMAP M4 的 GLOSSARY/DECISIONS 一项）随本条完成：已核对
+  DEV-DIRECT 命名、mux 路径（`/api/remote.mux`）、缓存预算（32 MB / 4 MB）、
+  iroh-ffi 版本（1.1.0）、TransportMode 降级为开发者模式、权限走 `/permission` 命令
+  等易漂移点，均与实现一致；本条之后的偏差按同样方式补记。

@@ -1035,6 +1035,11 @@ EN: dict[str, str] = {
     "配对时收到意外消息：%@": "Unexpected message during pairing: %@",
     "附件数据不是合法 base64": "Attachment data is not valid base64",
     "首个 follow 帧不是 snapshot": "The first follow frame is not a snapshot",
+    # ── 2026-10-14 缺口收口（ADR-0027）新增 ─────────────────────────────
+    "描述你的任务以生成计划": "Describe your task to generate a plan",
+    "这轮还没有待办": "No to-dos for this turn yet",
+    "这个会话由子代理托管，请到它的父会话里操作。":
+        "This session is managed by a subagent. Use its parent session instead.",
 }
 
 # 哪些插值表达式是整数。判错的后果是英文界面上显示成 `%lld` 字面量，

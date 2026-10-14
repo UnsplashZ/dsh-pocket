@@ -109,6 +109,8 @@ public final class SessionModel {
     /// 可用的斜杠命令。
     private(set) var commands: [SlashCommand] = []
     private(set) var todos: [TimelineItem.TodoEntry] = []
+    /// 计划模式开关（`projections.plan`）。输入框占位文案按它切换 —— 照 desktop 的说法。
+    private(set) var planState: PlanState?
 
     /// 上一次跟随失败的提示（给"所有失败都要有文案"这条）。
     private(set) var failureMessage: String?
@@ -481,6 +483,7 @@ public final class SessionModel {
         todos = (values.array("todos") ?? []).map {
             TimelineItem.TodoEntry(text: $0.string("content") ?? "", status: .init(raw: $0.string("status")))
         }
+        planState = values["plan"].map(PlanState.init(json:))
         sessionStats = SessionStats(json: values["sessionStats"] ?? .object([:]))
         subagentCatalog = (values.array("subagentCatalog") ?? []).map(SubagentInfo.init(json:))
         contextBreakdown = values["contextBreakdown"].map(ContextBreakdown.init(json:))
@@ -678,9 +681,21 @@ public final class SessionModel {
         do {
             _ = try await client.cancel(sessionId: sessionId)
             isTurnRunning = false
+        } catch let error as DSHClientError {
+            failureMessage = Self.cancelFailureMessage(error)
         } catch {
-            failureMessage = (error as? DSHClientError)?.displayMessage ?? error.localizedDescription
+            failureMessage = error.localizedDescription
         }
+    }
+
+    /// `session/cancel` 对**子代理会话**会被宿主拒掉（`session/agent-busy`，
+    /// 要求走 subagent delivery）—— 这是协议边界，把原始错误翻译成人话
+    ///（KNOWN-ISSUES 一-2）。其余错误原样展示。
+    private static func cancelFailureMessage(_ error: DSHClientError) -> String {
+        if case .remote(let remote) = error, remote.code == "session/agent-busy" {
+            return String(localized: "这个会话由子代理托管，请到它的父会话里操作。")
+        }
+        return error.displayMessage
     }
 
     func clearFailure() {
@@ -786,6 +801,8 @@ public final class SessionModel {
             contextBreakdown = ContextBreakdown(json: breakdown)
         }
         goal = values["goal"].map(SessionGoal.init(json:))
+        // 计划模式可能在桌面端被切换 —— 统计轮询顺便把它也对齐，占位文案才不滞后。
+        planState = values["plan"].map(PlanState.init(json:))
     }
 
     /// 把一条**实时的** `agent/inbox/spliced` 增量地应用到投影那份队列上。

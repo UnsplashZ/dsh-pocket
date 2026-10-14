@@ -290,7 +290,12 @@ final class LiveIntegrationTests: XCTestCase {
         try requireLive()
         let client = makeClient()
         let sessions = try await client.listSessions()
-        guard let idle = sessions.first(where: { !$0.isRunning && !$0.sessionId.hasPrefix("im:") }) else {
+        // 子代理会话不在选人范围：宿主对它们拒 `session/cancel`
+        //（`session/agent-busy`，要求走 subagent delivery）—— 那是协议边界，
+        // 不是这条用例要验的"形状校验"（KNOWN-ISSUES 一-2，2026-10-14 实测踩中）。
+        guard let idle = sessions.first(where: {
+            !$0.isRunning && !$0.sessionId.hasPrefix("im:") && !$0.category.isSubagent
+        }) else {
             throw XCTSkip("没有空闲会话")
         }
         let result = try await client.cancel(sessionId: idle.sessionId)

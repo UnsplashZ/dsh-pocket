@@ -78,6 +78,11 @@ struct Composer: View {
     @State private var showFileImporter = false
     @State private var sendTrigger = 0
     @State private var stopTrigger = 0
+    /// 这轮（这个会话页）有没有出现过待办。
+    ///
+    /// 空态引导只在"有过待办、现在空了"时才出现 —— 从没用过待办的会话
+    /// 不该常驻一行提示（那是对老用户的噪音，见 KNOWN-ISSUES F3）。
+    @State private var hadTodos = false
 
     private var isRunning: Bool { session.isTurnRunning }
 
@@ -218,6 +223,10 @@ struct Composer: View {
         .onChange(of: session.queuedMessages.count) { old, new in
             if new > old { isQueueExpanded = true }
         }
+        // 出现过待办就记住 —— 空态引导只给"用过待办"的会话看（F3）。
+        .onChange(of: session.todos.isEmpty) { _, isEmpty in
+            if !isEmpty { hadTodos = true }
+        }
         .onChange(of: photoSelection) { _, items in
             Task { await loadPhotos(items) }
         }
@@ -310,9 +319,8 @@ struct Composer: View {
     /// 计划模式是「描述你的任务以生成计划」。之前我们自己编的
     /// 「给电脑说点什么…」跟桌面端对不上（用户："有点奇怪"）。
     private var placeholder: LocalizedStringKey {
-        // 计划模式下 desktop 会换成另一句（`placeholder.plan`）。
-        // 这里先只做默认那句 —— 计划模式的开关状态还没接进来。
-        "发消息或创建任务"
+        // 计划模式的开关走 `projections.plan`（协议侧早有，之前是客户端没接）。
+        session.planState?.isActive == true ? "描述你的任务以生成计划" : "发消息或创建任务"
     }
 
     // MARK: 工作状态
@@ -581,6 +589,24 @@ struct Composer: View {
                     }
                 }
             }
+            .background(.bar)
+            .overlay(alignment: .top) { Rectangle().fill(Color(.separator)).frame(height: 0.5) }
+            .overlay(alignment: .bottom) { Rectangle().fill(Color(.separator)).frame(height: 0.5) }
+        } else if hadTodos, session.isTurnRunning {
+            // **空态引导**（KNOWN-ISSUES F3）：这轮曾经有过待办、现在被清掉了
+            //（新一轮开始时会清空）。留一行不可点的说明，让人知道"待办会出现在这里"。
+            // 从没用过待办的会话不显示 —— 常驻一行提示对他们是纯噪音。
+            HStack(spacing: Token.Spacing.tight) {
+                Image(systemName: "checklist")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                Text("这轮还没有待办")
+                    .font(.footnote)
+                    .foregroundStyle(.tertiary)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, Token.Spacing.gutter)
+            .frame(height: 36)
             .background(.bar)
             .overlay(alignment: .top) { Rectangle().fill(Color(.separator)).frame(height: 0.5) }
             .overlay(alignment: .bottom) { Rectangle().fill(Color(.separator)).frame(height: 0.5) }

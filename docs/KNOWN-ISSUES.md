@@ -31,8 +31,11 @@
 2. **实时集成测试 `testCancelAcceptsBareSessionId` 对活宿主失败**：对一个
    "列表快照里非运行、但属 subagent routing 管辖"的会话调 `session/cancel`，
    宿主返回 `session/agent-busy`（要求走 subagent delivery），与测试
-   "对空闲会话 cancel 应是成功空操作"的假设矛盾。待判断：是宿主刻意行为
-   （手机端对子代理会话点取消也会踩到，至少应给出友好提示），还是协议边界应放宽。
+   "对空闲会话 cancel 应是成功空操作"的假设矛盾。
+   **客户端侧已收口（2026-10-14，ADR-0027-6）**：`session/agent-busy` 映射为
+   友好文案（"这个会话由子代理托管，请到它的父会话里操作。"），
+   该用例的选人范围排除子代理会话。**仍待上游拍板**：宿主 `session/cancel`
+   收到子代理会话 id 时是否自动转发给父会话的 waterfall 应答（属 dsh 本体行为决策）。
 3. **文档过期**：`LiveIntegrationTests.swift` 的注释与跳过提示引用
    `tools/dev-proxy.mjs`，该文件已更名为 `tools/direct-gateway.mjs`。
    实测 `node tools/direct-gateway.mjs`（绑 127.0.0.1:8788，逐请求注入 cookie）+
@@ -57,12 +60,12 @@
 
 | # | 项 | 位置 / 证据 | 影响 |
 | --- | --- | --- | --- |
-| F1 | 审批推送通知没有操作按钮 | 全仓无 `UNNotificationAction` / 通知 category；应用内「待处理」页有 拒绝/批准一次，通知横幅只能点进去 | 审批类通知体验打折 |
-| F2 | 计划模式输入框占位文案未接 | `Composer.swift` `placeholder` 注释："计划模式的开关状态还没接进来"。**协议侧其实已有 `Projections.plan: PlanState`（active/pending）**，改接是客户端小改 | 计划模式下占位文案与桌面端不一致 |
-| F3 | 待办面板无空态引导 | 无待办时整块消失（`Composer.swift` `todoPanel` 以 `if !entries.isEmpty` 门控） | 新用户不知道有这功能 |
-| F4 | ~~切换权限在时间线留 `⌘ permission` note~~ **已部分修复** | `TimelineBuilder` 已抑制 `/permission` 命令引发的整组配置 note（含 `⌘ permission`）；**剩余**：从电脑端改权限的 note 仍照常显示（代码注释标明为有意设计） | 时间线噪音（残留部分） |
+| F1 | ~~审批推送通知没有操作按钮~~ **已修（2026-10-14，ADR-0027-1）** | `NotificationCenterAdapter` 注册「批准一次 / 拒绝」category，响应路由回 `AppModel.decide`；请求已不在待处理里就忽略 | 审批类通知体验打折 → 已解决 |
+| F2 | ~~计划模式输入框占位文案未接~~ **已修（2026-10-14，ADR-0027-2）** | `SessionModel.planState` 接 `projections.plan`，`Composer.placeholder` 按 `isActive` 切换「描述你的任务以生成计划」 | 占位文案与桌面端一致 |
+| F3 | ~~待办面板无空态引导~~ **已修（2026-10-14，ADR-0027-5）** | 会话页出现过待办后被清空且轮次在跑时，显示一行「这轮还没有待办」；没用过待办的会话不显示 | 新用户不知道有这功能 → 已解决 |
+| F4 | ~~切换权限在时间线留 `⌘ permission` note~~ **已修（2026-10-14，ADR-0027-3）** | 抑制标志进 `TimelineBuilder.State`（缓存 schema 4→5），跨快照重建不再漏；有单测钉住。电脑端改权限的 note 照常显示（有意设计） | 时间线噪音 → 已解决 |
 | F5 | 计时器起点在"有界快照切掉本轮开头"时偏短 | 宿主协议未提供"本轮从何时开始"字段 | **客户端单方面修不了**，需宿主协议补字段 |
-| F6 | `refreshSessions()` 15 秒节流同样作用于下拉刷新 | `AppModel.swift` 节流处：15 秒内第二次下拉静默无反应（仅 debug 日志） | 有意保留的毛刺；一行可改成只节流程序性刷新 |
+| F6 | ~~`refreshSessions()` 15 秒节流同样作用于下拉刷新~~ **已修（2026-10-14，ADR-0027-4）** | 下拉走 `refreshSessions(force: true)`；节流只作用于程序性刷新 | 下拉静默无反应 → 已解决 |
 
 ### 3. 实时集成测试欠账（本次已部分清账）
 
@@ -103,7 +106,7 @@
 
 | # | 项 | 状态 |
 | --- | --- | --- |
-| D1 | ROADMAP 中"更新 GLOSSARY/DECISIONS 中产生偏差的部分" | 未做（ROADMAP 里仍是未勾选） |
+| D1 | ~~ROADMAP 中"更新 GLOSSARY/DECISIONS 中产生偏差的部分"~~ | 已做（2026-10-14）：易漂移点逐项核对一致，新偏差记入 ADR-0027，ROADMAP 已勾选 |
 | D2 | `docs/` 设计文档仅中文 | 英文 README 已如实注明 |
 | D3 | ~~`LiveIntegrationTests` 注释引用已更名 `dev-proxy.mjs`~~ | 已改（2026-10-14，与 KNOWN-ISSUES 同批提交） |
 

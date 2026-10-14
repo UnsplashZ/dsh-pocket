@@ -229,6 +229,9 @@ public final class AppModel {
         localEndpointId = (try? await tether.localEndpointId()) ?? ""
         hosts = await tether.hosts()
         await notifier.configure()
+        await notifier.setResponseHandler { [weak self] actionId, userInfo in
+            Task { await self?.handleNotificationResponse(actionId: actionId, userInfo: userInfo) }
+        }
         // 冷启动第一屏：先用缓存里的列表，再等 `session/list` 校准。
         // 用 `activeSessionList()` 而不是原始 `sessionList()` —— 后者会把已归档的
         // 会话也铺出来，直到 `workspace/follow` 的 baseline 到达才被剔掉，
@@ -596,7 +599,7 @@ public final class AppModel {
 
     // MARK: 会话列表
 
-    /// 每次刷新至少间隔这么久（给手动的 `refreshSessions()` 做节流）。
+    /// 每次刷新至少间隔这么久（给**程序性**的 `refreshSessions()` 做节流）。
     private static let minimumRefreshInterval: TimeInterval = 15
 
     /// `workspace/follow` 的首帧（baseline）是否已经到达。
@@ -639,9 +642,10 @@ public final class AppModel {
     /// `force` 为 true 时不受下面的节流限制，给"刚改完状态、必须立刻在列表里体现"
     /// 的调用方用 —— 见 `unarchive(_:)`：它没有本地回填，只靠这次刷新把会话拉回列表，
     /// 被节流挡掉的话用户要等十几秒才能看到自己刚恢复的会话。
+    /// **下拉刷新也走 `force`**：那是用户显式要最新数据，静默跳过只会让他以为坏了。
     func refreshSessions(force: Bool = false) async {
         guard connection.isConnected else { return }
-        // 节流：手动刷新（下拉、进归档页）每 15 秒最多真正发一次 RPC。
+        // 节流：程序性刷新（定时轮询、事件通知）每 15 秒最多真正发一次 RPC。
         if !force, let last = lastRefreshAttemptAt, Date().timeIntervalSince(last) < Self.minimumRefreshInterval {
             logs.log(.debug, "跳过会话列表刷新（15 秒节流）")
             return
@@ -1078,6 +1082,34 @@ public final class AppModel {
         logs.log(.info, "审批 \(request.eventId) → \(decision.rawValue)")
     }
 
+    /// 通知上的响应：操作按钮直接决策；点横幅本身只是回到 App
+    ///（待处理横幅是全局的，审批卡就在那儿）。
+    private func handleNotificationResponse(actionId: String, userInfo: [String: String]) {
+        guard let approvalId = userInfo["approvalId"] else { return }
+        switch actionId {
+        case NotificationCenterAdapter.Action.approveOnce:
+            decideApproval(eventId: approvalId, decision: .allowedOnce)
+        case NotificationCenterAdapter.Action.reject:
+            decideApproval(eventId: approvalId, decision: .rejected)
+        default:
+            // `UNNotificationDefaultActionIdentifier`：点的是横幅。
+            // 若这条审批的会话页正开着，滚到那张审批卡上。
+            focusedApprovalId = approvalId
+        }
+    }
+
+    /// 从通知按钮直接决策一条审批。
+    ///
+    /// 请求不在待处理里（已被处理、或连接换代后作废）就忽略 —— 通知可能比状态旧，
+    /// 这时唯一正确的做法是什么都不做，而不是对一条不存在的 waterfall 发应答。
+    private func decideApproval(eventId: String, decision: WaterfallRequest.ApprovalDecision) {
+        guard let request = pendingApprovals.first(where: { $0.eventId == eventId }) else {
+            logs.log(.info, "通知操作找不到审批 \(eventId)（可能已被处理）")
+            return
+        }
+        Task { await decide(approval: request, decision: decision) }
+    }
+
     /// 用户回答了提问。批里必须**恰好一次**地命名每个问题。
     func answer(
         question request: WaterfallRequest,
@@ -1149,12 +1181,44 @@ private struct TetherLogAdapter: TetherLogSink {
 /// 一期只用**本地**通知：App 在后台仍可收到（只要进程未被回收）。
 /// APNs 需要付费账号，列为后续增强（DESIGN §9）。
 actor NotificationCenterAdapter {
+    /// 审批通知的操作按钮与 category。标识符是内部协议（delegate 按它分支）。
+    enum Action {
+        static let approveOnce = "approve-once"
+        static let reject = "reject"
+        static let approvalCategory = "approval"
+    }
+
     private var isAuthorized = false
+    private let responseDelegate = NotificationResponseDelegate()
 
     func configure() async {
         let center = UNUserNotificationCenter.current()
+        // 审批通知带「批准一次 / 拒绝」两个操作 —— 审批等待的典型场景就是
+        // App 在后台，让人不用点进 App 就能决策（KNOWN-ISSUES F1）。
+        let approve = UNNotificationAction(
+            identifier: Action.approveOnce,
+            title: String(localized: "批准一次")
+        )
+        let reject = UNNotificationAction(
+            identifier: Action.reject,
+            title: String(localized: "拒绝"),
+            options: [.destructive]
+        )
+        let category = UNNotificationCategory(
+            identifier: Action.approvalCategory,
+            actions: [approve, reject],
+            intentIdentifiers: []
+        )
+        center.setNotificationCategories([category])
+        center.delegate = responseDelegate
         let settings = await center.notificationSettings()
         isAuthorized = settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional
+    }
+
+    /// 通知响应（点横幅 / 点操作按钮）的回调。参数只带 Sendable 的字符串，
+    /// 不把 `UNNotificationResponse` 传过 actor 边界。
+    func setResponseHandler(_ handler: @escaping @Sendable (String, [String: String]) -> Void) {
+        responseDelegate.onResponse = handler
     }
 
     /// **只在用户打开开关时才请求授权**（HIG：不要在启动时弹）。
@@ -1176,6 +1240,7 @@ actor NotificationCenterAdapter {
         content.body = reason.isEmpty ? toolName : String(localized: "\(toolName)：\(reason)")
         content.sound = .default
         content.userInfo = ["approvalId": eventId]
+        content.categoryIdentifier = Action.approvalCategory
         await deliver(content, identifier: "approval-\(eventId)")
     }
 
@@ -1200,6 +1265,22 @@ actor NotificationCenterAdapter {
     private func deliver(_ content: UNMutableNotificationContent, identifier: String) async {
         let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
         try? await UNUserNotificationCenter.current().add(request)
+    }
+}
+
+/// 系统通知的响应入口。只把**字符串载荷**往外递 —— `UNNotificationResponse`
+/// 不是 Sendable，不能带着它跨 actor。
+private final class NotificationResponseDelegate: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
+    var onResponse: (@Sendable (String, [String: String]) -> Void)?
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse
+    ) async {
+        let info = response.notification.request.content.userInfo.reduce(into: [String: String]()) { result, pair in
+            if let key = pair.key as? String, let value = pair.value as? String { result[key] = value }
+        }
+        onResponse?(response.actionIdentifier, info)
     }
 }
 

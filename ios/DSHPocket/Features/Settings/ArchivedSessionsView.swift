@@ -63,7 +63,8 @@ struct ArchivedSessionsView: View {
                 .help("清掉已归档会话的本地缓存（不影响未归档的）")
             }
         }
-        .refreshable { await model.refreshSessions() }
+        // 同列表页：下拉是显式动作，绕过 15 秒节流。
+        .refreshable { await model.refreshSessions(force: true) }
         .overlay {
             if isWorking {
                 // 阻塞式加载态要有底衬，否则转圈浮在列表上像是渲染错位。

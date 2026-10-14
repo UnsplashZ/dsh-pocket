@@ -742,6 +742,28 @@ final class TimelineBuilderTests: XCTestCase {
         XCTAssertEqual(builder.items.count, 2, "只有 permission 被抑制")
     }
 
+    /// **抑制窗口跨快照重建后仍然有效。**
+    ///
+    /// 手机端发起 `/permission` 后，如果事件流跨过快照边界（缓存重建 builder）
+    /// 时这组 note 还没到齐，内存里的抑制标志会丢、note 就漏出来
+    ///（KNOWN-ISSUES F4 的残留项）。现在标志进 `State`，重建后照常抑制。
+    func testPermissionSuppressionSurvivesStateRebuild() throws {
+        var builder = TimelineBuilder()
+        _ = builder.apply(try Fixture.event(#"{"type":"command/run","seq":1,"time":1791777000000,"data":{"name":"permission","args":["danger-full-access"]}}"#))
+        _ = builder.apply(try Fixture.event(#"{"type":"sandbox/mode","seq":2,"time":1791777000000,"data":{"mode":"danger-full-access"}}"#))
+
+        // 快照边界：窗口还开着时 builder 从落盘状态重建（模拟缓存恢复）。
+        var rebuilt = try XCTUnwrap(TimelineBuilder(state: builder.state))
+        _ = rebuilt.apply(try Fixture.event(#"{"type":"permission/preset","seq":3,"time":1791777000000,"data":{"preset":"danger-full-access"}}"#))
+        _ = rebuilt.apply(try Fixture.event(#"{"type":"approval/policy","seq":4,"time":1791777000000,"data":{"policy":"never"}}"#))
+        _ = rebuilt.apply(try Fixture.event(#"{"type":"command/done","seq":5,"time":1791777000000,"data":{"name":"permission"}}"#))
+        XCTAssertTrue(rebuilt.items.isEmpty, "重建后这一组仍该被抑制，实际：\(rebuilt.items.map(\.kind))")
+
+        // 窗口关闭后恢复正常
+        _ = rebuilt.apply(try Fixture.event(#"{"type":"sandbox/mode","seq":6,"time":1791777000000,"data":{"mode":"workspace-write"}}"#))
+        XCTAssertEqual(rebuilt.items.count, 1, "窗口关闭后要恢复正常")
+    }
+
     /// 计时器的起点。
     ///
     /// 实测踩过的坑：`items.last?.turn` 是 `nil` 时（最后一条是注入上下文之类），
@@ -827,8 +849,11 @@ final class TimelineBuilderTests: XCTestCase {
         //   · 加字段（审批的 callId）→ 旧缓存里 `Approval.callId` 是 nil，审批卡片认不出自己能答；
         //   · **折叠语义**变了（修好"错误地标成已隐藏"）→ 旧缓存里那个错误标记会一直生效，
         //     界面上看不出任何变化，会以为修复没生效；
-        //   · 又加字段（队列项的 `isQueued`）→ 旧缓存里队列项会被当成已发出的消息渲染。
-        XCTAssertEqual(TimelineBuilder.State.currentSchemaVersion, 4)
+        //   · 又加字段（队列项的 `isQueued`）→ 旧缓存里队列项会被当成已发出的消息渲染；
+        //   · 又加字段（`/permission` 抑制标志 `suppressConfigNotes`）→ 旧缓存没有这个键，
+        //     解不出来，按规则丢弃重拉（ADR-0027-3）。
+        XCTAssertEqual(TimelineBuilder.State.currentSchemaVersion, 5)
+        XCTAssertNil(TimelineBuilder(state: TimelineBuilder.State(schemaVersion: 4)))
         XCTAssertNil(TimelineBuilder(state: TimelineBuilder.State(schemaVersion: 3)))
         XCTAssertNil(TimelineBuilder(state: TimelineBuilder.State(schemaVersion: 1)))
     }
