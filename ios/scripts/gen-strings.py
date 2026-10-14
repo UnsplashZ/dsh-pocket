@@ -41,6 +41,9 @@ EXTRACTION_PATTERNS = [
     r'Toggle\("((?:[^"\\]|\\.)*)"',
     r'TextField\("((?:[^"\\]|\\.)*)"',
     r'Picker\("((?:[^"\\]|\\.)*)"',
+    # `.help(_:)` 收的是 `LocalizedStringKey`，字面量同样要进 catalog ——
+    # 不进的话中文机器上一切正常，英文机器上冒出一句中文。
+    r'\.help\("((?:[^"\\]|\\.)*)"\)',
 ]
 
 # 中 → 英。插值文案里的 \(x) 在 catalog 里是 %lld（Int）或 %@（字符串）。
@@ -414,6 +417,9 @@ EN: dict[str, str] = {
     "没有归档的会话": "No archived sessions",
     "左滑会话列表里的行就能把它归档到这里。": "Swipe a row in the session list to archive it here.",
     "搜索已归档的会话": "Search archived sessions",
+    "清缓存": "Clear cache",
+    "清掉已归档会话的本地缓存（不影响未归档的）":
+        "Clear the local cache for archived sessions only.",
     "左滑可恢复到对话列表": "Swipe to restore it to the session list",
     "归档过的会话不会出现在对话列表里，在这里可以恢复或重新打开。":
         "Archived sessions don’t appear in the session list. Restore or reopen them here.",

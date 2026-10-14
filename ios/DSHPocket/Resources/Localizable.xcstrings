@@ -45,23 +45,6 @@
         }
       }
     },
-    "%@，%@": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@, %@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@，%@"
-          }
-        }
-      }
-    },
     "%lld 个会话": {
       "extractionState": "manual",
       "localizations": {
@@ -2168,17 +2151,6 @@
         }
       }
     },
-    "待办": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "To-dos"
-          }
-        }
-      }
-    },
     "待办 %lld/%lld": {
       "extractionState": "manual",
       "localizations": {
@@ -3357,7 +3329,29 @@
         }
       }
     },
+    "清掉已归档会话的本地缓存（不影响未归档的）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear the local cache for archived sessions only."
+          }
+        }
+      }
+    },
     "清空缓存": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear cache"
+          }
+        }
+      }
+    },
+    "清缓存": {
       "extractionState": "manual",
       "localizations": {
         "en": {
@@ -4561,17 +4555,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "This one can no longer be answered here (the connection dropped; your computer will use its default)."
-          }
-        }
-      }
-    },
-    "进行中": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "In progress"
           }
         }
       }
