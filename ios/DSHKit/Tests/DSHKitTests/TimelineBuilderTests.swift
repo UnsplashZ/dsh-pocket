@@ -568,6 +568,89 @@ final class TimelineBuilderTests: XCTestCase {
         }
     }
 
+    /// **窗口顶部那半截轮次也必须收拢。**
+    ///
+    /// 往上翻历史时 `session/page` 按 seq 往回翻，边界常常落在一轮的中段：
+    /// 这一轮的 `turn/start` 还没加载到，手里只有它的尾巴和 `turn/end`。
+    /// 老代码把这段尾巴里的**每一条**都当成「轮次之外的独立条目」渲染 ——
+    /// 一轮能有几十上百条过程消息（思考、工具调用、过场说明），
+    /// 于是屏幕上是**一大串思考和过程**，只有一路滚到这轮真正的开头
+    ///（`turn/start` 也被加载进来）才会突然收拢。
+    ///
+    /// 用户的原话：「往上滚动看历史数据时，如果没有滚动到完整的开始，还是会显示
+    /// 一大串思考和处理过程，最好优化一下吧，优先获取完结的那份回复，而不是逐条
+    /// 获取，滚动到合适位置才收缩」。
+    func testWindowStartingMidTurnCollapsesIntoOneTurn() throws {
+        var builder = TimelineBuilder()
+        // 只加载到第 1 轮的中段：没有 turn/start，只有过程 + 结论 + turn/end。
+        _ = builder.apply(try Fixture.event(Fixture.assistantMessage(text: "先看看目录", seq: 40)))
+        _ = builder.apply(try Fixture.event(Fixture.toolCall("call_mid", seq: 41)))
+        _ = builder.apply(try Fixture.event(Fixture.toolResult("call_mid", output: "ok", seq: 42)))
+        _ = builder.apply(try Fixture.event(Fixture.assistantMessage(text: "中段的结论", seq: 43)))
+        _ = builder.apply(try Fixture.event(Fixture.turnEnd(1, seq: 44)))
+        // 后面还有一整轮（正常加载到的那种）。
+        try foldTurn(&builder, turn: 2, startSeq: 45, text: "第二轮的过程")
+
+        let blocks = builder.timelineBlocks()
+        XCTAssertEqual(blocks.count, 2, "顶部半截收成一块 + 后面一轮，不该再散出一堆独立条目")
+
+        guard case .turn(let partial) = blocks[0] else { return XCTFail("顶部那半截应当收成一个轮次块") }
+        XCTAssertTrue(partial.isComplete, "它有 turn/end，就该按「跑完了」收拢")
+        XCTAssertNil(partial.duration, "开头没加载到 → 时长算不出来，宁可不显示也不瞎算")
+        XCTAssertFalse(partial.collapsible.isEmpty, "过程消息要进折叠区")
+        guard case .assistantMessage(let headline)? = partial.headline?.kind else { return XCTFail("应当有结论") }
+        XCTAssertEqual(headline.plainText, "中段的结论", "明面上留的是最后那条有正文的助手消息")
+        XCTAssertEqual(
+            partial.collapsedItems.map(\.id),
+            [try XCTUnwrap(partial.headline?.id)],
+            "收起时只留结论"
+        )
+        // 轮号取自 turn/end，不会跟后面那一轮的 id 撞。
+        XCTAssertEqual(partial.turn, 1)
+        XCTAssertEqual(blocks.map(\.id), ["turn-1", "turn-2"])
+    }
+
+    /// 顶部那半截**没有 `turn/end`**（整条会话就一轮、还在跑）时照旧全展开 ——
+    /// 正在发生的事没有收拢的道理。
+    func testWindowStartingMidRunningTurnStaysExpanded() throws {
+        var builder = TimelineBuilder()
+        _ = builder.apply(try Fixture.event(Fixture.assistantMessage(text: "还在做", seq: 40)))
+        _ = builder.apply(try Fixture.event(Fixture.toolCall("call_run", seq: 41)))
+
+        let blocks = builder.timelineBlocks()
+        XCTAssertEqual(blocks.count, 1)
+        guard case .turn(let partial) = blocks[0] else { return XCTFail("应当收成一个轮次块") }
+        XCTAssertFalse(partial.isComplete, "没有 turn/end = 还在跑")
+        XCTAssertFalse(
+            partial.items.contains { if case .turnStart = $0.kind { return true }; return false },
+            "这段本来就没有 turn/start"
+        )
+    }
+
+    /// 窗口从会话**最开头**开始时，轮次之外的条目照旧一条条独立渲染。
+    ///
+    /// 这是上面那条修复的反面：不能把会话头（权限 note、沙箱模式…）
+    /// 也卷进一个假的「轮次」里。
+    func testHeaderNotesBeforeTheFirstTurnStayStandalone() throws {
+        var builder = TimelineBuilder()
+        _ = builder.apply(try Fixture.event("""
+        {"type":"permission/preset","seq":1,"time":1791777000000,"data":{"preset":"read-only"}}
+        """))
+        _ = builder.apply(try Fixture.event("""
+        {"type":"sandbox/mode","seq":2,"time":1791777000000,"data":{"mode":"read-only"}}
+        """))
+        _ = builder.apply(try Fixture.event(Fixture.turnStart(1, seq: 3)))
+        _ = builder.apply(try Fixture.event(Fixture.assistantMessage(text: "结论", seq: 4)))
+        _ = builder.apply(try Fixture.event(Fixture.turnEnd(1, seq: 5)))
+
+        let blocks = builder.timelineBlocks()
+        XCTAssertEqual(blocks.count, 3, "两条会话头 note + 一个轮次")
+        guard case .item = blocks[0], case .item = blocks[1] else {
+            return XCTFail("会话头不该被卷进轮次")
+        }
+        guard case .turn = blocks[2] else { return XCTFail("最后应当是一个轮次") }
+    }
+
     /// **只有工具调用的助手消息不该渲染成空白卡片。**
     ///
     /// 实测踩过：`hasRenderableContent` 把 `.toolCall` 也算作"有内容"，
@@ -910,7 +993,11 @@ final class TimelineBuilderTests: XCTestCase {
         //   · 又加字段（队列项的 `isQueued`）→ 旧缓存里队列项会被当成已发出的消息渲染；
         //   · 又加字段（`/permission` 抑制标志 `suppressConfigNotes`）→ 旧缓存没有这个键，
         //     解不出来，按规则丢弃重拉（ADR-0027-3）。
-        XCTAssertEqual(TimelineBuilder.State.currentSchemaVersion, 5)
+        //   · **折叠语义**又变了（`deliverables/presented` 改成按真实形状读 `files`）→
+        //     旧缓存里那条产物条目是空列表，而 `resume` 不会再折一遍产物事件，
+        //     卡片就永远是空的（"交付的文件看不到"，且看不出原因）。
+        XCTAssertEqual(TimelineBuilder.State.currentSchemaVersion, 6)
+        XCTAssertNil(TimelineBuilder(state: TimelineBuilder.State(schemaVersion: 5)))
         XCTAssertNil(TimelineBuilder(state: TimelineBuilder.State(schemaVersion: 4)))
         XCTAssertNil(TimelineBuilder(state: TimelineBuilder.State(schemaVersion: 3)))
         XCTAssertNil(TimelineBuilder(state: TimelineBuilder.State(schemaVersion: 1)))
@@ -969,6 +1056,40 @@ final class TimelineBuilderTests: XCTestCase {
         }
         XCTAssertEqual(texts, ["前半段", "后半段"])
         XCTAssertEqual(builder.items.map(\.seq), builder.items.map(\.seq).sorted())
+    }
+
+    /// **补完历史要滚到「新进来的那一块」，而不是条目自己。**
+    ///
+    /// 新进来的第一条常常已经被收进一个收拢的轮次里（窗口顶部那半截、
+    /// 或者页边界落在某个已加载轮次的中段）。收拢状态下只有摘要与结论带 `.id`，
+    /// 条目自己的 id **不在视图里** —— `ScrollViewReader.scrollTo` 会静默
+    /// 什么都不做，屏幕上一点变化都没有，用户又看到"点了没反应"。
+    func testScrollAnchorMapsAFoldedItemToItsRenderedBlock() throws {
+        var builder = TimelineBuilder()
+        _ = builder.apply(try Fixture.event(Fixture.turnStart(1, seq: 1)))
+        _ = builder.apply(try Fixture.event(Fixture.assistantMessage(text: "过程话", seq: 2)))
+        _ = builder.apply(try Fixture.event(Fixture.assistantMessage(text: "结论", seq: 3)))
+        _ = builder.apply(try Fixture.event(Fixture.turnEnd(1, seq: 4)))
+
+        let blocks = builder.timelineBlocks()
+        guard case .turn(let turn) = try XCTUnwrap(blocks.first) else { return XCTFail() }
+        let folded = try XCTUnwrap(turn.collapsible.first, "应当有一条被折起来的过程条目")
+        XCTAssertFalse(
+            turn.collapsedItems.contains { $0.id == folded.id },
+            "它确实不在收起状态渲染的那批里 —— 直接 scrollTo 它就会静默失效"
+        )
+        XCTAssertEqual(
+            blocks.blockId(containing: folded.id), "turn-1",
+            "要落到它所属的那个轮次块上"
+        )
+
+        // 轮次之外的条目：块 id 就是条目自己的 id。
+        var outside = TimelineBuilder()
+        _ = outside.apply(try Fixture.event(Fixture.userMessage("外面的一句", seq: 1)))
+        XCTAssertEqual(outside.timelineBlocks().blockId(containing: "e1"), "e1")
+
+        // 被过滤掉 / 不存在 → nil，调用方自己决定退回什么。
+        XCTAssertNil(blocks.blockId(containing: "并不存在"))
     }
 
     // MARK: 原始快照（本机抓包，缺失时跳过）

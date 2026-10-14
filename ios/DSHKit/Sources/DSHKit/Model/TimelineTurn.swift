@@ -32,6 +32,12 @@ public struct TimelineTurn: Sendable, Identifiable {
     public private(set) var headline: TimelineItem?
     /// **永远不折叠**的那些：用户自己说的话。
     public private(set) var pinned: [TimelineItem] = []
+    /// 交付的产物（`present` 的 `deliverables/presented`）。
+    ///
+    /// 它也**永远留在明面上**：一轮跑完会收拢，产物卡要是跟着收进折叠区，
+    /// 用户在时间线上就看不到"到底交付了什么"（用户："交付的文件看不到"）。
+    /// 收起时它紧跟在结论后面渲染。
+    public private(set) var deliverables: [TimelineItem] = []
     /// 收进摘要里的那些。
     public private(set) var collapsible: [TimelineItem] = []
     /// 摘要行下面、收起时渲染的内容。
@@ -76,20 +82,25 @@ public struct TimelineTurn: Sendable, Identifiable {
         // 用户消息永远不折叠：宿主的事件顺序是 `turn/start` → `user/message` → … → `turn/end`，
         // 提示词**在轮次里面**，不挑出来就会被当成"轮内过程"收进摘要。
         pinned = items.filter { if case .userMessage = $0.kind { return true }; return false }
+        // 产物跟用户消息一样是"这一轮的产出"，不参与折叠。
+        deliverables = items.filter { if case .deliverables = $0.kind { return true }; return false }
         let headlineId = headline?.id
         let pinnedIds = Set(pinned.map(\.id))
         collapsible = items.filter { item in
             switch item.kind {
-            case .turnStart, .turnEnd, .userMessage:
+            case .turnStart, .turnEnd, .userMessage, .deliverables:
                 return false
             default:
                 return item.id != headlineId && !pinnedIds.contains(item.id)
             }
         }
         // 用户消息不在这里 —— 它在摘要行**上面**单独渲染，放进来会重复画一遍。
-        collapsedItems = [headline].compactMap { $0 }
-        // 展开后必须回到原始时序。
-        expandedItems = (collapsible + [headline].compactMap { $0 }).sorted { $0.seq < $1.seq }
+        // 产物排在结论**后面**：先给"做完了什么"，再给"交付了什么"。
+        collapsedItems = [headline].compactMap { $0 } + deliverables
+        // 展开后必须回到原始时序（产物也算在内 —— 它只是"不参与折叠"，
+        // 不是"不渲染"，所以「N 步」那个计数里也不该算它）。
+        expandedItems = (collapsible + [headline].compactMap { $0 } + deliverables)
+            .sorted { $0.seq < $1.seq }
     }
 }
 
@@ -111,6 +122,14 @@ extension TimelineBuilder {
         var blocks: [TimelineBlock] = []
         var currentTurn: Int?
         var bucket: [TimelineItem] = []
+        /// **窗口顶部那半截轮次**：它在 `turn/start` 之前，因为我们只加载到了
+        /// 这一轮的中段（`session/page` 按 seq 往回翻，边界落在哪就是哪）。
+        var leading: [TimelineItem] = []
+        /// `leading` 里有没有"属于某一轮"的条目。
+        ///
+        /// 没有的话它只是会话头（`session/title`、权限 note、压缩记录…），
+        /// 那些本来就该一条条独立渲染；有的话它就是一轮的尾巴，必须整体收拢。
+        var leadingHasTurnItems = false
 
         func flushTurn() {
             guard let turn = currentTurn, !bucket.isEmpty else { return }
@@ -130,10 +149,55 @@ extension TimelineBuilder {
             currentTurn = nil
         }
 
+        /// 收掉窗口顶部那半截。
+        ///
+        /// **为什么不能一条条摊出去**：一轮里能有几十上百条过程消息
+        ///（思考、工具调用、过场说明）。窗口顶部那半截没有 `turn/start`，
+        /// 老代码于是把每一条都当成"轮次之外的独立条目"渲染 ——
+        /// 用户往上翻历史时，屏幕上是**一大串思考和过程**，只有一路滚到
+        /// 这轮真正的开头（`turn/start` 也被加载进来）才会突然收拢
+        ///（用户："优先获取完结的那份回复，而不是逐条获取，滚动到合适位置才收缩"）。
+        ///
+        /// 正确做法：把这段尾巴连同它的 `turn/end` 收成**一个**轮次块。
+        /// 有 `turn/end` → `isComplete` 为真 → 照常收拢成「摘要 + 结论」；
+        /// 没有（整条会话就一轮、还在跑）→ 走"跑着就全展开"那条路，也是对的。
+        func flushLeading() {
+            guard !leading.isEmpty else { return }
+            let chunk = leading
+            let hasTurnItems = leadingHasTurnItems
+            leading = []
+            leadingHasTurnItems = false
+            guard hasTurnItems else {
+                blocks.append(contentsOf: chunk.map { TimelineBlock.item($0) })
+                return
+            }
+            let endItem = chunk.last { if case .turnEnd = $0.kind { return true }; return false }
+            var reason: TimelineItem.TurnEndReason?
+            var endTurn: Int?
+            if case .turnEnd(let value, let endReason)? = endItem?.kind {
+                endTurn = value
+                reason = endReason
+            }
+            // 轮号：优先用 `turn/end` 自己声明的，退而取这段里第一条带轮号的。
+            // 它同时是这个块的 id（`turn-<n>`），而它一定是**最小**的轮号
+            //（它在最顶上），不会跟后面的完整轮次撞 id。
+            let turn = endTurn ?? chunk.compactMap(\.turn).first ?? 0
+            blocks.append(.turn(TimelineTurn(
+                turn: turn,
+                isComplete: endItem != nil,
+                // 开头没加载到 → 没有真实起点，时长就算不出来（宁可不显示，也不瞎算）。
+                startedAt: nil,
+                endedAt: endItem?.time,
+                endReason: reason,
+                items: chunk
+            )))
+        }
+
         for item in source {
             switch item.kind {
             case .turnStart(let turn):
                 // 上一个轮次没关就开了新的（中断/异常）→ 先把旧的收掉。
+                flushLeading()
                 flushTurn()
                 currentTurn = turn
                 bucket = [item]
@@ -141,9 +205,16 @@ extension TimelineBuilder {
                 if currentTurn == turn {
                     bucket.append(item)
                     flushTurn()
+                } else if currentTurn == nil, leadingHasTurnItems {
+                    // **窗口正好从这一轮的中段开始**：把结束事件补进顶部那半截，
+                    // 整段就成了一次"缺开头但有结尾"的轮次 —— 于是它照常收拢，
+                    // 而不是把几十条过程消息一条条摊在屏幕上。
+                    leading.append(item)
+                    flushLeading()
                 } else {
                     // 找不到对应 `turn/start` 的结束事件：单独收成一组，
                     // 总比把条目漏掉强。
+                    flushLeading()
                     flushTurn()
                     blocks.append(.turn(TimelineTurn(
                         turn: turn, isComplete: true,
@@ -153,11 +224,16 @@ extension TimelineBuilder {
             default:
                 if currentTurn != nil {
                     bucket.append(item)
+                } else if leadingHasTurnItems || item.turn != nil {
+                    // 已经在顶部那半截里，或这条本身就带着轮号（属于某一轮）。
+                    if item.turn != nil { leadingHasTurnItems = true }
+                    leading.append(item)
                 } else {
                     blocks.append(.item(item))
                 }
             }
         }
+        flushLeading()
         flushTurn()
         return blocks
     }
@@ -174,5 +250,28 @@ public enum TimelineBlock: Sendable, Identifiable {
         case .turn(let turn): return "turn-\(turn.turn)"
         case .item(let item): return item.id
         }
+    }
+}
+
+extension Array where Element == TimelineBlock {
+    /// 找到**包含**某条目的那个块的 id。
+    ///
+    /// 用在"补完历史之后滚到新进来的第一条"上：那条条目很可能已经被收进一个
+    /// 收拢的轮次块里（窗口顶部那半截，或者页边界落在某个已加载轮次的中段），
+    /// 而收拢状态下只有摘要与结论带 `.id` —— 条目自己的 id **不在视图里**，
+    /// `ScrollViewReader.scrollTo` 会静默什么都不做，屏幕上一点变化都没有
+    ///（用户会以为「点了没反应」）。滚它所属的那个块才是稳的锚点。
+    ///
+    /// 找不到（条目被 `isShadowed` / `isConversational` 过滤掉了）返回 `nil`。
+    public func blockId(containing itemId: String) -> String? {
+        for block in self {
+            switch block {
+            case .item(let item):
+                if item.id == itemId { return block.id }
+            case .turn(let turn):
+                if turn.items.contains(where: { $0.id == itemId }) { return block.id }
+            }
+        }
+        return nil
     }
 }

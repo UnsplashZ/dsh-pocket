@@ -90,7 +90,12 @@ public struct TimelineBuilder: Sendable {
         /// 注意不只是"字段变了"要升版：`isShadowed` 这类**折叠结果**也存进来了，
         /// 所以修好一个"错误地标成已隐藏"的 bug 之后，旧缓存里那个错误的标记
         /// 会一直生效 —— 界面上看不出任何变化，会以为修复没生效（实测踩过）。
-        public static let currentSchemaVersion = 5
+        ///
+        /// 5 → 6：`deliverables/presented` 的解析改了（按真实形状读 `files`）。
+        /// 旧缓存里那条产物条目是**空列表**，而 `resume(with:)` 只应用
+        /// `seq > lastSeq` 的事件 —— 产物事件不会再被折一遍，卡片就永远是空的。
+        /// 不升版的话，修好之后用户还是"看不到交付的文件"，且看不出原因。
+        public static let currentSchemaVersion = 6
 
         public var schemaVersion: Int = State.currentSchemaVersion
         public var header: SessionHeader?
@@ -450,20 +455,54 @@ public struct TimelineBuilder: Sendable {
             )
 
         case "deliverables/presented":
-            let list = (event.data.array("deliverables") ?? event.data.array("items") ?? []).map { item in
-                TimelineItem.Deliverable(
-                    title: item.string("title") ?? item.string("name") ?? "产物",
-                    path: item.string("path"),
+            // **线上形状是 `files`，不是 `deliverables`/`items`。**
+            //
+            // 从活宿主抓下来的真实事件（`~/.dsh/sessions/**/session.v4.jsonl.zstd`）：
+            //   {"type":"deliverables/presented","seq":193,"time":…,
+            //    "data":{"turn":1,"callId":"call_…",
+            //            "files":[{"path":"tools/tether-status.mjs","description":"…"}]}}
+            //
+            // 之前读的是 `deliverables` / `items` —— 两个键都不存在，于是
+            // `list` 永远是空数组，产物卡只有一行「产物」标题、下面什么都没有。
+            // 用户看到的就是"交付的文件看不到"（实测）。
+            let list = (event.data.array("files")
+                        ?? event.data.array("deliverables")
+                        ?? event.data.array("items")
+                        ?? []).compactMap { item -> TimelineItem.Deliverable? in
+                let path = item.string("path")
+                // 宿主只给 `path` + `description`，**没有 title** —— 用文件名兜底，
+                // 否则卡片上只剩一条路径，扫一眼不知道交付了什么。
+                let title = item.string("title")
+                    ?? item.string("name")
+                    ?? path.map { ($0 as NSString).lastPathComponent }
+                guard let title, !title.isEmpty else { return nil }
+                return TimelineItem.Deliverable(
+                    title: title,
+                    path: path,
                     description: item.string("description")
                 )
             }
-            upsert(
-                TimelineItem(
-                    id: Self.durableId(event.seq), seq: event.seq, time: event.time,
-                    kind: .deliverables(list)
-                ),
-                into: &delta
-            )
+            if list.isEmpty {
+                // 形状认不出来：退成一条原始事件（打开"显示模型可见的原始事件"能看到
+                // 完整负载），而不是画一张空卡，也不是把事件丢掉。
+                upsert(
+                    TimelineItem(
+                        id: Self.durableId(event.seq), seq: event.seq, time: event.time,
+                        turn: event.int("data.turn"),
+                        kind: .raw(type: event.type, data: event.data)
+                    ),
+                    into: &delta
+                )
+            } else {
+                upsert(
+                    TimelineItem(
+                        id: Self.durableId(event.seq), seq: event.seq, time: event.time,
+                        turn: event.int("data.turn"),
+                        kind: .deliverables(list)
+                    ),
+                    into: &delta
+                )
+            }
 
         case "model/selection":
             upsert(

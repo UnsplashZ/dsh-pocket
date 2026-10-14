@@ -379,7 +379,20 @@ public final class SessionModel {
             index = end
             // 双缓冲时**中途不发布** —— 发布了就会把旧内容换掉，
             // 又变回"折一半给人看"。
-            if !hasVisibleContent { publish() }
+            //
+            // 冷启动分片发布时，**只在折到一个完整的轮次边界才发**。
+            //
+            // 分片边界常常落在一轮的中段：那一轮此时还没有 `turn/end`，
+            // 会按"还在跑"**全展开**渲染（一轮几十条过程消息）。下一片折完它收拢，
+            // 内容**骤减** —— 而这时末尾哨兵已经被挤出视口（`isFollowingBottom`
+            // 变成 false），"内容骤减就重新贴底"那条兜底（见 SessionView）不会触发，
+            // 滚动位置就落到内容之外，屏幕上**一片空白**，只剩一个「跳到最新」。
+            //
+            // 实测：打开一个积压了很多轮的会话时必现，而且**是不是必现取决于
+            // 中间态有没有被渲染到**（SwiftUI 会把同一轮 runloop 里的多次变更合帧）
+            // —— 也就是说这是一条竞态，什么时候踩上全看运气。
+            // 折到边界再发布，中间态就永远不是"半截轮次"，竞态也就不存在了。
+            if !hasVisibleContent, !builder.isTurnOpen { publish() }
             // 让出一次主线程：831 KB 的快照要"边到边渲染"，不能等全部解码完。
             await Task.yield()
         }
@@ -541,10 +554,16 @@ public final class SessionModel {
     /// 所以由模型显式发一个"滚到底"的信号。
     private(set) var scrollToBottomTicket = 0
 
-    /// 补完历史后要滚到哪一条。视图观察 `historyScrollTicket` 做一次 `scrollTo`。
+    /// 补完历史后要滚到哪个**块**（`TimelineBlock.id`，不是条目的 id）。视图观察
+    /// `historyScrollTicket` 做一次 `scrollTo`。
     ///
     /// 没有它的话，补进来的内容全在视口**上方**，屏幕上一点变化都没有 ——
     /// 用户会以为按钮坏了（实测就是）。
+    ///
+    /// **为什么是块而不是条目**：补进来的第一条很可能已经被收进一个收拢的轮次里
+    /// （窗口顶部那半截、或者页边界落在某个已加载轮次的中段）。收拢状态下
+    /// 只有摘要与结论带 `.id`，条目自己的 id 不在视图里 —— `scrollTo` 会静默
+    /// 什么都不做，于是又变回"点了没反应"。
     private(set) var historyScrollTarget: String?
     private(set) var historyScrollTicket = 0
 
@@ -602,7 +621,11 @@ public final class SessionModel {
             publish()
             // 让视图滚到新内容的第一条 —— 否则它插在视口上方，看起来什么都没发生。
             if let first = delta.inserted.min(by: { $0.seq < $1.seq }) {
-                historyScrollTarget = first.id
+                // **滚它所属的那个块，不是它自己。** 补进来的第一条很可能已经被
+                // 收进一个收拢的轮次里（窗口顶部那半截、或者页边界落在某个已加载
+                // 轮次的中段）—— 那时它的 `.id` 不在视图里，`scrollTo` 静默失效，
+                // 又变回"点了没反应"。找不到所属块（被过滤掉了）才退回它自己。
+                historyScrollTarget = timelineBlocks.blockId(containing: first.id) ?? first.id
                 historyScrollTicket &+= 1
             }
         } catch {

@@ -15,7 +15,6 @@ struct SessionView: View {
     @State private var session: SessionModel?
     @State private var showFiles = false
     @State private var showSettings = false
-    @State private var showRawEvents = false
     @State private var showRename = false
     @State private var renameText = ""
     @State private var showModelPicker = false
@@ -27,6 +26,13 @@ struct SessionView: View {
     @State private var showShadowed = false
     @FocusState private var composerFocused: Bool
     @State private var isFollowingBottom = true
+    /// 用户**手动**接管了滚动位置（往上拖过）。
+    ///
+    /// 跟 `isFollowingBottom` 不是一回事，也不能拿它代替：`isFollowingBottom` 是
+    /// "末尾哨兵现在在不在视口里"，而内容增长、轮次收拢、LazyVStack 换一批实体化的行
+    /// 都会让它短暂变 false —— 拿它当"用户滚走了"用，初始加载时就会误判，
+    /// 底部锚点被撤掉，落点停在内容中间（实测）。这个标志只由**真实手势**置位。
+    @State private var userTookOverScroll = false
     @State private var lastKnownTailId: String?
     @State private var highlightId: String?
 
@@ -218,6 +224,16 @@ struct SessionView: View {
             // 往上滑看新消息时纹丝不动 —— 而手机上键盘一占就是小半屏，
             // 想腾地方的人恰恰是在往上滑。改成一开始滚动就收。
             .scrollDismissesKeyboard(.immediately)
+            // **让系统把内容锚在底部**，而不是靠 `scrollTo` 去"猜"末尾在哪。
+            //
+            // `scrollTo(bottomAnchor, anchor: .bottom)` 打在 `LazyVStack` 上是不可靠的：
+            // 内容高度是按"已实体化的行 + 其余估算"算出来的，`scrollTo` 一动、
+            // 实体化的行就换一批、高度估计又变，落点于是越漂越远。实测这个会话上
+            // 内容高度在 3155 → 4408 → 3549 → **1272** → 7076 之间来回跳，
+            // 最后偏移停在 2829 而内容只剩 1272 —— 落在内容之外，屏幕上**一片空白**。
+            //
+            // 交给系统锚点就没有这个问题：初始位置由系统按锚点定，不依赖任何"估算末尾"。
+            .modifier(BottomScrollAnchor(followsContentChanges: !userTookOverScroll))
             // 点消息区也收键盘。
             //
             // `.scrollDismissesKeyboard` 只在**真的滚动**时生效 —— 内容不够长、
@@ -230,6 +246,14 @@ struct SessionView: View {
             // 点工具行、点展开都照常工作，只是顺手把键盘收了。
             .simultaneousGesture(
                 TapGesture().onEnded { composerFocused = false }
+            )
+            // 用户真的用手拖过时间线 = 他接管了滚动位置。
+            // 用 `simultaneousGesture` 而不是 `gesture`：不抢 ScrollView 自己的
+            // 拖动，只是顺带记一笔。`minimumDistance` 是为了别把点击也算成拖动。
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 12).onChanged { _ in
+                    if !userTookOverScroll { userTookOverScroll = true }
+                }
             )
             .background(Color(.systemGroupedBackground))
             .safeAreaInset(edge: .top, spacing: 0) {
@@ -304,13 +328,18 @@ struct SessionView: View {
                 guard let newValue else { return }
                 scroll(to: newValue, proxy: proxy)
             }
-            // 补完历史：滚到**新进来的第一条**。
+            // 补完历史：滚到**新进来的那一块**（`TimelineBlock.id`）。
             // 不做这一步的话，新内容全插在视口上方，屏幕上毫无变化 ——
             // 用户会以为"点了没反应"（实测就是）。
+            // 目标给的是**块**而不是条目：新进来的第一条常常已经被收进一个收拢的
+            // 轮次里，条目自己的 `.id` 那时不在视图里，`scrollTo` 会静默失效。
             .onChange(of: session.historyScrollTicket) { _, _ in
                 guard let target = session.historyScrollTarget else { return }
                 // 补历史时用户本来就在往上翻，所以**不要**恢复贴底。
                 isFollowingBottom = false
+                // 这次是我们主动把视图挪走的（不是跟着内容走），底部锚点得让开，
+                // 否则系统锚点会和这次 `scrollTo` 互相拉扯。
+                userTookOverScroll = true
                 withAnimation(.default) { proxy.scrollTo(target, anchor: .top) }
             }
             .task {
@@ -473,6 +502,8 @@ struct SessionView: View {
     private func jumpToLatest(_ proxy: ScrollViewProxy) -> some View {
         Button {
             isFollowingBottom = true
+            // 交还控制权：底部锚点重新生效，之后内容增长继续跟着走。
+            userTookOverScroll = false
             scrollToBottom(proxy, animated: true)
         } label: {
             Label("跳到最新", systemImage: "arrow.down.circle.fill")
@@ -567,9 +598,9 @@ struct SessionView: View {
                     } label: {
                         Label(showShadowed ? "隐藏被取代的内容" : "显示被取代的内容", systemImage: "arrow.triangle.merge")
                     }
-                    Toggle(isOn: Bindable(model.settings).showRawEvents) {
-                        Label("显示模型可见的原始事件", systemImage: "curlybraces")
-                    }
+                    // 「显示模型可见的原始事件」**不在这里** —— 设置页 → 外观里
+                    // 已经有同一个开关（`settings.showRawEvents`），会话菜单里再放一份
+                    // 属于重复入口，还占着常用操作的位置。
                     Divider()
                     ShareLink(item: session.exportTranscript()) {
                         Label("分享这轮对话", systemImage: "square.and.arrow.up")
@@ -588,5 +619,47 @@ private struct TimelineTopOffsetKey: PreferenceKey {
     static let defaultValue: CGFloat = .greatestFiniteMagnitude
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = min(value, nextValue())
+    }
+}
+
+
+/// 时间线的**底部锚点**。
+///
+/// 背景：打开一个积压了很多轮的会话时，时间线经常是**一片空白**，只剩一个
+/// 「跳到最新」。根因不在数据，而在"把内容滚到底"这件事上 ——
+/// `scrollTo(bottomAnchor, anchor: .bottom)` 打在 `LazyVStack` 上是不可靠的：
+/// 内容高度是按"已实体化的行 + 其余估算"算的，`scrollTo` 一动，实体化的行换一批、
+/// 高度估算又变，落点于是越漂越远。实测这个会话上内容高度在
+/// `3155 → 4408 → 3549 → 1272 → 7076` 之间来回跳，偏移最后停在内容之外；
+/// 更糟的是视口里那一批行**根本没被实体化**，所以是纯空白。
+///
+/// 交给系统的底部锚点就没有这个问题：初始位置由系统按锚点定，不依赖任何"估算末尾"。
+///
+/// 两个角色要分开设（iOS 18 才有 `defaultScrollAnchor(_:for:)`）：
+///   · `initialOffset` **永远贴底** —— 修掉上面那个空白；
+///   · `sizeChanges` **只在用户没手动接管滚动时开**。不能无条件开：用户往上翻历史
+///     时模型还在输出，系统锚点会把正在看历史的用户拽回底部，还会跟"补完历史滚到
+///     新内容"那次 `scrollTo` 互相拉扯（实测：正在跑的会话上必现空白）。
+///
+///     **这个开关不能拿 `isFollowingBottom` 当**：它表示"末尾哨兵此刻在不在视口里"，
+///     内容增长/轮次收拢/换一批实体化的行都会让它短暂变 false。用它做判断，
+///     初始加载就会被误判成"用户滚走了"、锚点被撤掉，落点停在内容中间（实测）。
+///     所以单独用只由真实手势置位的 `userTookOverScroll`。
+///
+/// iOS 17 拿不到拆开的角色，退回整锚点 —— 仍然是"打开不空白"，代价是上面那条
+/// 边界场景退化成"内容增长时可能被拽回底部"。本项目的部署下限是 17.5，
+/// 但真机与模拟器都在 26/27，所以实际跑的是拆分版。
+private struct BottomScrollAnchor: ViewModifier {
+    /// 内容尺寸变化时要不要继续贴底。**只在用户没手动接管滚动时为真**。
+    let followsContentChanges: Bool
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content
+                .defaultScrollAnchor(.bottom, for: .initialOffset)
+                .defaultScrollAnchor(followsContentChanges ? .bottom : nil, for: .sizeChanges)
+        } else {
+            content.defaultScrollAnchor(.bottom)
+        }
     }
 }

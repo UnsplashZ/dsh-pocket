@@ -135,6 +135,25 @@ enum Fixture {
         """
     }
 
+    /// `deliverables/presented`（`present` 工具的产物）。
+    ///
+    /// 形状**逐字段照抄活宿主**（`~/.dsh/sessions/**/session.v4.jsonl.zstd`）：
+    /// 键是 **`files`**，每项只有 `path` + `description`，**没有 `title`**。
+    /// 之前客户端读的是 `deliverables` / `items`，两个键都不存在 ——
+    /// 产物卡永远是空的，这就是"交付的文件看不到"的根因。
+    static func deliverables(
+        _ files: [(path: String, description: String)],
+        turn: Int = 1,
+        seq: Int
+    ) -> String {
+        let encoded = files
+            .map { "{\"path\":\"\(esc($0.path))\",\"description\":\"\(esc($0.description))\"}" }
+            .joined(separator: ",")
+        return """
+        {"type":"deliverables/presented","seq":\(seq),"time":1791777001000,"data":{"turn":\(turn),"callId":"call_\(seq)","files":[\(encoded)]}}
+        """
+    }
+
     static func compactionSummary(seq: Int, startSeq: Int, endSeq: Int, summary: String = "把前面几轮压成一段摘要") -> String {
         """
         {"type":"compaction/summary","seq":\(seq),"time":1791777000300,"data":{"compactionId":"c1","summary":[{"type":"text","text":"\(esc(summary))"}],"shadowedRange":{"start":\(startSeq),"end":\(endSeq)},"shadowedSeqs":[],"shadowedTokenCount":100,"provider":"wb","model":"deepseek-v4.1-flash"},"surfaceOp":{"op":"replace","startSeq":\(startSeq),"endSeq":\(endSeq)}}

@@ -108,4 +108,44 @@ final class RealSnapshotTests: XCTestCase {
             )
         }
     }
+
+    /// **窗口顶部被切在一轮中段时，那半截必须收成一个轮次块，而不是逐条摊开。**
+    ///
+    /// 真实会话里一轮能有几十上百条过程消息。往上翻历史时 `session/page`
+    /// 的边界落点不受控，`turn/start` 常常还在上一页没取回来 ——
+    /// 老代码于是把这段尾巴里的每一条都当成「轮次之外的独立条目」渲染，
+    /// 屏幕上就是一大串思考和过程（用户实测反馈）。
+    ///
+    /// `session-b45ecb53` 这份真机样本**本来就是这个状态**：窗口第一条是
+    /// seq 79 的 `assistant/message`（turn 1），而 turn 1 的 `turn/start`
+    /// 在窗口外，`turn/end` 在 169 —— 不需要人为裁剪。
+    func testRealWindowThatStartsMidTurnCollapsesIntoOneTurn() throws {
+        let snapshot = try loadSnapshot("session-b45ecb53-0a3b-43c2-8ba2-ec0cc5c3b180")
+        var builder = TimelineBuilder()
+        _ = builder.apply(snapshot: snapshot)
+
+        let blocks = builder.timelineBlocks()
+        guard case .turn(let leading)? = blocks.first else {
+            return XCTFail("窗口顶部应当收成一个轮次块，而不是一堆独立条目")
+        }
+        XCTAssertTrue(leading.isComplete, "它的 turn/end（seq 169）还在窗口里")
+        XCTAssertNil(leading.duration, "开头被切掉了，时长算不出来，不该瞎算")
+        XCTAssertFalse(
+            leading.items.contains { if case .turnStart = $0.kind { return true }; return false },
+            "这一轮的 turn/start 在窗口外"
+        )
+        XCTAssertFalse(leading.collapsible.isEmpty, "过程消息应当进折叠区，而不是摊在明面上")
+        XCTAssertNotNil(leading.headline, "收拢之后明面上要有最终结论")
+
+        // 顶部不能先散出一堆独立条目（那正是「逐条获取」的样子）。
+        var standaloneAtTop = 0
+        for block in blocks {
+            guard case .item = block else { break }
+            standaloneAtTop += 1
+        }
+        XCTAssertEqual(
+            standaloneAtTop, 0,
+            "顶部不该散着独立条目，实际 \(standaloneAtTop) 条 —— 说明半截轮次又被逐条摊开了"
+        )
+    }
 }
