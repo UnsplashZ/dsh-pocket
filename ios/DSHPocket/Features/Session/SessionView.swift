@@ -47,7 +47,7 @@ struct SessionView: View {
         .toolbar { toolbar }
         .task {
             #if DEBUG
-            // 调试用：`defaults write cc.zexa.dshpocket DSHShowModelPicker -bool YES`
+            // 调试用：`defaults write cc.unsplashz.dshpocket DSHShowModelPicker -bool YES`
             if UserDefaults.standard.bool(forKey: "DSHShowModelPicker") { showModelPicker = true }
             if UserDefaults.standard.bool(forKey: "DSHShowPermissionPicker") { showPermissionSheetForDebug = true }
             #endif
@@ -314,7 +314,7 @@ struct SessionView: View {
             }
             .task {
                 #if DEBUG
-                // 调试用：`defaults write cc.zexa.dshpocket DSHLoadEarlier -bool YES`
+                // 调试用：`defaults write cc.unsplashz.dshpocket DSHLoadEarlier -bool YES`
                 // 打开后延迟几秒自动补一页历史，便于核对"补完会不会滚到新内容"。
                 if UserDefaults.standard.bool(forKey: "DSHLoadEarlier") {
                     try? await Task.sleep(for: .seconds(6))

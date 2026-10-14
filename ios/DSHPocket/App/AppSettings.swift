@@ -53,7 +53,7 @@ public struct NotificationPreferences: Sendable, Equatable {
 ///
 /// 另外两种是**开发者模式**，只在 DEBUG 构建里通过 `UserDefaults` 打开：
 /// ```bash
-/// xcrun simctl spawn booted defaults write cc.zexa.dshpocket settings.transportMode -string devDirect
+/// xcrun simctl spawn booted defaults write cc.unsplashz.dshpocket settings.transportMode -string devDirect
 /// ```
 /// - `.devDirect`：打本机回环上的直连网关，模拟器里开发界面/协议时不需要真机与配对；
 /// - `.directGateway`：打一个带令牌的直连网关（Tailscale / 局域网 / 反代后面）。

@@ -21,7 +21,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT}"
 
 DERIVED="${ROOT}/.derived-device"
-BUNDLE_ID="cc.zexa.dshpocket"
+BUNDLE_ID="cc.unsplashz.dshpocket"
 DEVICE=""
 TEAM=""
 

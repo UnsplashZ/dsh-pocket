@@ -10,7 +10,7 @@ struct SettingsSheet: View {
     @State private var showPairing = false
     @State private var renamingHost: TetherHostRecord?
     #if DEBUG
-    /// 调试用：`defaults write cc.zexa.dshpocket DSHShowArchived -bool YES` 直接打开归档页。
+    /// 调试用：`defaults write cc.unsplashz.dshpocket DSHShowArchived -bool YES` 直接打开归档页。
     @State private var showArchived = false
     @State private var showHostSettings = false
     @State private var showHostSettingsFromDebug = false

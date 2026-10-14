@@ -27,7 +27,7 @@ public enum TetherSecretStoreError: Error, Sendable {
 public struct KeychainSecretStore: TetherSecretStore {
     private let service: String
 
-    public init(service: String = "cc.zexa.dshpocket.iroh") {
+    public init(service: String = "cc.unsplashz.dshpocket.iroh") {
         self.service = service
     }
 

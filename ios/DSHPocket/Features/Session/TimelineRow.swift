@@ -431,7 +431,7 @@ struct TurnGroupView: View {
         .animation(.snappy(duration: 0.42), value: turn.isComplete)
         .onAppear {
             #if DEBUG
-            // 调试用：`defaults write cc.zexa.dshpocket DSHExpandTurns -bool YES`
+            // 调试用：`defaults write cc.unsplashz.dshpocket DSHExpandTurns -bool YES`
             // 让所有轮次默认展开，便于核对展开后的时序。
             guard !hasAppliedDefault else { return }
             hasAppliedDefault = true

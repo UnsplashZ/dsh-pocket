@@ -1,57 +1,65 @@
-# 忽略
-node_modules/
-dist/
-build/
-target/
+# ── 通用 ────────────────────────────────────────────────────────────────────
 .DS_Store
+node_modules/
 *.log
 
-# Xcode
+# ── Xcode / 构建产物 ───────────────────────────────────────────────────────
+# ios/build.sh 写 ios/.derived/；scripts/install-device.sh 写 .derived-device/；
+# CI 与本地偶尔会在仓库根直接跑 xcodebuild，所以根目录那层也要挡住。
+.derived/
+ios/.derived/
+.derived-device/
+ios/.module-cache/
+dist/
+build/
 DerivedData/
 xcuserdata/
 *.xcuserstate
 *.xcscmblueprint
 *.moved-aside
 *.hmap
-*.ipa
-*.dSYM.zip
+*.xcresult/
 
-# 构建产物（ios/build.sh 与 xcodebuild 都写在这里，保持仓库根干净）
-ios/.derived/
-ios/.module-cache/
-# 真机构建的产物目录（scripts/install-device.sh 用）
-.derived-device/
+# 签名材料：本仓库只发未签名 IPA，任何证书/描述文件都不该出现在这里
+*.ipa
+*.dSYM
+*.dSYM.zip
+*.mobileprovision
+*.p12
+*.cer
+*.certSigningRequest
+
+# ── SwiftPM ───────────────────────────────────────────────────────────────
+# `swift test --cache-path …` 指到仓库根，保持仓库根干净
+.spm-cache/
+.spm-config/
+.spm-security/
+.spm-xcode/
 ios/.spm-cache/
 ios/.spm-config/
 ios/.spm-security/
 ios/.spm-xcode/
-# SwiftPM 的缓存/配置/安全目录（`swift test --cache-path …` 指到这里，保持仓库根干净）
-.spm-cache/
-.spm-config/
-.spm-security/
-
-# SwiftPM
 .build/
 .swiftpm/
 Package.resolved
 
-# iroh 的预编译部件：133 MB，不入库。用 `bash ios/scripts/fetch-iroh.sh` 取
-# （版本与 sha256 钉在脚本里，XCFramework 与 Swift 绑定一次取好）。
+# ── iroh 的预编译部件 ──────────────────────────────────────────────────────
+# 约 42 MB，不入库。用 `bash ios/scripts/fetch-iroh.sh` 取（版本与 sha256 钉在脚本里）。
 ios/vendor/Iroh.xcframework/
 ios/vendor/IrohLib.swift
 ios/vendor/VERSION
 ios/vendor/.unzip/
 
-# 现场生成的抓包/样例（含私人会话内容，绝不入库）
+# ── 现场生成的抓包/样例（含私人会话内容，绝不入库）────────────────────────
 docs/artifacts/samples/*.json
 docs/artifacts/samples/*.jsonl
 docs/artifacts/samples/*.txt
 spikes/out/
 
-# 本机真值
+# ── 本机真值 ──────────────────────────────────────────────────────────────
 .env
 .env.local
 *.local.json
 
-# codegraph 本地索引
+# ── codegraph 本地索引 ────────────────────────────────────────────────────
 .codegraph/

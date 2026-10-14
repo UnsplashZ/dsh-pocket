@@ -25,7 +25,15 @@ PROJECT="DSHPocket.xcodeproj"
 DERIVED="${ROOT}/.derived"
 MODULE_CACHE="${ROOT}/.module-cache"
 SIMULATOR="${DSH_POCKET_SIMULATOR:-iPhone 18 Pro}"
-BUNDLE_ID="cc.zexa.dshpocket"
+BUNDLE_ID="cc.unsplashz.dshpocket"
+
+# 模拟器机型跟着 Xcode 版本走，所以默认值在别人的机器上很可能不存在。
+# 不存在时自动挑一台（而不是抛一句让人以为工程坏了的错），命令行里显式指定的名字照旧尊重。
+if ! xcrun simctl list devices available 2>/dev/null | grep -q "^ *${SIMULATOR} ("; then
+  PICKED="$(bash scripts/pick-simulator.sh --name)"
+  echo "==> 找不到模拟器「${SIMULATOR}」，自动改用「${PICKED}」（可用 DSH_POCKET_SIMULATOR 覆盖）"
+  SIMULATOR="${PICKED}"
+fi
 
 MODE="simulator"
 for arg in "$@"; do
