@@ -8,7 +8,7 @@ import XCTest
 /// 默认跳过（保持 `swift test` 不需要任何外部依赖）。跑法：
 ///
 /// ```bash
-/// node tools/dev-proxy.mjs &                 # 注入 cookie 的 DEV-DIRECT 代理
+/// node tools/direct-gateway.mjs &           # 注入 cookie 的 DEV-DIRECT 代理
 /// DSH_LIVE=1 swift test --filter LiveIntegration
 /// ```
 ///
@@ -22,7 +22,7 @@ final class LiveIntegrationTests: XCTestCase {
     private func requireLive() throws {
         try XCTSkipUnless(
             ProcessInfo.processInfo.environment["DSH_LIVE"] == "1",
-            "未开启实时测试。设 DSH_LIVE=1 并先跑 node tools/dev-proxy.mjs（或指向真机代理端口）"
+            "未开启实时测试。设 DSH_LIVE=1 并先跑 node tools/direct-gateway.mjs（或指向真机代理端口）"
         )
     }
 

@@ -79,13 +79,16 @@ jobs:
       - name: 版本号有改动就提交到 main
         run: |
           set -euo pipefail
-          if [ -z "$(git status --porcelain -- ios/VERSION ios/project.yml)" ]; then
+          if [ -z "$(git status --porcelain -- ios/VERSION ios/project.yml ios/DSHPocket.xcodeproj/project.pbxproj)" ]; then
             echo "版本号没有变化（沿用仓库里的 ${GITHUB_REF_NAME}），不提交"
             exit 0
           fi
           git config user.name  'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add ios/VERSION ios/project.yml
+          # version.sh 同步时一并改生成的 project.pbxproj（见 version.sh 的注释），
+          # 漏掉它会让仓库里的 pbxproj 永远落后一个版本 —— 而 GITHUB_TOKEN 推送
+          # 不触发 ci，漂移不会被"版本号同步"检查抓到。
+          git add ios/VERSION ios/project.yml ios/DSHPocket.xcodeproj/project.pbxproj
           git diff --cached --stat
           git commit -m "chore(release): ${{ steps.version.outputs.tag }}"
           git push origin HEAD:main
