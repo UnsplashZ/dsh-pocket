@@ -19,6 +19,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  lint:
+    name: 静态检查（本地化 / 版本号）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # 440 条文案必须 zh-Hans 与 en 都有 —— 缺一条界面上就是中英混排，
+      # 而这种事只有真点到那一屏才会发现，所以放 CI 里挡。
+      - name: 本地化文案完整性
+        run: python3 ios/scripts/gen-strings.py --check
+
+      # 版本号的唯一真源是 ios/VERSION；project.yml 是它的下游。
+      # 手改 project.yml 会让"包里印的版本"和"tag 上的版本"悄悄分叉，
+      # 这里让它在 PR 阶段就红，而不是等发布之后。
+      - name: 版本号与 project.yml 是否同步
+        run: |
+          set -euo pipefail
+          bash ios/scripts/version.sh sync
+          if ! git diff --quiet -- ios/project.yml; then
+            echo "::error::ios/project.yml 里的 MARKETING_VERSION 与 ios/VERSION 不一致。"
+            echo "改版本号请用： bash ios/scripts/version.sh set <X.Y.Z>"
+            git diff -- ios/project.yml
+            exit 1
+          fi
+          echo "版本号一致：$(bash ios/scripts/version.sh get)"
+
   libs:
     name: 库单测（DSHKit / TetherKit）
     runs-on: macos-latest
