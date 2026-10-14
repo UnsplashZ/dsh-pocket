@@ -105,10 +105,11 @@
 - [x] 设置页（S6）：主机管理、通知开关、外观、**诊断页**（direct/relay 路径、端点自检、日志导出）
 - [x] `PrivacyInfo.xcprivacy` + Info.plist 复核（只开 `NSAllowsLocalNetworking`）
 - [x] 首次启动的说明页（隐私 + 安全边界 + 用途）
-- [x] 本地化 zh-Hans/en：目录里的 442 条两种语言都齐，`ios/scripts/gen-strings.py --check` 可回归
-- [ ] 本地化收尾：源码里还有约 126 条面向人的中文字面量没进目录（App 92 / DSHKit 34），
-      英文设备上会显示中文；抽取模式也要补上三元、`.alert(`、`.confirmationDialog(`、
-      `.accessibilityLabel(` 几种形状。清单与修法见 [#1](https://github.com/UnsplashZ/dsh-pocket/issues/1)
+- [x] 本地化 zh-Hans/en：604 条面向人的文案两种语言都齐；抽取模式覆盖三元、`.alert(`、
+      `.confirmationDialog(`、`.accessibilityLabel(`、`LabeledContent(`、`return "…"` 等形状
+- [x] 本地化兜底：源码里任何含中文的字面量没进目录就让 CI 红（含 `\(…)` 插值的），
+      `return "中文"` 落在 `String` 返回位置上单独报出来（那种只进目录、运行时不查）。
+      收掉了 [#1](https://github.com/UnsplashZ/dsh-pocket/issues/1)
 - [x] 配对失败原因码本地化（四种码都有文案，且有"文案里不能出现码本身"的断言）
 - [ ] **真机逐项走一遍**：VoiceOver 全流程、AX1/AX3/AX5 三档、Increase Contrast、Voice Control
 - [ ] 审批通知的三个操作按钮（批准一次 / 拒绝 / 稍后）—— 目前通知只是提醒，点开回到 App

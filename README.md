@@ -168,9 +168,9 @@ toggles, scheduled reminders, cache management, archived sessions, notifications
 failures are localized per reason code.
 
 **Accessibility and localization** — dynamic type AX1–AX5, VoiceOver labels, dark mode, 44 pt
-targets. The String Catalog (442 strings) is fully covered in both languages, **but a batch of
-secondary strings is still Chinese-only** — dialogs, the diagnostics page, and host error
-messages; measured and tracked in [#1](https://github.com/UnsplashZ/dsh-pocket/issues/1).
+targets. All **604** user-facing strings are covered in English and Simplified Chinese, and
+`ios/scripts/gen-strings.py --check` fails CI if a source literal ever slips out of the catalog
+(it scans for Chinese literals in *any* call shape, not just the ones the extractor knows).
 
 ---
 

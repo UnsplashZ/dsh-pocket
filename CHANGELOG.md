@@ -22,6 +22,33 @@ All notable changes to this project are documented here.
 
 ---
 
+## [0.4.2] — 2026-10-14
+
+收掉 [#1](https://github.com/UnsplashZ/dsh-pocket/issues/1)：英文界面里那一批一直显示中文的文案。
+
+### Fixed
+
+- **英文界面补全**。抽取器过去只认几种调用点形状，源码里另有约 126 条面向人的中文字面量
+  从来没进 String Catalog，于是英文设备上直接显示中文 —— 包括主界面那颗**发送 / 排队发送**
+  按钮、欢迎页与审批按钮、各种确认弹窗、诊断导出页，以及 DSHKit / TetherKit 返回的全部错误文案。
+  现在这些字面量要么落在 SwiftUI 的 key 位置上（抽取模式收下），要么显式写成
+  `String(localized:)` —— `Text(String)` 是 verbatim 语义，**光进目录是不够的**。
+  目录从 442 条涨到 **604 条**。
+- **抽取器补上几类漏掉的形状**：三元的两半、`.alert(` / `.confirmationDialog(` /
+  `.accessibilityLabel(`（允许 `(` 与字面量之间换行）、`LabeledContent(` / `ProgressView(` /
+  `SecureField(`，以及 `return "…"` 和单独成行的字面量。
+- **加了三条兜底，防止再从缝里漏过去**：
+  · 源码里任何含中文的字面量，只要没进目录就让 CI 红 —— **包括带 `\(…)` 插值的**
+    （早期实现把它们排除在外，于是整个诊断导出页都从检查里消失了）；
+  · `return "中文"` 落在 `String` 返回位置上会被单独报出来（那种只进目录、运行时查不到）；
+  · 抽取只收面向人的字面量，`"Hm"`（日期模板）、`"MMMdHm"`、`"DEBUG"`（日志级别）
+    这类技术字符串不会被误当成待翻译文案。
+- **版本号同步补上生成的工程**：`version.sh sync` 现在也会改 `project.pbxproj` 里的
+  `MARKETING_VERSION`，CI 的一致性检查一并覆盖它。以前每次发版都会留下一处漂移，
+  表现为"谁构建一下，工作区就多出一个他根本没改过的 diff"。
+
+---
+
 ## [0.4.1] — 2026-10-14
 
 补丁：0.4.0 里新增的「清缓存」按钮漏了英文文案（英文设备上显示成中文）。

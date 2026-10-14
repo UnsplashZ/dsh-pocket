@@ -155,9 +155,8 @@ shasum -a 256 -c DSHPocket-0.3.0-unsigned.ipa.sha256
 **配对** —— 扫码（VisionKit）/ 粘贴整串 / 手输 6 位码；失败按原因码本地化。
 
 **无障碍与本地化** —— 动态字体 AX1–AX5、VoiceOver 标签、深色模式、44pt 触达目标。
-目录里的 442 条文案 zh-Hans 与 en 都齐，**但还有一批次要文案只有中文** ——
-弹窗、诊断页、宿主返回的错误文案；已实测统计并记录在
-[#1](https://github.com/UnsplashZ/dsh-pocket/issues/1)。
+**604 条**面向人的文案，zh-Hans 与 en 全覆盖；`ios/scripts/gen-strings.py --check` 会兜底：
+源码里只要有中文字面量没进目录（**不管它长在什么调用形状上**），CI 直接红。
 
 ---
 
