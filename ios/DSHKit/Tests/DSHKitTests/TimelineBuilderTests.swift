@@ -1004,8 +1004,7 @@ final class TimelineBuilderTests: XCTestCase {
     }
 
     /// `resume` 是**合并**：老的条目留着，新的按 seq 补上。
-    func testResumeMergesInsteadOfResetting() throws {
-        var builder = TimelineBuilder()
+    func testResumeMergesInsteadOfResetting() throws {        var builder = TimelineBuilder()
         _ = builder.apply(snapshot: try Fixture.snapshot([
             Fixture.turnStart(1, seq: 1),
             Fixture.userMessage("很早的一句", seq: 2),
@@ -1023,6 +1022,62 @@ final class TimelineBuilderTests: XCTestCase {
         }
         XCTAssertEqual(texts, ["很早的一句", "刚说的一句"], "续拉不能丢掉更早的历史")
         XCTAssertEqual(builder.cursor, 9)
+    }
+
+    /// **分片续拉必须和一次性续拉结果完全一致。**
+    ///
+    /// 缓存很旧时，续拉要折几百条事件、内容高度翻好几倍。原来是一次同步循环、
+    /// 全在同一帧完成 —— 视图没机会在中间滚动，落点被那次暴涨甩到内容之外，
+    /// 屏幕上就是一片空白（用户："缓存和实际会话差异很多时点进去空白，
+    /// 必须退出重进"）。现在 App 层改成 `beginResume` + 分片 `applyResuming`
+    /// + `finishResume`，每片之间让出主线程。
+    ///
+    /// 这条钉住"分片只是把同一件事拆开做，结果不许变"。
+    func testChunkedResumeMatchesOneShotResume() throws {
+        func events() -> [String] {
+            var out: [String] = []
+            var seq = 1
+            for turn in 1...6 {
+                out.append(Fixture.turnStart(turn, seq: seq)); seq += 1
+                out.append(Fixture.userMessage("第 \(turn) 句", seq: seq)); seq += 1
+                out.append(Fixture.assistantMessage(text: "回复 \(turn) 的内容", seq: seq)); seq += 1
+                out.append(Fixture.turnEnd(turn, seq: seq)); seq += 1
+            }
+            return out
+        }
+        let raw = events()
+
+        // ① 老缓存：只到 seq 4
+        func cacheBase() throws -> TimelineBuilder {
+            var b = TimelineBuilder()
+            _ = b.apply(snapshot: try Fixture.snapshot(Array(raw.prefix(4)), cursor: 4))
+            return b
+        }
+        let snapshot = try Fixture.snapshot(raw, cursor: raw.count)
+
+        var oneShot = try cacheBase()
+        XCTAssertTrue(oneShot.resume(with: snapshot))
+
+        var chunked = try cacheBase()
+        XCTAssertTrue(chunked.beginResume(with: snapshot))
+        let all = snapshot.events
+        var index = 0
+        while index < all.count {
+            let end = min(index + 3, all.count)     // 故意用很小的片
+            chunked.applyResuming(all[index..<end])
+            index = end
+        }
+        chunked.finishResume(with: snapshot)
+
+        XCTAssertEqual(chunked.items.map(\.id), oneShot.items.map(\.id), "条目与顺序必须一致")
+        XCTAssertEqual(chunked.items.map(\.kind), oneShot.items.map(\.kind), "内容必须一致")
+        XCTAssertEqual(chunked.cursor, oneShot.cursor)
+        XCTAssertEqual(chunked.lastSeq, oneShot.lastSeq)
+
+        // ② 分片路径同样要能拒绝"宿主落后于缓存"的快照
+        var refusing = try cacheBase()
+        let stale = try Fixture.snapshot([Fixture.turnStart(1, seq: 1)], cursor: 1)
+        XCTAssertFalse(refusing.beginResume(with: stale), "宿主的 cursor 落后时必须退回整体重建")
     }
 
     func testResumeRefusesWhenHostIsBehindTheCache() throws {

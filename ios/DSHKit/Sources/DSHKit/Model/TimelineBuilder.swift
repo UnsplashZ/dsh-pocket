@@ -201,15 +201,38 @@ public struct TimelineBuilder: Sendable {
     ///   · 如果宿主的 cursor **落后于**我们的 lastSeq（日志被换过 / 缓存过旧），
     ///     说明缓存不可信 —— 返回 `false`，调用方退回 `apply(snapshot:)` 整体重建。
     public mutating func resume(with snapshot: SessionSnapshot) -> Bool {
+        guard beginResume(with: snapshot) else { return false }
+        for event in snapshot.events { _ = apply(event) }
+        finishResume(with: snapshot)
+        return true
+    }
+
+    /// **分片版续拉**：先 `beginResume`，再把 `events` 分几批喂 `applyResuming`，
+    /// 最后 `finishResume`。
+    ///
+    /// 为什么要拆：`resume` 原来是一次同步循环，把快照里所有比缓存新的事件
+    /// 一口气折完。缓存很旧时那就是几百条事件、内容高度翻好几倍
+    ///（实测 3206 → 13867），**全部发生在同一帧里** —— 视图只会在这一帧之后
+    /// 才拿到机会滚动，落点早被那次暴涨甩到内容之外，屏幕上就是一片空白。
+    /// 分片之后每批之间能让出主线程，内容是一段一段长出来的，滚动才跟得住。
+    public mutating func beginResume(with snapshot: SessionSnapshot) -> Bool {
         if snapshot.cursor < Int(lastSeq) { return false }
         header = snapshot.header
         hasMoreHistory = snapshot.hasMore
-        for event in snapshot.events where event.seq > lastSeq {
+        return true
+    }
+
+    /// 喂一批事件（`beginResume` 之后调用）。
+    public mutating func applyResuming(_ events: ArraySlice<SessionEvent>) {
+        for event in events where event.seq > lastSeq {
             _ = apply(event)
         }
+    }
+
+    /// 收尾（`beginResume` 之后调用）。
+    public mutating func finishResume(with snapshot: SessionSnapshot) {
         cursor = snapshot.cursor
         lastSeq = max(lastSeq, Double(snapshot.cursor))
-        return true
     }
 
     public var isEmpty: Bool { items.isEmpty }

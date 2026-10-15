@@ -22,6 +22,15 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **缓存与宿主差异很大时，点进去内容空白、要退出重进**。两个原因叠在一起：
+  ① 续拉是**一次性同步循环**（`resume` 里 `for event in ... { apply(event) }`，
+  没有分片、没有让出主线程）。缓存很旧时要折几百条事件、内容高度实测从 3206
+  涨到 13867，全部发生在同一帧 —— 视图根本没机会在中间滚动，落点被那次暴涨甩到
+  内容之外，屏幕一片空白。现在拆成 `beginResume` / 分片 `applyResuming` /
+  `finishResume`，每片之后 `publish()` + `requestScrollToBottom()` + 让出主线程。
+  ② 续拉那条**提前 return 的分支从来没有请求过"滚到底"**（`requestScrollToBottom()`
+  只写在冷启动分支末尾）。于是"缓存越旧、差异越大、越是一片空白"，而退出重进之所以
+  能好，是因为那时缓存已被刷新、走的是有滚动请求的冷启动路径。
 - **往上翻历史翻不动、必须退出会话重进才正常**。根因：冷启动折叠快照时
   **从没把宿主的 `cursor` 落到 builder 上**，`builder.cursor` 一直是初始值 `-1`；
   而补历史（`session/page`）的 `throughSeq` 用的就是它 —— 实测宿主收到

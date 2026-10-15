@@ -322,7 +322,31 @@ public final class SessionModel {
     private func applySnapshot(_ snapshot: SessionSnapshot) async {
         // 命中缓存时走**增量续拉**：快照只带最近 N 条消息，而我们手里有更早的。
         // 整体重建会把用户已经翻过的历史丢掉，也会白等一次全量折叠。
-        if restoredFromCache, builder.resume(with: snapshot) {
+        var resumeOK = false
+        if restoredFromCache, builder.beginResume(with: snapshot) {
+            resumeOK = true
+            // **分片喂，别一口气塞。**
+            //
+            // 缓存很旧时这里要折几百条事件，内容高度实测能从 3206 涨到 13867。
+            // 原来是一次同步循环、全在同一帧完成 —— 视图根本没机会在中间滚动，
+            // 落点被那次暴涨甩到内容之外，屏幕一片空白，用户只能退出重进。
+            // 每片之间让出主线程，内容一段段长出来，贴底才跟得住。
+            let newEvents = snapshot.events
+            let chunkSize = 120
+            var index = 0
+            while index < newEvents.count {
+                if Task.isCancelled { return }
+                let end = min(index + chunkSize, newEvents.count)
+                builder.applyResuming(newEvents[index..<end])
+                index = end
+                // 每片之后把视图拉回底部：缓存与宿主差异越大，这一段越关键。
+                publish()
+                requestScrollToBottom()
+                await Task.yield()
+            }
+            builder.finishResume(with: snapshot)
+        }
+        if restoredFromCache, resumeOK {
             restoredFromCache = false
             applyProjections(snapshot.projections)
             hasMoreHistory = snapshot.hasMore
@@ -333,6 +357,17 @@ public final class SessionModel {
             // "工作中"那个实时计时器永远不显示（实测）。
             syncTurnTimer()
             publish()
+            // **续拉之后必须重新贴底一次。**
+            //
+            // 缓存很旧时，`resume` 会把几百条新事件**追加在缓存那份内容下方** ——
+            // 实测内容高度从 3206 直接涨到 13867，而视口还停在 y=1952 不动，
+            // 屏幕上看到的是中间一段空档：用户描述为"点进去内容空白等很久，
+            // 必须退出重进"。退出重进之所以好，是因为那时缓存已被刷新、
+            // 走的是冷启动那条路，而那条路**有** `requestScrollToBottom()`。
+            //
+            // 这条路径原来漏了它（滚动请求只写在冷启动分支的末尾），
+            // 于是"缓存与宿主差异越大，越是一片空白"。
+            requestScrollToBottom()
             saveToCache()
             return
         }
