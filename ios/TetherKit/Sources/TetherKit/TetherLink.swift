@@ -150,16 +150,25 @@ actor TetherLink: TetherStreamFactory {
         setState(.connecting(hostId: hostEndpointId))
 
         do {
+            let tBind = Date()
             let endpoint = try await bindEndpoint()
+            let bindMS = Int(Date().timeIntervalSince(tBind) * 1000)
             let peer = try EndpointId.fromString(s: hostEndpointId)
             let address = EndpointAddr(id: peer, relayUrl: nil, addresses: [])
             logger?.log("连接电脑 \(hostEndpointId.prefix(12))…（preset N0，ALPN \(TetherWire.alpn)）")
 
+            let tConnect = Date()
             let connection = try await endpoint.connect(addr: address, alpn: Data(TetherWire.alpn.utf8))
+            let connectMS = Int(Date().timeIntervalSince(tConnect) * 1000)
             self.endpoint = endpoint
             self.connection = connection
 
+            let tBi = Date()
             let bi = try await connection.openBi()
+            // **建连各段耗时留成常驻日志**：用户报过"退后台再回来重连特别慢"，
+            // 而这条链路的慢点全在 iroh 那一侧（建 endpoint / 打洞或走中继），
+            // 不留下数字的话下次只能再插一遍临时计时。一行、低频，不是噪音。
+            logger?.log("建连耗时：iroh 端点 \(bindMS)ms、连接 \(connectMS)ms、控制流 \(Int(Date().timeIntervalSince(tBi) * 1000))ms")
             let send = bi.send()
             let recv = bi.recv()
             self.controlSend = send

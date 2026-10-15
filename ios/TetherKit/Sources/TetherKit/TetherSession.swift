@@ -235,7 +235,9 @@ public actor TetherSession {
 
             let preferred = TetherProxyPort.port(for: hostId)
             let proxy = LocalProxyServer(factory: link, preferredPort: preferred, logger: logger)
+            let tProxy = Date()
             let base = try await proxy.start()
+            let proxyMS = Int(Date().timeIntervalSince(tProxy) * 1000)
             self.proxy = proxy
             self.proxyPort = UInt16(base.port ?? 0)
 
@@ -248,7 +250,7 @@ public actor TetherSession {
             hostBook.save()
 
             startLinkWatchdog(link)
-            logger?.log("已连接并起好本地代理：\(base.absoluteString)")
+            logger?.log("已连接并起好本地代理（本地代理启动 \(proxyMS)ms）：\(base.absoluteString)")
             return base
         } catch {
             setState(.failed((error as? LocalizedError)?.errorDescription ?? error.localizedDescription))

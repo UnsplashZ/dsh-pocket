@@ -263,7 +263,11 @@ public final class AppModel {
         // 电脑端会把前一条顶掉（日志里是 closed by peer: 0），看起来就是"连一会就断"。
         if await tether.isTransportHealthy() { return }
         logs.log(.info, "回到前台，传输不健康，重连")
+        let tFg = Date()
         await connect(hostId: hostId, pairingCode: nil, silent: true)
+        // 留成常驻日志：用户报过"后台回来重连特别慢"。传输层那边还有一行
+        // "建连耗时：…"，两行合起来就能定位是 iroh 建连慢还是别的地方慢。
+        logs.log(.info, "回到前台重连完成，用时 \(Int(Date().timeIntervalSince(tFg) * 1000))ms")
     }
 
     /// 退到后台：断开传输，只保留通知（iOS 上这是正解，别试图保活）。
