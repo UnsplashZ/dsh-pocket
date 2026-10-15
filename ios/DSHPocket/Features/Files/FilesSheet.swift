@@ -16,8 +16,17 @@ struct FilesSheet: View {
     @State private var entries: [WorkspaceFileEntry] = []
     @State private var isLoading = false
     @State private var error: String?
-    @State private var previewURL: URL?
-    @State private var showPreview = false
+    /// 正在预览的文件。以前这里自己拿 `readFileText` + 临时文件 + QuickLook 拼一套，
+    /// 于是**只有文本能看**（图片/PDF 走 `read` 会读成乱码），而且受
+    /// `range` 必填那个 bug 影响。现在统一交给 `FilePreviewScreen`：
+    /// 它先 `stat` 再决定走文本还是字节，图片也能开。
+    @State private var previewing: PreviewTarget?
+
+    /// `sheet(item:)` 需要一个 Identifiable。
+    struct PreviewTarget: Identifiable {
+        let path: String
+        var id: String { path }
+    }
 
     var body: some View {
         NavigationStack {
@@ -54,11 +63,11 @@ struct FilesSheet: View {
                                     }
                                 }
                                 Spacer()
-                                if entry.isDirectory {
-                                    Image(systemName: "chevron.right")
-                                        .font(.caption)
-                                        .foregroundStyle(.tertiary)
-                                }
+                                // 文件和目录**都能点开**（文件进预览），所以都给 chevron ——
+                                // 只给目录的话，文件看起来还是"点不动"的。
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
                             }
                         }
                         .buttonStyle(.plain)
@@ -109,10 +118,8 @@ struct FilesSheet: View {
             }
             .refreshable { await load() }
             .task { await load() }
-            .sheet(isPresented: $showPreview) {
-                if let previewURL {
-                    QuickLookPreview(url: previewURL)
-                }
+            .sheet(item: $previewing) { target in
+                FilePreviewScreen(scopeId: scopeId, path: target.path)
             }
         }
     }
@@ -137,7 +144,7 @@ struct FilesSheet: View {
             Task { await load() }
             return
         }
-        Task { await preview(entryPath) }
+        previewing = PreviewTarget(path: entryPath)
     }
 
     private func goUp() {
@@ -164,19 +171,6 @@ struct FilesSheet: View {
         }
     }
 
-    /// 预览：把文件内容落到临时目录再交给系统 QuickLook（QuickLook 只认本地 URL）。
-    private func preview(_ absolutePath: String) async {
-        do {
-            let text = try await model.client.readFile(scopeId: scopeId, path: absolutePath)
-            let name = (absolutePath as NSString).lastPathComponent
-            let url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
-            try text.write(to: url, atomically: true, encoding: .utf8)
-            previewURL = url
-            showPreview = true
-        } catch {
-            self.error = (error as? DSHClientError)?.displayMessage ?? error.localizedDescription
-        }
-    }
 }
 
 /// 系统 QuickLook 的 SwiftUI 包装（`QLPreviewController` 没有 SwiftUI 版）。

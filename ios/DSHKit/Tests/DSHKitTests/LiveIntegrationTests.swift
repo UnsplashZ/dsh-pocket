@@ -184,6 +184,82 @@ final class LiveIntegrationTests: XCTestCase {
         }
     }
 
+    /// **交付产物"点开预览"的整条链路**（对着活宿主）。
+    ///
+    /// 这条链路踩过两个坑，都在这里钉住：
+    ///   1. `workspaceFiles/read` 的 `range` 是**必填字段**：省略会被拒
+    ///      （`missing "range"`），传 `null` 也被拒。以前 `readFile` 写成
+    ///      `if let range`，于是所有"点开文件看看"的功能全是坏的。
+    ///   2. `readBytes` 返回的是 **multipart**，不是 JSON —— 解析要走字节级，
+    ///      用 `String` 中转会把图片毁掉。
+    ///
+    /// 产物路径是**相对会话工作区**写的（`.datastack/designs/…`），所以这里用
+    /// 真实会话当 scope，并确认相对路径能解析出绝对路径。
+    func testWorkspaceFileReadAndReadBytesWorkAgainstLiveHost() async throws {
+        try requireLive()
+        let client = makeClient()
+
+        let sessions = try await client.listSessions()
+        // **必须挑一个工作区就是本仓库的会话**：`workspaceFiles` 的相对路径按
+        // scope 自己的工作区解析（实测），拿别的仓库的会话当 scope 会 not-found。
+        let repo = FileManager.default.currentDirectoryPath          // swift test 的 cwd = ios/DSHKit
+            .replacingOccurrences(of: "/ios/DSHKit", with: "")
+        let scope = try XCTUnwrap(
+            sessions.first { $0.cwd == repo && !$0.sessionId.hasPrefix("im:") }?.sessionId
+                ?? sessions.first { $0.cwd == repo }?.sessionId,
+            "需要一个工作区是 dsh-pocket 的会话当 scope（本仓库 cwd=\(repo)）"
+        )
+
+        // 用**本仓库里一定存在的文件**当目标，且我们知道它的内容。
+        let relative = "ios/VERSION"
+        var stat: WorkspaceFileStat?
+        var usedPath: String?
+        for path in [relative, "\(repo)/ios/VERSION", "VERSION", "../VERSION"] {
+            if let value = try? await client.statFile(scopeId: scope, path: path) {
+                stat = value
+                usedPath = path
+                break
+            }
+        }
+        guard let stat, let usedPath else {
+            throw XCTSkip("拿不到 dsh-pocket 仓库里的已知文件做断言")
+        }
+        XCTAssertNotNil(stat.absolutePath, "stat 必须回绝对路径")
+        XCTAssertGreaterThan(stat.byteSize ?? 0, 0)
+
+        // ① 文本读取 —— `range` 必填那个坑
+        let text = try await client.readFile(scopeId: scope, path: stat.absolutePath ?? usedPath)
+        XCTAssertFalse(text.text.isEmpty, "读文本不能是空的")
+
+        // ② 二进制读取 —— multipart 解析
+        let bytes = try await client.readFileBytes(scopeId: scope, path: stat.absolutePath ?? usedPath)
+        XCTAssertEqual(bytes.count, stat.byteSize, "readBytes 取回的字节数必须和 stat 报的一致")
+
+        // **两条路不是逐字节相等**：`read` 的文本路径会把结尾换行去掉
+        //（实测 `ios/VERSION` 是 6 字节 `0.4.3\n`，read 回 5 个字符）。
+        // 所以只断言"去掉首尾空白后一致"——这也正是 App 里该有的预期：
+        // 文本预览不依赖结尾换行，二进制预览必须原样。
+        let textTrimmed = text.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let bytesTrimmed = String(decoding: bytes, as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        XCTAssertEqual(textTrimmed, bytesTrimmed, "同一文件：文本与字节的内容必须一致（忽略首尾空白）")
+        XCTAssertFalse(textTrimmed.isEmpty)
+
+        // ③ **二进制**（图片）—— 这是"产物/文件预览"里最容易坏的一条：
+        //    `readBytes` 的 multipart 解析必须**逐字节**保住内容，中间任何
+        //    `String` 中转都会把非 UTF-8 字节换成 U+FFFD，图片直接打不开。
+        let pngRelative = "ios/DSHPocket/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"
+        guard let pngStat = try? await client.statFile(scopeId: scope, path: pngRelative),
+              let pngPath = pngStat.absolutePath else {
+            throw XCTSkip("拿不到仓库里的 PNG 做二进制断言")
+        }
+        let png = try await client.readFileBytes(scopeId: scope, path: pngPath)
+        XCTAssertEqual(png.count, pngStat.byteSize, "PNG 字节数必须和 stat 一致")
+        // PNG 魔数：89 50 4E 47 0D 0A 1A 0A
+        XCTAssertEqual(Array(png.prefix(8)), [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A],
+                       "取回的必须是真 PNG 字节，不能被文本中转毁掉")
+    }
+
     /// 归档 → 恢复 的往返。用一个真实存在的会话，最后恢复原状。
     ///
     /// **只断言自己那条会话的归属，不要断言"整个归档集合相等"** ——

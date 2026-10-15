@@ -92,7 +92,7 @@ struct TimelineRow: View {
             )
 
         case .deliverables(let list):
-            DeliverablesCard(items: list)
+            DeliverablesCard(items: list, scopeId: session.sessionId)
 
         case .note(let note):
             noteRow(text: note.text, symbol: note.symbolName, tone: note.tone.statusTone)
@@ -890,11 +890,25 @@ struct ToolRow: View {
     }
 }
 
-// MARK: - 待办
 // MARK: - 产物
 
+/// `present` 交付的产物。
+///
+/// **每一行都可以点开看**（用户反馈："交付文件能看到，但是点不开，不能展开预览"）。
+///
+/// 三个设计点：
+///   · 有 `path` 的行才可点（没路径的产物只能看标题，给个明确的不可点外观，
+///     而不是点了没反应）；
+///   · 行尾给 `chevron.right`，**让"能点"这件事看得见** —— 之前整行是死的，
+///     用户根本不知道能不能点；
+///   · 路径按**会话自己的工作区**解析（`scopeId` = 会话 id，实测相对路径会落到
+///     该会话的工作区，这正是产物路径的写法）。
 struct DeliverablesCard: View {
     let items: [TimelineItem.Deliverable]
+    /// 解析相对路径用。等于会话 id（`workspaceFileScopeId` 就是会话 id）。
+    let scopeId: String
+
+    @State private var previewing: TimelineItem.Deliverable?
 
     var body: some View {
         Card {
@@ -903,27 +917,67 @@ struct DeliverablesCard: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 ForEach(items) { item in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(item.title).font(.subheadline.weight(.medium))
-                        if let description = item.description {
-                            Text(description).font(.caption).foregroundStyle(.secondary)
-                        }
-                        if let path = item.path {
-                            Text(path)
-                                .font(.caption2.monospaced())
-                                .foregroundStyle(.tertiary)
-                                .lineLimit(2)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contextMenu {
-                        if let path = item.path {
-                            Button {
-                                UIPasteboard.general.string = path
-                            } label: {
-                                Label("复制路径", systemImage: "doc.on.doc")
-                            }
-                        }
+                    row(item)
+                }
+            }
+        }
+        .sheet(item: $previewing) { item in
+            if let path = item.path {
+                FilePreviewScreen(scopeId: scopeId, path: path, title: item.title)
+            }
+        }
+        .task {
+            #if DEBUG
+            // 调试用：`defaults write … DSHOpenFirstDeliverable -bool YES`
+            // 模拟器里点不了，用它核对"点开产物"这条链路。
+            if UserDefaults.standard.bool(forKey: "DSHOpenFirstDeliverable"), previewing == nil {
+                previewing = items.first { $0.path != nil }
+            }
+            #endif
+        }
+    }
+
+    @ViewBuilder
+    private func row(_ item: TimelineItem.Deliverable) -> some View {
+        let content = VStack(alignment: .leading, spacing: 2) {
+            Text(item.title).font(.subheadline.weight(.medium))
+            if let description = item.description {
+                Text(description).font(.caption).foregroundStyle(.secondary)
+            }
+            if let path = item.path {
+                Text(path)
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(2)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+
+        if item.path == nil {
+            // 没有路径就没有可读的东西 —— 明说，别做成"点了没反应"。
+            content
+                .accessibilityHint(Text("这条产物没有文件路径，打不开"))
+        } else {
+            Button {
+                previewing = item
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: Token.Spacing.tight) {
+                    content
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text(item.title))
+            .accessibilityHint(Text("点按预览这个文件"))
+            .contextMenu {
+                if let path = item.path {
+                    Button {
+                        UIPasteboard.general.string = path
+                    } label: {
+                        Label("复制路径", systemImage: "doc.on.doc")
                     }
                 }
             }

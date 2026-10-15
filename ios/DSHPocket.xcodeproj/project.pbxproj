@@ -43,6 +43,7 @@
 		56F0FA7E876F80733D4CD5AF /* NewSessionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE27129706630B034A013169 /* NewSessionSheet.swift */; };
 		5A8B17FDF4B38B446DD30163 /* TetherIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3FFD174FD60E9DC57F54FF3 /* TetherIdentity.swift */; };
 		5BA98D3D35912124CBD15736 /* Projections.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6607BBF3D413D89A4B537871 /* Projections.swift */; };
+		5DB96C79B4A6DC6E909B650C /* FilePreviewScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30CD985C4108BF56D8D1B48A /* FilePreviewScreen.swift */; };
 		5E9D06012AD7777CCDDAFC04 /* MuxClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C78763CE3BDD07B0CCD4293E /* MuxClient.swift */; };
 		63B4AEBB49A2986D8B848C37 /* WorkspaceFrame.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EF1F42C52A900A991734E25 /* WorkspaceFrame.swift */; };
 		6695A409C898AAA1A1ABD408 /* MarkdownBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EB168BF3F2BD1743521E92A /* MarkdownBlock.swift */; };
@@ -176,6 +177,7 @@
 		29D28F9396FE62A8F095295F /* HostSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostSettingsView.swift; sourceTree = "<group>"; };
 		2EF1F42C52A900A991734E25 /* WorkspaceFrame.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceFrame.swift; sourceTree = "<group>"; };
 		30AC58D8B9981CB968F5B72C /* Composer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Composer.swift; sourceTree = "<group>"; };
+		30CD985C4108BF56D8D1B48A /* FilePreviewScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePreviewScreen.swift; sourceTree = "<group>"; };
 		31CE6B371F32508FBC3EA5B7 /* Retry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Retry.swift; sourceTree = "<group>"; };
 		332E9727DA5B522FCF725E72 /* TimelineItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineItem.swift; sourceTree = "<group>"; };
 		33BA4D73DF3106AB6973C28A /* ModelCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelCatalog.swift; sourceTree = "<group>"; };
@@ -494,6 +496,7 @@
 		B69D3114FC93A0A8F490A90C /* Files */ = {
 			isa = PBXGroup;
 			children = (
+				30CD985C4108BF56D8D1B48A /* FilePreviewScreen.swift */,
 				20391EC33E89609CD0C82B2E /* FilesSheet.swift */,
 			);
 			path = Files;
@@ -821,6 +824,7 @@
 				8A956C5313E815D2ADB5A673 /* Composer.swift in Sources */,
 				07D4AFEDDD493F17EDB21685 /* DSHPocketApp.swift in Sources */,
 				8ED4D3A2D9AE5EA283F32DBE /* DiagnosticsView.swift in Sources */,
+				5DB96C79B4A6DC6E909B650C /* FilePreviewScreen.swift in Sources */,
 				C2665264EC06FAA6E444E409 /* FilesSheet.swift in Sources */,
 				729932610A5EFB2D25502799 /* GoalSheet.swift in Sources */,
 				A2961CCDDA750A6A8B7C691E /* HostCoordinator.swift in Sources */,
@@ -1037,7 +1041,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.4.3;
+				MARKETING_VERSION = 0.4.4;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-framework",
@@ -1154,7 +1158,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.4.3;
+				MARKETING_VERSION = 0.4.4;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-framework",

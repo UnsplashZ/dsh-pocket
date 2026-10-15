@@ -923,15 +923,178 @@ public actor DSHClient {
     }
 
 
-    /// `workspaceFiles/read`：**用绝对路径**。
-    public func readFile(scopeId: String, path: String, range: JSONValue? = nil) async throws -> String {
-        var args: [String: JSONValue] = [
+    /// `workspaceFiles/stat`：文件元信息。
+    ///
+    /// **`range` / `options` 这类字段是"必填但可为空对象"** —— 省略会被描述符校验拒
+    /// （`missing "range"`），传 `null` 也会被拒（`wire field "range" failed boundary
+    /// validation`），只有传 `{}` 才过。这是实测出来的，别照直觉写成"可选就省掉"。
+    public func statFile(scopeId: String, path: String) async throws -> WorkspaceFileStat {
+        let args: [String: JSONValue] = [
             "workspaceFileScopeId": .string(scopeId),
             "path": .string(path),
         ]
-        if let range { args["range"] = range }
+        let value = try await rpc.call(method: "workspaceFiles/stat", payload: ["args": .object(args)])
+        return WorkspaceFileStat(json: value)
+    }
+
+    /// `workspaceFiles/read`：读文本。
+    ///
+    /// **`range` 必须发**（哪怕是个空对象）。之前这里是 `if let range { … }`，
+    /// 不传 range 时字段缺失 → 宿主报 `missing "range"` → 所有"点开文件看看"的
+    /// 功能（工作区文件、交付产物）全都打不开。实测：`range: {}` 就是"整个文件"。
+    ///
+    /// 路径**相对与绝对都收**（实测），但相对路径要能对上 scope 所属工作区。
+    @discardableResult
+    public func readFile(
+        scopeId: String,
+        path: String,
+        range: JSONValue? = nil,
+        limit: Int? = nil
+    ) async throws -> WorkspaceFileText {
+        var args: [String: JSONValue] = [
+            "workspaceFileScopeId": .string(scopeId),
+            "path": .string(path),
+            // 必填：空对象 = 从头读到尾（宿主自己会给一个默认窗口）。
+            "range": range ?? .object([:]),
+        ]
+        if let limit { args["limit"] = .number(Double(limit)) }
         let value = try await rpc.call(method: "workspaceFiles/read", payload: ["args": .object(args)])
-        return value.string("text") ?? value.string("content") ?? ""
+        return WorkspaceFileText(json: value)
+    }
+
+    /// 只要文本的便捷入口（老调用点的形状）。
+    public func readFileText(scopeId: String, path: String) async throws -> String {
+        try await readFile(scopeId: scopeId, path: path).text
+    }
+
+    /// `workspaceFiles/readBytes`：读**原始字节**（图片、PDF 这类要交给系统预览的）。
+    ///
+    /// 这个端点的响应**不是 JSON**，而是 `multipart/form-data`：一个 `bytes-0` part
+    /// 装原始字节、一个 `metadata` part 装 JSON 元信息。所以不能走 `rpc.call`
+    ///（那条路只解 JSON），得自己发请求并解 multipart。
+    ///
+    /// `options` 与 `read` 的 `range` 同理：**必填，但传 `{}` 即可**。
+    public func readFileBytes(scopeId: String, path: String, options: JSONValue = .object([:])) async throws -> Data {
+        let base = try await provider.baseURL()
+        var request = URLRequest(url: DSHAPI.url(base: base, method: "workspaceFiles/readBytes"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        for (name, value) in await provider.requestHeaders() {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
+        request.timeoutInterval = 60
+        let envelope: JSONValue = .object([
+            "type": .string("client-request"),
+            "rpcId": .string(RpcId.make()),
+            "method": .string("workspaceFiles/readBytes"),
+            "payload": .object([
+                "args": .object([
+                    "workspaceFileScopeId": .string(scopeId),
+                    "path": .string(path),
+                    "options": options,
+                ])
+            ]),
+        ])
+        request.httpBody = try JSONEncoder.dshCompact.encode(envelope)
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw DSHClientError.transport(.malformedResponse(String(localized: "读文件没有拿到 HTTP 响应")))
+        }
+        guard http.statusCode == 200 else {
+            throw DSHClientError.transport(.http(
+                status: http.statusCode,
+                body: String(data: data.prefix(200), encoding: .utf8) ?? ""
+            ))
+        }
+        guard let contentType = http.value(forHTTPHeaderField: "Content-Type"),
+              let boundary = Self.multipartBoundary(in: contentType)
+        else {
+            // 不是 multipart：多半是"业务错误也是 200"的那种 JSON 错误体。
+            if let value = try? JSONDecoder.dsh.decode(JSONValue.self, from: data),
+               value.bool("ok") == false {
+                throw Self.remoteError(from: value) ?? DSHClientError.transport(.malformedResponse(
+                    String(localized: "读文件失败")
+                ))
+            }
+            throw DSHClientError.transport(.malformedResponse(
+                String(localized: "读文件的响应不是 multipart")
+            ))
+        }
+        guard let bytes = Self.multipartPart(named: "bytes-0", in: data, boundary: boundary) else {
+            throw DSHClientError.transport(.malformedResponse(
+                String(localized: "读文件的响应里没有文件内容")
+            ))
+        }
+        return bytes
+    }
+
+    /// 从 `Content-Type: multipart/form-data; boundary=xxx` 里抠出 boundary。
+    static func multipartBoundary(in contentType: String) -> String? {
+        for piece in contentType.split(separator: ";") {
+            let trimmed = piece.trimmingCharacters(in: .whitespaces)
+            guard trimmed.lowercased().hasPrefix("boundary=") else { continue }
+            var value = String(trimmed.dropFirst("boundary=".count))
+            if value.hasPrefix("\"") , value.hasSuffix("\""), value.count >= 2 {
+                value = String(value.dropFirst().dropLast())
+            }
+            return value.isEmpty ? nil : value
+        }
+        return nil
+    }
+
+    /// 取 multipart 里某个 name 的 part 内容（原始字节，不做任何解码）。
+    ///
+    /// 手写而不是引第三方：只有"一个二进制 part + 一个 JSON part"这一种形状，
+    /// 而且**不能用 `String` 中转**（图片字节不是合法 UTF-8，一转就毁）。
+    static func multipartPart(named name: String, in data: Data, boundary: String) -> Data? {
+        // 分隔符在正文里是 `--<boundary>`；首尾各有一个。
+        let delimiter = Data("--\(boundary)".utf8)
+        let headerEnd = Data("\r\n\r\n".utf8)
+        var searchStart = data.startIndex
+
+        while let delimiterRange = data.range(of: delimiter, in: searchStart..<data.endIndex) {
+            var partStart = delimiterRange.upperBound
+            // 跳过分隔符后的 CRLF
+            if partStart < data.endIndex, data[partStart] == 0x0D {
+                partStart = data.index(after: partStart)
+            }
+            if partStart < data.endIndex, data[partStart] == 0x0A {
+                partStart = data.index(after: partStart)
+            }
+            guard let headerRange = data.range(of: headerEnd, in: partStart..<data.endIndex) else { break }
+            let headerText = String(decoding: data[partStart..<headerRange.lowerBound], as: UTF8.self)
+            let bodyStart = headerRange.upperBound
+
+            // 找这个 part 的结束（下一个分隔符），并去掉它前面的 CRLF。
+            guard let nextDelimiter = data.range(of: delimiter, in: bodyStart..<data.endIndex) else { break }
+            var bodyEnd = nextDelimiter.lowerBound
+            if bodyEnd > bodyStart, data[data.index(before: bodyEnd)] == 0x0A {
+                bodyEnd = data.index(before: bodyEnd)
+                if bodyEnd > bodyStart, data[data.index(before: bodyEnd)] == 0x0D {
+                    bodyEnd = data.index(before: bodyEnd)
+                }
+            }
+
+            if headerText.contains("name=\"\(name)\"") {
+                return data.subdata(in: bodyStart..<bodyEnd)
+            }
+            // 不是要找的 part：从**这个**分隔符继续（不是它的后面）——
+            // 那个分隔符正是下一段的开头。写成 `upperBound` 会把下一段整个跳过，
+            // 于是"要找的 part 排在第二个"时永远找不到（单测钉住了这一点）。
+            searchStart = nextDelimiter.lowerBound
+        }
+        return nil
+    }
+
+    /// 把 `{"result":{"ok":false,"error":…}}` 解成远端错误。
+    static func remoteError(from value: JSONValue) -> DSHClientError? {
+        guard let error = value["error"] else { return nil }
+        return .remote(DSHError(
+            code: error.string("code") ?? "unknown",
+            message: error.string("message") ?? String(localized: "远端返回了一个错误")
+        ))
     }
 
     // MARK: - 事件通道
@@ -1015,5 +1178,42 @@ public struct WorkspaceFileEntry: Sendable, Identifiable, Hashable {
         let kind = json.string("type") ?? json.string("kind") ?? ""
         self.isDirectory = kind == "directory" || kind == "dir" || (json.bool("isDirectory") ?? false)
         self.byteSize = json.int("size") ?? json.int("byteSize")
+    }
+}
+
+/// `workspaceFiles/stat` 的结果。用来在打开之前判断"这个文件还在不在、多大"。
+public struct WorkspaceFileStat: Sendable, Hashable {
+    /// 宿主解析出来的绝对路径 —— 拿它去 `read` 最稳。
+    public var absolutePath: String?
+    public var byteSize: Int?
+    /// 宿主的版本戳（内容变了它就变）。诊断用。
+    public var version: String?
+
+    public init(json: JSONValue) {
+        self.absolutePath = json.string("absolutePath")
+        self.byteSize = json.int("bytes") ?? json.int("size") ?? json.int("byteSize")
+        self.version = json.string("version")
+    }
+}
+
+/// `workspaceFiles/read` 的结果。
+public struct WorkspaceFileText: Sendable, Hashable {
+    public var text: String
+    public var absolutePath: String?
+    /// 文件**总字节数**（不是这次返回的窗口大小）。
+    public var byteSize: Int?
+    public var lines: Int?
+    /// 这次返回的是不是已经到文件末尾。
+    public var isEOF: Bool
+    /// 这次窗口从第几行开始。
+    public var offset: Int?
+
+    public init(json: JSONValue) {
+        self.text = json.string("text") ?? json.string("content") ?? ""
+        self.absolutePath = json.string("absolutePath")
+        self.byteSize = json.int("bytes") ?? json.int("size") ?? json.int("byteSize")
+        self.lines = json.int("lines")
+        self.isEOF = json.bool("eof") ?? true
+        self.offset = json.int("offset")
     }
 }

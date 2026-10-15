@@ -1334,6 +1334,17 @@
         }
       }
     },
+    "再打开一次": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open again"
+          }
+        }
+      }
+    },
     "再试一次": {
       "extractionState": "manual",
       "localizations": {
@@ -2658,6 +2669,17 @@
         }
       }
     },
+    "已取回": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fetched"
+          }
+        }
+      }
+    },
     "已取消": {
       "extractionState": "manual",
       "localizations": {
@@ -3371,6 +3393,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Known boundary on the phone"
+          }
+        }
+      }
+    },
+    "打不开这个文件": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Can’t open this file"
           }
         }
       }
@@ -4295,6 +4328,17 @@
         }
       }
     },
+    "正在从电脑取回…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fetching from your computer…"
+          }
+        }
+      }
+    },
     "正在停止": {
       "extractionState": "manual",
       "localizations": {
@@ -4825,6 +4869,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Tap to view full screen"
+          }
+        }
+      }
+    },
+    "点按预览这个文件": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tap to preview this file"
           }
         }
       }
@@ -5913,6 +5968,50 @@
         }
       }
     },
+    "读文件失败": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn’t read the file"
+          }
+        }
+      }
+    },
+    "读文件没有拿到 HTTP 响应": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reading the file returned no HTTP response"
+          }
+        }
+      }
+    },
+    "读文件的响应不是 multipart": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The file response was not multipart"
+          }
+        }
+      }
+    },
+    "读文件的响应里没有文件内容": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The file response contained no file content"
+          }
+        }
+      }
+    },
     "调试": {
       "extractionState": "manual",
       "localizations": {
@@ -6354,6 +6453,17 @@
         }
       }
     },
+    "这条产物没有文件路径，打不开": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This deliverable has no file path, so it can’t be opened"
+          }
+        }
+      }
+    },
     "这条已经不能在这里回答了（连接中断过，电脑会按默认方式继续）": {
       "extractionState": "manual",
       "localizations": {
@@ -6405,6 +6515,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "The remote rejected this response"
+          }
+        }
+      }
+    },
+    "远端返回了一个错误": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The remote side returned an error"
           }
         }
       }
