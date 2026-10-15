@@ -309,6 +309,45 @@ final class AppLogicTests: XCTestCase {
         guard case .listItem = MarkdownParser.parse("- 项").first else { return XCTFail("- 才是列表项") }
     }
 
+    /// **缓存不能改变解析结果。**
+    ///
+    /// 展开/收缩掉帧的修复靠按文本缓存解析结果（`NSCache`）—— 命中的那次
+    /// 必须和第一次解析**完全一样**，否则"滚回去内容变了"这种 bug 极难查。
+    /// 这里连打三次同一段（第一次冷、后两次命中），结果必须逐字节相等；
+    /// 同时确认 `parseUncached` 与带缓存的 `parse` 给的是同一个东西。
+    func testMarkdownCacheReturnsIdenticalResults() {
+        let text = """
+        # 标题
+
+        一段**正文**，带 `行内代码`。
+
+        | a | b |
+        |---|---|
+        | 1 | 2 |
+
+        - 列表项
+
+        > 引用
+        """
+        let cold = MarkdownParser.parse(text)
+        let warm = MarkdownParser.parse(text)
+        let again = MarkdownParser.parse(text)
+        XCTAssertEqual(cold, warm)
+        XCTAssertEqual(cold, again)
+        XCTAssertEqual(cold, MarkdownParser.parseUncached(text), "带缓存的路径必须和纯函数一致")
+        XCTAssertFalse(cold.isEmpty)
+    }
+
+    /// 不同文本不能串味（缓存键就是文本本身）。
+    func testMarkdownCacheKeysByText() {
+        let a = MarkdownParser.parse("# 甲")
+        let b = MarkdownParser.parse("# 乙")
+        XCTAssertEqual(a, [.heading(level: 1, text: "甲")])
+        XCTAssertEqual(b, [.heading(level: 1, text: "乙")])
+        // 再取一次，确认没有被对方的缓存污染
+        XCTAssertEqual(MarkdownParser.parse("# 甲"), [.heading(level: 1, text: "甲")])
+    }
+
     // MARK: 权限档位
 
     func testPermissionPresetCatalogParses() {

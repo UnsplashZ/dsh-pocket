@@ -1035,6 +1035,37 @@ final class TimelineBuilderTests: XCTestCase {
 
     // MARK: 历史补页
 
+    /// **冷启动折叠完必须把宿主的 cursor 落到 builder 上。**
+    ///
+    /// 漏了这一步的后果不是"少个数字"，而是**补历史整条链路失效**：
+    /// `session/page` 的 `throughSeq` 用的就是 `cursor`，一直是初始值 `-1` 时
+    /// 宿主回空页且 `hasMore=false`，App 于是认定"没有更早的内容"、永久置 false
+    /// —— 表现为"往上翻历史翻不动，必须退出会话重进"（实测）。
+    ///
+    /// `cursor` 是 `private(set)`，App 层只能通过 `setCursor` 设，所以这里同时
+    /// 钉住那个入口存在且生效。
+    func testColdStartCursorMustBeSetForHistoryPaging() throws {
+        var builder = TimelineBuilder()
+        let snapshot = try Fixture.snapshot([
+            Fixture.turnStart(1, seq: 10),
+            Fixture.assistantMessage(text: "结论", seq: 11),
+            Fixture.turnEnd(1, seq: 12),
+        ], cursor: 12)
+
+        // 逐条 apply（App 冷启动走的就是这条路）—— **不会**自己设 cursor。
+        for event in snapshot.events { _ = builder.apply(event) }
+        XCTAssertEqual(builder.cursor, -1, "逐条 apply 不管 cursor，这是 App 层必须补的一步")
+
+        builder.setCursor(snapshot.cursor)
+        XCTAssertEqual(builder.cursor, 12, "设上之后 session/page 才有有效 throughSeq")
+
+        // 对照：走 resume（缓存恢复）的那条路自己会设。
+        var resumed = TimelineBuilder()
+        _ = resumed.apply(snapshot: try Fixture.snapshot([Fixture.turnStart(1, seq: 1)], cursor: 1))
+        XCTAssertTrue(resumed.resume(with: snapshot))
+        XCTAssertEqual(resumed.cursor, 12, "resume 这条路本来就对 —— 所以'退出重进就好了'")
+    }
+
     func testPrependPageKeepsOrderAndDedupes() throws {
         var builder = TimelineBuilder()
         _ = builder.apply(snapshot: try Fixture.snapshot([

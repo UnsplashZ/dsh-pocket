@@ -122,15 +122,40 @@ struct MarkdownBody: View {
 struct InlineMarkdown: View {
     let text: String
 
-    /// 同上：`AttributedString(markdown:)` 也不便宜，解析一次存下来。
+    /// `AttributedString(markdown:)` 也不便宜。这里**必须走缓存**：
+    ///
+    /// 跟块级解析同一个坑 —— 父视图每次 body 求值都会重建这个 struct，
+    /// init 里的解析于是每帧重跑。实测静置状态下每 2 秒 222 次，
+    /// 一次求值里每个段落/列表项/表格单元格各一次，是掉帧的大头。
     private let attributed: AttributedString?
+
+    /// 缓存。`AttributedString` 是值类型，塞进引用盒子里给 `NSCache`。
+    private static let cache: NSCache<NSString, Box> = {
+        let cache = NSCache<NSString, Box>()
+        cache.countLimit = 2_000
+        return cache
+    }()
+
+    private final class Box: NSObject {
+        /// `nil` = 这段文本解析不了（要退回纯文本）。**这个也要缓存** ——
+        /// 否则一段解析不了的文本每帧都会重试一遍解析。
+        let value: AttributedString?
+        init(_ value: AttributedString?) { self.value = value }
+    }
 
     init(_ text: String) {
         self.text = text
-        self.attributed = try? AttributedString(
-            markdown: text,
-            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        )
+        let key = text as NSString
+        if let hit = Self.cache.object(forKey: key) {
+            self.attributed = hit.value
+        } else {
+            let parsed = try? AttributedString(
+                markdown: text,
+                options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+            )
+            Self.cache.setObject(Box(parsed), forKey: key)
+            self.attributed = parsed
+        }
     }
 
     var body: some View {

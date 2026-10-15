@@ -409,6 +409,17 @@ struct TurnGroupView: View {
                     .padding(.horizontal, Token.Spacing.gutter)
 
                 // 收起 = 用户消息 + 结论；展开 = 全过程，**都按时间顺序**。
+                //
+                // **展开/收缩不加动画，直接换。**
+                //
+                // 原来是 `.animation(.snappy, value: isExpanded)` 把整段内容做布局动画，
+                // 于是这一轮**所有**过程行（实测最多 176 条：工具行、Markdown 正文、
+                // 代码块、表格）每一帧都要重新计算布局并重绘 —— 展开/收缩那一下
+                // 掉帧就是这么来的。内容量越大越明显，而"过程特别多"恰恰是最想
+                // 展开看的场景。
+                //
+                // 一次瞬切只有一帧重排。用户要的是"点开能看到过程"，
+                // 不是"看着它慢慢铺开"。
                 ForEach(isExpanded ? turn.expandedItems : turn.collapsedItems) { item in
                     TimelineRow(item: item, session: session, actionsFor: turn.headline?.id)
                         .padding(.horizontal, Token.Spacing.gutter)
@@ -442,7 +453,9 @@ struct TurnGroupView: View {
 
     private var summaryRow: some View {
         Button {
-            withAnimation(.snappy) { isExpanded.toggle() }
+            // **不加动画**：见上面 `ForEach` 处的说明 —— 这一轮最多 176 条过程行，
+            // 给它们做布局动画等于每帧重排整屏，展开/收缩那一下必掉帧。
+            isExpanded.toggle()
         } label: {
             HStack(spacing: Token.Spacing.tight) {
                 Image(systemName: turn.isComplete ? "checkmark.circle" : "circle.dotted")
@@ -759,6 +772,17 @@ struct ToolRow: View {
 
     private var isLongOutput: Bool { call.output.count > 1_200 }
 
+    /// 格式化后的参数。**算一次存下来** —— 原来是在 `body` 里直接调
+    /// `prettyPrinted(call.arguments)`，于是每次 body 求值都要跑一遍
+    /// `JSONSerialization`（先 parse 再 pretty print，参数大的工具调用不便宜）。
+    /// 展开/收缩整屏重排时，一屏几十个工具行每帧各跑一次，是掉帧的一部分。
+    private let prettyArguments: String
+
+    init(call: TimelineItem.ToolCall) {
+        self.call = call
+        self.prettyArguments = call.arguments.isEmpty ? "" : Self.prettyPrinted(call.arguments)
+    }
+
     var body: some View {
         DisclosureGroup(isExpanded: $expanded) {
             VStack(alignment: .leading, spacing: Token.Spacing.tight) {
@@ -766,7 +790,7 @@ struct ToolRow: View {
                     Text("参数")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
-                    MonoBlock(prettyPrinted(call.arguments), lineLimit: expanded ? nil : 6)
+                    MonoBlock(prettyArguments, lineLimit: expanded ? nil : 6)
                 }
                 if !call.output.isEmpty {
                     HStack {
@@ -856,7 +880,7 @@ struct ToolRow: View {
         return "wrench.and.screwdriver"
     }
 
-    private func prettyPrinted(_ raw: String) -> String {
+    private static func prettyPrinted(_ raw: String) -> String {
         guard let data = raw.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data),
               let pretty = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]),

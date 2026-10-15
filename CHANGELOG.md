@@ -22,6 +22,25 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **往上翻历史翻不动、必须退出会话重进才正常**。根因：冷启动折叠快照时
+  **从没把宿主的 `cursor` 落到 builder 上**，`builder.cursor` 一直是初始值 `-1`；
+  而补历史（`session/page`）的 `throughSeq` 用的就是它 —— 实测宿主收到
+  `throughSeq: -1` 会回**空页且 `hasMore=false`**，App 于是把 `hasMoreHistory`
+  永久置成 false，这个会话再也补不了历史。退出重进之所以"能好"：那条路走缓存恢复，
+  `TimelineBuilder.resume(with:)` 会正确地设上 cursor。
+  修复：折叠结束后 `builder.setCursor(snapshot.cursor)`；并且 **`cursor < 0` 时不发请求**
+  （快照还在分片折叠时自动补历史会踩到），空页也不再无条件当成"没有更早的内容"。
+  实测修复后连续翻 10 页、每页 250+ 条事件，`beforeSeq` 持续前进。
+- **过程步骤特别多时，展开/收缩掉帧**。两处叠加：
+  ① 解析结果**每帧重算** —— `MarkdownBody` / `InlineMarkdown` 把解析放在 `init` 里，
+  但 SwiftUI 每次父视图 body 求值都会重建子视图 struct，于是块级解析与
+  `AttributedString(markdown:)` 每次都重跑（实测**静置**状态下每 2 秒
+  32 次块级 + 222 次内联）。现在按文本缓存（`NSCache`，自带内存压力回收），
+  实测同样场景降到 10 次 + 55 次，剩下的都是首次未命中；
+  `ToolRow` 的 `prettyPrinted(arguments)` 同理改成构造时算一次（原来每次 body
+  求值都跑一遍 `JSONSerialization`）。
+  ② 展开/收缩给整段内容做**布局动画**，而一轮最多 176 条过程行 —— 每帧都要重排
+  整屏。改成直接瞬切（一次重排）。用户要的是"点开能看到过程"，不是看着它慢慢铺开。
 - **交付的文件看不到**。`present` 的产物卡一直是空的 —— 客户端读的是
   `deliverables` / `items` 两个键，而活宿主发的是 **`files`**（每项只有
   `path` + `description`，**没有 `title`**），于是列表永远为空，卡片上只剩一行

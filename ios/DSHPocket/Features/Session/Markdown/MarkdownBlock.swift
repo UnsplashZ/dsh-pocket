@@ -36,8 +36,45 @@ enum MarkdownBlock: Equatable {
 }
 
 enum MarkdownParser {
-    /// 把一段 Markdown 切成块。
+    /// 把一段 Markdown 切成块（带缓存）。
     static func parse(_ text: String) -> [MarkdownBlock] {
+        let key = text as NSString
+        if let hit = blockCache.object(forKey: key) { return hit.value }
+        let parsed = parseUncached(text)
+        blockCache.setObject(Box(parsed), forKey: key)
+        return parsed
+    }
+
+    // MARK: 缓存
+    //
+    // **"在 init 里解析一次"其实挡不住重复解析。**
+    //
+    // SwiftUI 每次父视图 body 求值都会重新构造子视图 struct（`MarkdownBody(text:)`），
+    // 于是 init 里的 `MarkdownParser.parse` 每帧都会重跑 —— 把结果存成属性只省掉了
+    // "同一次 body 求值里读两次"，省不掉"下一次求值再来一遍"。
+    //
+    // 实测（一轮 176 条过程消息、展开状态下）：**静置**时每 2 秒就有 32 次块级解析
+    // + 222 次内联解析；展开/收缩那种整屏重排时更是每帧几百次 —— 掉帧就是从这来的。
+    //
+    // 同一条消息的正文不会变，所以按文本缓存解析结果、让跨帧/跨 body 求值复用，
+    // 是安全的。命中率极高：一屏就几十条消息，滚动/展开/收缩反复命中同一批文本。
+    //
+    // 用 `NSCache` 而不是自己 `NSLock` + 字典：它自带线程安全与内存压力回收
+    //（收到内存警告自动清），正好适合"纯缓存、丢了重算"的语义。
+    private static let blockCache: NSCache<NSString, Box<[MarkdownBlock]>> = {
+        let cache = NSCache<NSString, Box<[MarkdownBlock]>>()
+        cache.countLimit = 1_200
+        return cache
+    }()
+
+    /// 引用类型盒子：`NSCache` 只收对象，而 `[MarkdownBlock]` 是值类型。
+    private final class Box<T>: NSObject {
+        let value: T
+        init(_ value: T) { self.value = value }
+    }
+
+    /// 真正干活的解析（纯函数）。
+    static func parseUncached(_ text: String) -> [MarkdownBlock] {
         var blocks: [MarkdownBlock] = []
         var paragraph: [String] = []
         var codeLines: [String] = []

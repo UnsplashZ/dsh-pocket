@@ -184,6 +184,16 @@ public struct TimelineBuilder: Sendable {
         rebuildIndex()
     }
 
+    /// 记下"快照覆盖到哪"（`session/page` 的 `throughSeq` 用它）。
+    ///
+    /// **必须有这个入口**：`cursor` 是 `private(set)`，而冷启动那条路
+    /// （`apply(snapshot:)` 把事件喂进来之后）在 App 层没有别的办法把它设上。
+    /// 漏设的后果不是"少个数字"，是**补历史整条链路失效** —— 见
+    /// `SessionModel.applySnapshot` 里的注释。
+    public mutating func setCursor(_ value: Int) {
+        cursor = value
+    }
+
     /// **续拉**：把一份快照合并进来，而不是把它当成全部。
     ///
     /// 与 `apply(snapshot:)` 的区别是这里的语义是"我手里已经有东西了，补齐就好"：

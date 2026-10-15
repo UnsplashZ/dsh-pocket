@@ -403,6 +403,18 @@ public final class SessionModel {
         } else {
             logs.log(.info, "冷启动折叠完成（\\(events.count) 条事件）")
         }
+        // **把宿主给的 cursor 落到 builder 上。**
+        //
+        // 漏了这一步的后果是"往上翻历史翻不动、必须退出会话再进来"：
+        // `builder.cursor` 一直是初始值 `-1`，而补历史（`session/page`）的
+        // `throughSeq` 用的就是它 —— 实测宿主收到 `throughSeq: -1` 会回一个
+        // **空页且 hasMore=false**，于是 `hasMoreHistory` 被置成 false，
+        // 这个会话就再也补不了历史了（除非退出重进：那时走缓存恢复，
+        // `TimelineBuilder.resume(with:)` 会正确地设上 cursor）。
+        //
+        // 折叠过程里 `builder` 还是空的，中途的自动补历史也会踩到 -1 ——
+        // 那条由 `loadOlderHistoryIfNeeded` 里 `cursor >= 0` 的门槛挡住。
+        builder.setCursor(snapshot.cursor)
         lastSeq = max(lastSeq, Double(snapshot.cursor))
         phase = .live
         // 日志里能看出这一轮还开着就用它；看不出来（有界快照切在半途）
@@ -591,13 +603,21 @@ public final class SessionModel {
 
     /// 向上补一页历史。
     ///
-    /// 两个曾经让它"点了没反应"的坑：
+    /// 三个曾经让它"点了没反应"的坑：
     ///   1. 用返回的游标翻页 —— 返回体里**没有 `cursor`**，游标永远不前进，
     ///      反复点只会拿回同一页（去重后等于没动）。现在用**手里最老的 seq** 当 `beforeSeq`。
     ///   2. 新内容插在**视口上方**而滚动位置不动 —— 屏幕上什么都不会变。
     ///      所以补完要给出一个滚动目标（`historyScrollTarget`）。
+    ///   3. **`cursor` 还没就位就发请求**（快照还在分片折叠时自动补历史会踩到）——
+    ///      `throughSeq: -1` 让宿主回**空页且 hasMore=false**，于是
+    ///      `hasMoreHistory` 被永久置成 false，"往上翻历史"整条链路死掉，
+    ///      只有退出会话重进（走缓存恢复、cursor 被正确设上）才能恢复。
+    ///      这里宁可**不发**也不发一个坏的游标：等 `cursor >= 0` 再来。
     func loadOlderHistoryIfNeeded() async {
         guard hasMoreHistory, !isLoadingHistory else { return }
+        // cursor < 0 = 还没从快照拿到"覆盖到哪"。此时发出去只会拿到空页，
+        // 然后被当成"没有更早的内容"记下来（见上）。不发，等下一次触发。
+        guard builder.cursor >= 0 else { return }
         isLoadingHistory = true
         defer { isLoadingHistory = false }
 
@@ -612,8 +632,14 @@ public final class SessionModel {
                 beforeSeq: Int(oldest),
                 maxMessages: 50
             )
+            // **空页不等于"没有更早的内容"。**
+            //
+            // 宿主对无效游标（比如 `throughSeq: -1`）也回空页，而且 `hasMore`
+            // 直接是 false。真"翻到头了"和"游标有问题"从返回体上分不出来，
+            // 所以：只有我们**确实带着一个有效游标**问过，才敢把 hasMoreHistory
+            // 置 false；否则留着它，下一次触发再试。
             guard !page.events.isEmpty else {
-                hasMoreHistory = false
+                if builder.cursor >= 0 { hasMoreHistory = page.hasMore }
                 return
             }
             let delta = builder.prepend(page: page.events)
