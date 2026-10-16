@@ -32,10 +32,65 @@ detect_team() {
     | grep -oE 'teamID = [A-Z0-9]+;' | head -1 | awk '{print $3}' | tr -d ';'
 }
 
+# 只挑**能装机的真机**：physical + iOS —— 模拟器与 Apple Watch 一次排除干净。
+#
+# 为什么不再用 `awk '{print $(NF-1)}'` 数表格的列号（本脚本原来就是这么写的，是错的）：
+#   · 那样取到的是**机型列** `(iPhone16,1)`，不是 UDID，喂给 xcodebuild 会报
+#     `unreadable input '18)' at end of value for option 'Destination'`；
+#   · 而且 `available` 会**先命中那台 Apple Watch**（它长期是 `available (paired)`），
+#     于是"自动挑设备"实际挑中的是一块手表；
+#   · 表格里 `Identifier` 列还带 `(UDID)` 后缀、设备名里也可能带空格
+#     （实测 Apple Watch 的名字里是不换行空格 U+00A0），按列号解析怎么都不稳。
+# 所以改成让 devicectl 自己过滤（`--filter`），只对 **UDID 正则**取值 ——
+# UDID 不含空格也不含中文，是这堆输出里唯一稳的锚点。
+DEVICE_BASE_FILTER='properties.hardware.reality == "physical" AND properties.hardware.platform == "iOS"'
+
+# 打印一台可装机真机的 UDID；没有就打印空。
+# 可选参数是连接状态：传 `connected` 只要已连上的，省略则不限状态。
+#
+# `|| true` 是必须的：本脚本开着 `set -euo pipefail`，若把这条失败的命令替换
+# 放进赋值，`set -e` 会**直接终止脚本** —— 那样"没找到设备"就变成"脚本莫名退出"，
+# 而调用方本来是要走兜底与友好报错的。`head` 提前关管道让 `grep` 拿到
+# SIGPIPE（退出码 141）同理，一并吞掉。
+pick_device_udid() {
+  local state="${1:-}"
+  local filter="${DEVICE_BASE_FILTER}"
+  if [ -n "${state}" ]; then
+    filter="${filter} AND properties.connection.state == \"${state}\""
+  fi
+  { xcrun devicectl list devices \
+      --hide-default-columns --columns Identifier \
+      --filter "${filter}" 2>/dev/null \
+    | grep -oE '[0-9A-F]{8}-[0-9A-F]{16}' \
+    | head -1; } || true
+}
+
+# devicectl 较旧、不认识 `properties.*` 字段时的兜底：不带 filter 解析，
+# 仍然只认真机 + iOS，并同样用 UDID 正则挑。
+pick_device_udid_unfiltered() {
+  { xcrun devicectl list devices 2>/dev/null \
+    | grep -E '[[:space:]]physical[[:space:]]' \
+    | grep -vE 'watchOS|Apple[[:space:]]Watch' \
+    | grep -oE '[0-9A-F]{8}-[0-9A-F]{16}' \
+    | head -1; } || true
+}
+
+# 挑设备的顺序：已连接的 → 任意可用的真机 → 不带 filter 的兜底。
+pick_device() {
+  local picked
+  picked="$(pick_device_udid connected)"
+  if [ -z "${picked}" ]; then picked="$(pick_device_udid)"; fi
+  if [ -z "${picked}" ]; then picked="$(pick_device_udid_unfiltered)"; fi
+  printf '%s' "${picked}"
+}
+
 for arg in "$@"; do
   case "${arg}" in
-    --list) xcrun devicectl list devices; exit 0 ;;
-    --help|-h) sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --list) xcrun devicectl list devices --filter "${DEVICE_BASE_FILTER}"; exit 0 ;;
+    # 打印文件头那段注释当帮助。**不能用固定行号**（`sed -n '2,20p'` 一旦
+    # 头部注释变长/变短就会把正文代码也打出来），改成"从第 2 行起，
+    # 遇到第一条非注释行就停"。
+    --help|-h) sed -n '2,${/^[^#]/q; s/^# \{0,1\}//; p;}' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) ;;
   esac
 done
@@ -64,14 +119,13 @@ fi
 echo "==> 开发团队：${TEAM}"
 
 if [ -z "${DEVICE}" ]; then
-  # devicectl 的输出里状态列是 "connected"/"available"；取第一台连着的真机
-  DEVICE="$(xcrun devicectl list devices 2>/dev/null \
-    | awk '/connected|available/ && $0 !~ /Simulator/ {print $(NF-1)}' | head -1)"
+  DEVICE="$(pick_device)"
 fi
 
 if [ -z "${DEVICE}" ]; then
-  echo "找不到已连接的 iPhone。" >&2
+  echo "找不到可用的 iPhone。" >&2
   echo "  · 用数据线连上手机并在手机上点「信任」" >&2
+  echo "  · 手机已配对但没连上时，先在手机上点开 DSH Pocket 唤醒连接" >&2
   echo "  · 或者用 --device <UDID> 指定；--list 可以看有哪些设备" >&2
   exit 1
 fi
