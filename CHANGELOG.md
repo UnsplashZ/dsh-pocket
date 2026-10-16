@@ -22,6 +22,43 @@ All notable changes to this project are documented here.
 
 ---
 
+## [0.4.5] — 2026-10-16
+
+### Fixed
+
+- **Markdown 文件不渲染，整段原始语法照原样显示**（用户："md 缺少正确渲染"）。
+  截图中那份 8-9 月结算汇总把 `# 2026-10-16 …`、`**38,841.70134**`、
+  `| 检查 | 方式 | 结果 |` 一起画了出来。根因**不是解析器坏了** ——
+  App 自己的 `MarkdownBody` 一直是好的 —— 而是把 `.md` 交给了**系统 QuickLook**，
+  而 QuickLook 对 Markdown 的渲染就是纯文本。现在 `.md` 走 `MarkdownBody`，
+  与正文同一套排版，标题、粗体、链接、表格都正常。
+- **点开文件会连跳两个窗口**（用户："先跳了一个窗口出来，然后又跳了一个正文窗口"）。
+  `FilePreviewScreen` 自己是 sheet，取回成功后它又用 `.sheet` 推一个全屏 QuickLook，
+  于是"正在从电脑取回…"刚出现就被盖住（它自己的完成落地页因此几乎永远看不到）。
+  现在取回过程与渲染器在**同一页**里切换，只开一个窗口。
+- **PDF 内嵌时是空白页**：`QLPreviewController` 放进 `NavigationStack` 后只出翻页控件、
+  正文不画（扩展进程停在 `running-active-NotVisible`）。改用 `PDFKit`
+  （`PDFView`），一次就对 —— 实测能正常显示中文表格型报表。
+- **大文件被静默截断**：`workspaceFiles/read` 的窗口是 5000 行（`eof:false`），
+  而按 `offset` 翻页**拼不回原文**（每页末尾不含换行、下一页也不重复它，
+  逐页拼接的字节与磁盘不一致）。现在超过窗口且文件 ≤ 8 MB 时改用 `readBytes`
+  整份取回（实测逐字节一致，12 MB 也验过）；再大的只显示开头，并明说
+  「文件太大，只显示了开头部分」。顺带记下一个协议事实：
+  `workspaceFiles/readAll` 在本部署里**没有实现**（路由 `not found`）。
+- 引导页文案「用系统 QuickLook 预览，不下载到别处」已不准确（多数格式不再走 QuickLook），
+  改为「文本、Markdown、图片、PDF 都能直接看，不下载到别处」。
+
+### 顺带
+
+- 新增 `FilePreviewKind`（按扩展名分派渲染器，纯函数可单测）与 10 条分类单测（含 dotfile、SVG 两个实测踩到的边界）；
+  另加 1 条用**用户截图里那段真实 Markdown** 验证块级结构确实被拆出来
+  （段落里不再残留行首 `#` 与 `|`）。
+- 删除 `FilesSheet` 里重复的那份 `QuickLookPreview`（包装器只留一份）。
+- 调试用深链新增 `-DSHOpenPreviewPath` / `-DSHOpenPreviewScopeId`：
+  模拟器里点不了 UI，用它直接截一张预览页的图（沿用已有的 `DSHOpenSessionId` 约定）。
+
+---
+
 ## [0.4.4] — 2026-10-15
 
 ### Fixed

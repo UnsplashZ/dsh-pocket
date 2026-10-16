@@ -182,6 +182,17 @@ ws://127.0.0.1:<port>/api/remote.mux      Cookie: <cookie>
 14. **凭据只写不读**（`credentials/describe` 只回 `{configured, source, writable}`）。
 15. **时间戳是 epoch 毫秒**，唯独 `WorkspaceView.createdAt/updatedAt` 是 ISO-8601 字符串。
 16. 上游文档自身也承认存在未决项（`team/*` 事件在本机安装里没有声明、源码与活服务器有若干不一致）—— **以活服务器为准**。
+17. **`workspaceFiles/readAll` 在本部署里没有实现**（路由返回纯文本 `not found`）——
+    协议表里有这一行，但不能照它写代码。
+18. **`workspaceFiles/read` 的窗口是 5000 行**，超过时 `eof:false`、`offset` = 起始行号、
+    `lines` = 实际返回行数；`range.limit` 的上限同样是 5000（传更大报
+    `limit must be at most 5000`，实测 1 MB 文件只回约 174k 字符）。
+19. **按 `offset` 翻页拼不回原文**：`offset` 是**行号**（1 基；`offset: 5000` 的返回从
+    磁盘第 174387 个字符开始），而每页末尾不含换行、下一页也不重复它 ——
+    实测把大文件逐页拼起来，字节与磁盘**不一致**（页交界处丢内容）。
+    要整份内容就用 **`readBytes`**：实测逐字节等于磁盘（6 B ~ 12 MB 都验过）。
+    客户端的策略因此是"先 `read` 看 `eof`，需要全量时改用 `readBytes`"，
+    **不做翻页拼接**（`FilePreviewModel.loadTextual`）。
 
 ---
 

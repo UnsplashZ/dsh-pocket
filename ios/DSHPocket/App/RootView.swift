@@ -45,6 +45,11 @@ struct RootView: View {
             WelcomeView { showWelcome = false }
                 .interactiveDismissDisabled()
         }
+        #if DEBUG
+        .sheet(item: $debugPreview) { target in
+            FilePreviewScreen(scopeId: target.scopeId, path: target.path)
+        }
+        #endif
         .task {
             if !model.settings.hasOnboarded { showWelcome = true }
             await openDebugSessionIfRequested()
@@ -104,6 +109,10 @@ struct RootView: View {
     }
 
     @State private var selection: SessionSummary?
+    #if DEBUG
+    /// 调试用：直接推一个文件预览页（见 `openDebugSessionIfRequested`）。
+    @State private var debugPreview: DebugPreview?
+    #endif
 
     #if DEBUG
     /// 调试用深链：`-DSHOpenSessionId <id>` 直接打开某个会话。
@@ -112,6 +121,24 @@ struct RootView: View {
         let defaults = UserDefaults.standard
         if defaults.bool(forKey: "DSHShowSettings") { showSettings = true }
         if defaults.bool(forKey: "DSHShowWelcome") { showWelcome = true }
+        if let path = defaults.string(forKey: "DSHOpenPreviewPath"), !path.isEmpty {
+            // `DSHOpenPreviewScopeId` 缺省时拿列表里第一个会话当 scope
+            //（预览只把它当"解析相对路径的工作区"用）。
+            var scope = defaults.string(forKey: "DSHOpenPreviewScopeId") ?? ""
+            if scope.isEmpty {
+                for _ in 0..<20 {
+                    if let first = model.sessions.first(where: { !$0.sessionId.hasPrefix("im:") }) {
+                        scope = first.sessionId
+                        break
+                    }
+                    try? await Task.sleep(for: .milliseconds(300))
+                    await model.refreshSessions()
+                }
+            }
+            guard !scope.isEmpty else { return }
+            debugPreview = DebugPreview(scopeId: scope, path: path)
+            return
+        }
         guard let sessionId = defaults.string(forKey: "DSHOpenSessionId"), !sessionId.isEmpty else { return }
         // 列表可能还没拉回来，等一拍
         for _ in 0..<20 {
@@ -122,6 +149,12 @@ struct RootView: View {
             try? await Task.sleep(for: .milliseconds(300))
             await model.refreshSessions()
         }
+    }
+
+    private struct DebugPreview: Identifiable {
+        let scopeId: String
+        let path: String
+        var id: String { "\(scopeId)|\(path)" }
     }
     #else
     private func openDebugSessionIfRequested() async {}

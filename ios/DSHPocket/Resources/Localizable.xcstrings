@@ -1334,17 +1334,6 @@
         }
       }
     },
-    "再打开一次": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Open again"
-          }
-        }
-      }
-    },
     "再试一次": {
       "extractionState": "manual",
       "localizations": {
@@ -1947,6 +1936,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Image attachment"
+          }
+        }
+      }
+    },
+    "图片预览": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Image preview"
           }
         }
       }
@@ -2665,17 +2665,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Disabled · %lld"
-          }
-        }
-      }
-    },
-    "已取回": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fetched"
           }
         }
       }
@@ -3887,6 +3876,39 @@
         }
       }
     },
+    "文件取回来了，但不是这个 App 认得的图片格式。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The file was fetched, but it isn’t an image format this app recognises."
+          }
+        }
+      }
+    },
+    "文件太大，只显示了开头部分": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This file is too large — showing the beginning only"
+          }
+        }
+      }
+    },
+    "文本、Markdown、图片、PDF 都能直接看，不下载到别处": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Text, Markdown, images and PDFs preview in place — nothing is copied elsewhere"
+          }
+        }
+      }
+    },
     "新会话的默认值": {
       "extractionState": "manual",
       "localizations": {
@@ -4974,17 +4996,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "took %@"
-          }
-        }
-      }
-    },
-    "用系统 QuickLook 预览，不下载到别处": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Preview with the system QuickLook — nothing is copied elsewhere"
           }
         }
       }
@@ -6333,6 +6344,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "This session is empty"
+          }
+        }
+      }
+    },
+    "这个图片打不开": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This image can’t be opened"
           }
         }
       }

@@ -594,3 +594,66 @@ this deployment configures the session-query index with openAt "never"
   DEV-DIRECT 命名、mux 路径（`/api/remote.mux`）、缓存预算（32 MB / 4 MB）、
   iroh-ffi 版本（1.1.0）、TransportMode 降级为开发者模式、权限走 `/permission` 命令
   等易漂移点，均与实现一致；本条之后的偏差按同样方式补记。
+
+---
+
+## ADR-0028 · 文件预览：单窗口 + 按格式分派渲染器
+
+**日期**：2026-10-16
+
+**背景**：用户反馈两件事，指向同一条链路（点开一个工作区文件 / 交付产物）。
+
+> 「md 缺少正确渲染。另外点击文件之后 先跳了一个窗口出来，然后又跳了一个正文窗口，需要优化一下呢」
+
+截图里那份 `.md`（8-9 月结算汇总）把 `# 2026-10-16 …`、`**38,841.70134**`、
+`| 检查 | 方式 | 结果 |` **原样**画了出来。用一个最小复刻工程（sheet 里再推
+QuickLook）在模拟器上逐条复现，两个现象都坐实了：
+
+1. **两个窗口**：`FilePreviewScreen` 自己是 sheet，取回成功后它又用 `.sheet`
+   推 `QuickLookPreview` → 先看到"正在从电脑取回…"，紧接着一个全屏预览盖上来。
+   （顺带一个反直觉的后果：`FilePreviewScreen` 的 `已完成` 落地页因此几乎永远看不到。）
+2. **Markdown 不渲染**：根因不是解析器坏了，而是**交给错了组件** ——
+   系统 QuickLook 对 `.md` 的渲染就是纯文本。App 自己的 `MarkdownBody`
+   一直是好的（正文里的表格/标题都正常）。
+
+**决定**：
+
+1. **一个窗口**。取回过程与该格式的渲染器在 `FilePreviewScreen` **同一页**里切换，
+   删掉第二个 `.sheet`。`FilePreviewModel` 的 `phase` 从 `.ready(URL)` 改成
+   `.ready` + 一个 `Content` 枚举，让"渲染什么"和"取回到哪一步"分开表达。
+2. **按扩展名分派渲染器**（`FilePreviewKind.classify`，纯函数、可单测）：
+   - `.md` → `MarkdownBody`（与正文同一套排版；这是本次的核心修复）；
+   - 其它文本 → 等宽 + 可选中，保留原文换行；
+   - 图片 → `UIImage`（支持缩放）；
+   - PDF → **`PDFKit` 而不是 QuickLook**；
+   - 认不出的二进制 → 仍然交给系统 QuickLook 兜底（它至少给文件图标 / 大小 / 分享）。
+
+   写这条时被两个边界咬到，都补了单测：
+   - **dotfile 的 `pathExtension` 是空串**（`.gitignore` / `.env` / `.gitattributes`）——
+     纯按扩展名分派会把它们全丢进 QuickLook 兜底（点开只看得到一个图标）；
+   - **`UIImage(contentsOfFile:)` 读不了 SVG**（实测回 nil，界面只会说"这个图片打不开"），
+     所以 `.svg` 不归图片分支，走 QuickLook 兜底（它认得的类型比 `UIImage` 多）。
+3. **为什么 PDF 用 PDFKit**：实测把 `QLPreviewController` **内嵌**进
+   `NavigationStack` 时它画不出正文 —— 只出现翻页控件、内容区空白，
+   它的扩展进程停在 `running-active-NotVisible`。PDFKit 一次就对。
+   即"QuickLook 全屏推"能画、"QuickLook 内嵌"画不出，这个差异很隐蔽，
+   所以在本条里写死，避免以后有人为了省事把 PDF 又改回去。
+4. **文本取回策略**（对着活宿主实测，记进 [PROTOCOL-NOTES](PROTOCOL-NOTES.md) §5 的 17-19）：
+   - `workspaceFiles/readAll` **在本部署里没实现**（路由 `not found`）；
+   - `read` 的窗口是 **5000 行**，超过时 `eof:false`、`offset` 是**行号**；
+   - **按 `offset` 翻页拼不回原文** —— 每页末尾不含换行、下一页也不重复它，
+     逐页拼起来的字节与磁盘不一致（页交界处丢内容）；
+   - 所以策略是"`read` 看 `eof`，超过窗口且文件不大（≤ 8 MB）时改用 **`readBytes`**
+     整份取回（实测逐字节一致，12 MB 也验过）"，**不做会静默丢内容的翻页拼接**；
+     再大的文件只显示开头，并**明说**"只显示了开头部分"（一行 `scissors` 说明），
+     而不是让用户以为文件就这么长。
+5. **中文文案与文档跟着改**：引导页原文"用系统 QuickLook 预览"已经不准确
+   （多数格式不再走 QuickLook），改成"文本、Markdown、图片、PDF 都能直接看"。
+
+**后果**：
+- 点开文件只有一次转场；Markdown 与正文排版一致，表格/标题/链接都正常；
+- `FilesSheet` 里那份重复的 `QuickLookPreview` 被删掉，包装器只留一份；
+- 分类逻辑有单测（10 条，含 dotfile 与 SVG 两个实测踩到的边界）钉住，另有一条用**用户截图里那段真实 Markdown**
+  验证"标题/表格/列表确实被拆成块、段落里不再残留 `#` 与 `|`"；
+- 仍待上游：`workspaceFiles/readAll` 未实现、`read` 的 `offset` 翻页语义
+  （页交界丢内容）都属宿主行为，客户端只是绕开并把实测结论记进协议笔记。

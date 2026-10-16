@@ -68,7 +68,7 @@ struct WelcomeView: View {
                     bulletList([
                         ("bubble.left.and.bubble.right", String(localized: "会话时间线，流式追加"), String(localized: "工具调用折叠成一行，点开看参数与输出")),
                         ("checkmark.shield", String(localized: "审批在你的手机上决定"), String(localized: "电脑上有操作要你批准时会推到你面前")),
-                        ("folder", String(localized: "浏览工作区文件"), String(localized: "用系统 QuickLook 预览，不下载到别处")),
+                        ("folder", String(localized: "浏览工作区文件"), String(localized: "文本、Markdown、图片、PDF 都能直接看，不下载到别处")),
                     ])
 
                 case .two:

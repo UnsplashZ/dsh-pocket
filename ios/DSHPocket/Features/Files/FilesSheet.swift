@@ -1,5 +1,4 @@
 import DSHKit
-import QuickLook
 import SwiftUI
 
 /// S5 文件浏览。
@@ -19,7 +18,8 @@ struct FilesSheet: View {
     /// 正在预览的文件。以前这里自己拿 `readFileText` + 临时文件 + QuickLook 拼一套，
     /// 于是**只有文本能看**（图片/PDF 走 `read` 会读成乱码），而且受
     /// `range` 必填那个 bug 影响。现在统一交给 `FilePreviewScreen`：
-    /// 它先 `stat` 再决定走文本还是字节，图片也能开。
+    /// 它按扩展名分派到原生渲染器（Markdown / 文本 / 图片 / PDF），
+    /// 认不出的二进制才交给系统 QuickLook。
     @State private var previewing: PreviewTarget?
 
     /// `sheet(item:)` 需要一个 Identifiable。
@@ -170,33 +170,5 @@ struct FilesSheet: View {
             entries = []
         }
     }
-
 }
 
-/// 系统 QuickLook 的 SwiftUI 包装（`QLPreviewController` 没有 SwiftUI 版）。
-struct QuickLookPreview: UIViewControllerRepresentable {
-    let url: URL
-
-    func makeUIViewController(context: Context) -> QLPreviewController {
-        let controller = QLPreviewController()
-        controller.dataSource = context.coordinator
-        return controller
-    }
-
-    func updateUIViewController(_ controller: QLPreviewController, context: Context) {
-        controller.reloadData()
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator(url: url) }
-
-    final class Coordinator: NSObject, QLPreviewControllerDataSource {
-        let url: URL
-        init(url: URL) { self.url = url }
-
-        func numberOfPreviewItems(in controller: QLPreviewController) -> Int { 1 }
-
-        func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> any QLPreviewItem {
-            url as NSURL
-        }
-    }
-}

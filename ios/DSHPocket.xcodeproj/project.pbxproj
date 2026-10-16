@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		005CFDE5664DBDDAF58B382F /* StreamFlowPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = B16F1734F870C61F4CE7ADE9 /* StreamFlowPolicy.swift */; };
 		07D4AFEDDD493F17EDB21685 /* DSHPocketApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 924598A2E62CF91E30377D87 /* DSHPocketApp.swift */; };
+		0B4E74B3FC890818D29B8CF4 /* FilePreviewKinds.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47BFF308352D7C2CA14B9481 /* FilePreviewKinds.swift */; };
 		0C3DD51E547C02C0C94F342A /* LLMProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 629A0D2486C00C6FD8CB3A91 /* LLMProvider.swift */; };
 		1124AFA07CF308417A5A1867 /* SessionCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD212F40CEBB2E882DB37AE2 /* SessionCacheTests.swift */; };
 		122EA2D82CF1FAF439A5C61E /* TimelineItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 332E9727DA5B522FCF725E72 /* TimelineItem.swift */; };
@@ -185,6 +186,7 @@
 		40F731E69C3E40534DA3287A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		42AD7FF2C0BB55901583FD66 /* SessionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionModel.swift; sourceTree = "<group>"; };
 		46609A991FC8C5A35FF55F60 /* MessageFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageFeedback.swift; sourceTree = "<group>"; };
+		47BFF308352D7C2CA14B9481 /* FilePreviewKinds.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePreviewKinds.swift; sourceTree = "<group>"; };
 		4EB168BF3F2BD1743521E92A /* MarkdownBlock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownBlock.swift; sourceTree = "<group>"; };
 		54FBBD8E05AA668CEF81EF66 /* DSHClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSHClient.swift; sourceTree = "<group>"; };
 		57FD4C43AD3A7045506EDF86 /* LocalProxyServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalProxyServer.swift; sourceTree = "<group>"; };
@@ -496,6 +498,7 @@
 		B69D3114FC93A0A8F490A90C /* Files */ = {
 			isa = PBXGroup;
 			children = (
+				47BFF308352D7C2CA14B9481 /* FilePreviewKinds.swift */,
 				30CD985C4108BF56D8D1B48A /* FilePreviewScreen.swift */,
 				20391EC33E89609CD0C82B2E /* FilesSheet.swift */,
 			);
@@ -824,6 +827,7 @@
 				8A956C5313E815D2ADB5A673 /* Composer.swift in Sources */,
 				07D4AFEDDD493F17EDB21685 /* DSHPocketApp.swift in Sources */,
 				8ED4D3A2D9AE5EA283F32DBE /* DiagnosticsView.swift in Sources */,
+				0B4E74B3FC890818D29B8CF4 /* FilePreviewKinds.swift in Sources */,
 				5DB96C79B4A6DC6E909B650C /* FilePreviewScreen.swift in Sources */,
 				C2665264EC06FAA6E444E409 /* FilesSheet.swift in Sources */,
 				729932610A5EFB2D25502799 /* GoalSheet.swift in Sources */,
@@ -1041,7 +1045,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.4.4;
+				MARKETING_VERSION = 0.4.5;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-framework",
@@ -1158,7 +1162,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.4.4;
+				MARKETING_VERSION = 0.4.5;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-framework",

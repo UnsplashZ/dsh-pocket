@@ -216,6 +216,60 @@ final class AppLogicTests: XCTestCase {
 
     // MARK: Markdown 块级解析
 
+    /// **用户截图里的那份 `.md`**（8-9 月结算汇总）。
+    ///
+    /// 它在预览里曾经整段是原始 Markdown（`# 2026-10-16 …` 连井号一起显示）。
+    /// 这条钉住"同一个文件走 MarkdownBody 时，块级结构确实被拆出来"。
+    func testRealWorldMarkdownFromTheReportParsesIntoBlocks() {
+        let text = """
+        # 2026-10-16 赵曼 / 黎老师 8-9 月结算汇总（只读核对）
+
+        需求原文：「帮我查一下 8月和 9月 赵曼结算和黎老师结算的汇总」。
+
+        ## 结论
+
+        - 赵曼结算（Metabase 1773，`f_market_belong='直播-IP直播'`）：8-9 月合计 13 笔，净 GMV -8,560.54。
+        - 黎老师结算（Metabase 1800）：仅 2026-09 有数据，98 笔。
+
+        ## 验证
+
+        | 检查 | 方式 | 结果 |
+        | --- | --- | --- |
+        | 卡输出与源表一致 | ClickHouse 按同一过滤/算式独立复算 | 6 个分组逐值一致 |
+        | 口径互斥 | `scope-check.sql` | 8-9 月 IP 直播口径 LCLS 行 0 |
+        """
+        let blocks = MarkdownParser.parseUncached(text)
+
+        // 标题被识别成 heading，而不是带 `#` 的段落 —— 这正是截图里的毛病。
+        XCTAssertEqual(blocks.first, .heading(level: 1, text: "2026-10-16 赵曼 / 黎老师 8-9 月结算汇总（只读核对）"))
+        XCTAssertTrue(blocks.contains(.heading(level: 2, text: "结论")))
+        XCTAssertTrue(blocks.contains(.heading(level: 2, text: "验证")))
+
+        // 表格被识别成 table（而不是带竖线的段落）。
+        guard case .table(let table)? = blocks.first(where: { if case .table = $0 { return true }; return false }) else {
+            return XCTFail("验证那节应该是表格")
+        }
+        XCTAssertEqual(table.headers, ["检查", "方式", "结果"])
+        XCTAssertEqual(table.rows.count, 2)
+        XCTAssertEqual(table.rows[0].first, "卡输出与源表一致")
+
+        // 列表项：两行 `- …` 都要在，且不再是原始段落。
+        let items = blocks.compactMap { block -> String? in
+            if case .listItem(_, let text, _) = block { return text }
+            return nil
+        }
+        XCTAssertEqual(items.count, 2)
+        XCTAssertTrue(items[0].hasPrefix("赵曼结算"))
+
+        // 整段里**不该**再残留行首的 `#` 或 `|` 分隔行标记。
+        for block in blocks {
+            if case .paragraph(let text) = block {
+                XCTAssertFalse(text.hasPrefix("#"), "段落里不该带标题井号：\(text)")
+                XCTAssertFalse(text.hasPrefix("|"), "段落里不该带表格竖线：\(text)")
+            }
+        }
+    }
+
     /// 表格曾经原样显示成 `| 方向 | 能做什么 |` —— 因为压根没有块级解析。
     func testMarkdownParsesTables() {
         let text = """
@@ -346,6 +400,83 @@ final class AppLogicTests: XCTestCase {
         XCTAssertEqual(b, [.heading(level: 1, text: "乙")])
         // 再取一次，确认没有被对方的缓存污染
         XCTAssertEqual(MarkdownParser.parse("# 甲"), [.heading(level: 1, text: "甲")])
+    }
+
+    // MARK: 文件预览的格式分派
+
+    /// **Markdown 必须走 App 自己的渲染器。**
+    ///
+    /// 用户截图里 `.md` 显示成 `# 标题` / `**粗体**` / `| 表格 |` 原样 ——
+    /// 根因是以前把 Markdown 交给了系统 QuickLook，而 QuickLook 不渲染 Markdown。
+    func testMarkdownFilesGoToTheNativeRenderer() {
+        for name in ["a.md", "README.MD", "doc.markdown", "x.mdown", "y.mkd"] {
+            XCTAssertEqual(FilePreviewKind.classify(fileName: name), .markdown, "\(name) 应该是 Markdown")
+        }
+    }
+
+    func testTextFilesAreRecognised() {
+        for name in ["a.txt", "log.log", "data.json", "cfg.yml", "s.swift", "b.py", "c.sh",
+                     "index.html", "d.csv", "e.patch", "f.env", "LICENSE", "NOTICE", "VERSION"] {
+            XCTAssertEqual(FilePreviewKind.classify(fileName: name), .text, "\(name) 应该是纯文本")
+        }
+    }
+
+    /// 图片走 `UIImage`、PDF 走 `PDFKit`，都不再经过 QuickLook
+    /// （实测内嵌的 `QLPreviewController` 画 PDF 是空白页）。
+    func testImagesAndPDFsGetDedicatedRenderers() {
+        for name in ["a.png", "b.JPG", "c.jpeg", "d.gif", "e.webp", "f.heic", "g.tiff"] {
+            XCTAssertEqual(FilePreviewKind.classify(fileName: name), .image, "\(name) 应该是图片")
+        }
+        XCTAssertEqual(FilePreviewKind.classify(fileName: "doc.pdf"), .pdf)
+    }
+
+    /// 认不出的二进制仍然交给系统 QuickLook 兜底（它至少给文件图标与分享）。
+    func testUnknownBinariesFallBackToQuickLook() {
+        for name in ["archive.zip", "app.dmg", "blob.bin", "noextension"] {
+            XCTAssertEqual(FilePreviewKind.classify(fileName: name), .systemPreview, "\(name) 应该走系统预览")
+        }
+    }
+
+    /// **dotfile 不能误判**：`NSString.pathExtension` 对 `.gitignore` / `.env` 回**空串**，
+    /// 所以按扩展名分派的表接不住它们（会掉进 QuickLook 兜底，点开只看到一个图标）。
+    func testDotFilesAreTreatedAsPlainText() {
+        for name in [".gitignore", ".gitattributes", ".env", ".editorconfig", ".npmrc",
+                     "sub/dir/.gitignore"] {
+            XCTAssertEqual(FilePreviewKind.classify(fileName: name), .text, "\(name) 应该是纯文本")
+        }
+        // 反过来：带扩展名的隐藏文件仍按扩展名走（`.eslintrc.json` 是 json）。
+        XCTAssertEqual(FilePreviewKind.classify(fileName: ".eslintrc.json"), .text)
+        XCTAssertEqual(FilePreviewKind.classify(fileName: ".hidden.md"), .markdown)
+    }
+
+    /// **SVG 不能当图片走 `UIImage`** —— 实测 `UIImage(contentsOfFile:)` 读不了 SVG（回 nil），
+    /// 那样用户只会看到"这个图片打不开"。交给系统 QuickLook 兜底。
+    func testSVGFallsBackInsteadOfUsingUIImage() {
+        XCTAssertEqual(FilePreviewKind.classify(fileName: "logo.svg"), .systemPreview)
+    }
+
+    /// 无扩展名的常见纯文本（`Makefile` / `Dockerfile` 这类约定文件）。
+    func testExtensionlessConventionFilesAreText() {
+        for name in ["Makefile", "Dockerfile", "Gemfile", "Procfile", "Justfile", "LICENSE"] {
+            XCTAssertEqual(FilePreviewKind.classify(fileName: name), .text, "\(name) 应该是纯文本")
+        }
+    }
+
+    /// 分类决定取回方式：文本用 `read`，二进制用 `readBytes`。
+    func testTextualClassificationMatchesFetchStrategy() {
+        XCTAssertTrue(FilePreviewKind.markdown.isTextual)
+        XCTAssertTrue(FilePreviewKind.text.isTextual)
+        XCTAssertFalse(FilePreviewKind.image.isTextual)
+        XCTAssertFalse(FilePreviewKind.pdf.isTextual)
+        XCTAssertFalse(FilePreviewKind.systemPreview.isTextual)
+    }
+
+    /// 分类只看扩展名，大小写不敏感，且不受目录名干扰。
+    func testClassificationIsCaseInsensitiveAndPathAware() {
+        XCTAssertEqual(FilePreviewKind.classify(fileName: "Notes.MD"), .markdown)
+        XCTAssertEqual(FilePreviewKind.classify(fileName: "IMAGE.Png"), .image)
+        // 目录里出现点号不该影响判断（这里是 lastPathComponent，不是整条路径）。
+        XCTAssertEqual(FilePreviewKind.classify(fileName: "v1.2/readme.md"), .markdown)
     }
 
     // MARK: 权限档位

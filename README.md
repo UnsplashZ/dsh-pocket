@@ -157,7 +157,7 @@ delete from, context-usage bar, per-session stats, live working-state timer.
 **Approvals and questions** — approval cards in the timeline plus a local notification; decisions
 go out over DSH's native `$events/result`; single-choice, multi-choice and free-text questions.
 
-**Files and artifacts** — workspace browser with system QuickLook; artifact cards with ShareLink.
+**Files and artifacts** — workspace browser with in-app preview (Markdown, text, images, PDF); artifact cards with ShareLink.
 
 **Settings** — host management, the computer's default model and reasoning level, providers and
 models (**API keys are write-only — the app can store one but never displays it back**), plugin

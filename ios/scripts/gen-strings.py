@@ -279,6 +279,10 @@ EN: dict[str, str] = {
     "打不开这个文件": "Can’t open this file",
     "正在从电脑取回…": "Fetching from your computer…",
     "点按预览这个文件": "Tap to preview this file",
+    "文件太大，只显示了开头部分": "This file is too large — showing the beginning only",
+    "图片预览": "Image preview",
+    "这个图片打不开": "This image can’t be opened",
+    "文件取回来了，但不是这个 App 认得的图片格式。": "The file was fetched, but it isn’t an image format this app recognises.",
     "读文件失败": "Couldn’t read the file",
     "读文件没有拿到 HTTP 响应": "Reading the file returned no HTTP response",
     "读文件的响应不是 multipart": "The file response was not multipart",
@@ -365,6 +369,7 @@ EN: dict[str, str] = {
     "电脑上有操作要你批准时会推到你面前": "When your computer needs approval, it comes to you",
     "浏览工作区文件": "Browse workspace files",
     "用系统 QuickLook 预览，不下载到别处": "Preview with the system QuickLook — nothing is copied elsewhere",
+    "文本、Markdown、图片、PDF 都能直接看，不下载到别处": "Text, Markdown, images and PDFs preview in place — nothing is copied elsewhere",
     "你的数据只在你的设备之间": "Your data stays between your devices",
     "手机和电脑之间走点对点加密（iroh）。打洞成功时数据不经过任何第三方；回退中转时，中转只能看到密文。":
         "Phone and computer talk over encrypted peer-to-peer iroh. When hole-punching succeeds nothing goes through a third party; on relay fallback the relay only sees ciphertext.",
