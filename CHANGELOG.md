@@ -22,7 +22,35 @@ All notable changes to this project are documented here.
 
 ---
 
-## [0.4.16] — 2026-10-19
+## [0.4.17] — 2026-10-19
+
+### Fixed
+
+排查依据是真机落盘的 852 行日志（`scripts/pull-logs.sh` 取回）。
+
+- **mux 每 20~35 秒"断开"一次，全部流跟着重订阅**（此前只有现象没根因）。
+  根因是保活 ping 的处理写错了：
+  ```swift
+  task.sendPing { error in if let error { socketFailed(error) } }   // 旧
+  ```
+  `URLSessionWebSocketTask.sendPing` 在 socket 尚未真正就绪、或正被系统短暂
+  挂起时，会直接回一个「Socket未连接」的错误 —— 而底层连接其实还活着。
+  旧代码见错即 `socketFailed`：清空所有流、断开全部订阅、整套重连。
+  日志里那串 `mux 断开：未能完成该操作。Socket未连接` 全是这么来的
+  （注意它们**没有**伴随任何 `退到后台`）。
+  现在只有**连续两次** ping 失败才判定真断；单次失败只记 debug。
+  真正的断开由 `receiveLoop` 立刻发现 —— 那才是可靠信号，ping 只是补漏。
+- **socket 失效了还被复用**。`ensureSocket` 原来只看 `state == .running`，
+  而底层 socket 已经不可用时它仍可能停在 `.running`（正是上面那个
+  「sendPing 报未连接却还是 running」的情形）。复用它会让后续请求全打在
+  死连接上。现在同时要求 `closedReason == nil`。
+- **DNS 一时不可用会耗满 15 秒才失败**。日志里的
+  `No addressing information available / All address lookup services failed /
+  Service 'dns' failed: Failed to resolve TXT record ×7`：这台电脑的地址完全靠
+  iroh 的 DNS 发现（`EndpointAddr` 里 `addresses: []`、`relayUrl: nil`）。
+  DNS 抖动时 `endpoint.connect` 会一直空转到上限。现在识别到这个错误就
+  **立刻抛出**，让上层按退避快速重试（DNS 恢复是秒级的，下一次往往几百毫秒就连上）。
+
 
 ### Changed
 

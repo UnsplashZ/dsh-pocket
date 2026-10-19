@@ -627,17 +627,6 @@
         }
       }
     },
-    "上下文占用 %lld%%": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Context %lld%%"
-          }
-        }
-      }
-    },
     "上下文已压缩": {
       "extractionState": "manual",
       "localizations": {
@@ -3553,6 +3542,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "No matching subagent session — it may no longer exist."
+          }
+        }
+      }
+    },
+    "找不到这台电脑的地址（DNS 暂时不可用），正在重试": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Can’t resolve this computer’s address (DNS is temporarily unavailable) — retrying"
           }
         }
       }
@@ -6775,6 +6775,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "The connection was closed"
+          }
+        }
+      }
+    },
+    "连接已断开": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The connection was lost"
           }
         }
       }

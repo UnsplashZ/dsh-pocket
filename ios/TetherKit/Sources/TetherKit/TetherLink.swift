@@ -165,6 +165,18 @@ actor TetherLink: TetherStreamFactory {
             // `IrohError Connect timed out`。那 43 秒里界面就是「连接中」，
             // 用户只能杀 App。这里给它一个上限，超时后由上层按退避重试
             //（重试通常几百毫秒就成 —— 同一份日志里下一次建连只用 976ms）。
+            // **没有寻址信息时快速失败，别耗满 15 秒。**
+            //
+            // 真机日志（2026-10-19）：`No addressing information available /
+            // All address lookup services failed / Service 'dns' failed:
+            // Failed to resolve TXT record ×7` —— 手机的 DNS 一时不可用，
+            // 而这台电脑的地址完全靠 iroh 的 DNS 发现（`EndpointAddr` 里
+            // `addresses: []`、`relayUrl: nil`）。这种情况下 `endpoint.connect`
+            // 会一直空转到上限才失败。
+            //
+            // 遇到这个错误立刻抛出去，让上层按退避快速重试（下一次往往几百毫秒
+            // 就连上了 —— DNS 恢复是秒级的）。判据用错误文案里的特征串：
+            // iroh 的错误类型是 FFI 生成的，没有更细的可判别字段。
             let connection = try await Self.connectWithCeiling(
                 endpoint: endpoint,
                 address: address,
@@ -267,7 +279,22 @@ actor TetherLink: TetherStreamFactory {
         let gate = TimeoutGate()
         return try await withThrowingTaskGroup(of: (any ConnectionProtocol)?.self) { group in
             group.addTask {
-                let connection = try await endpoint.connect(addr: address, alpn: Data(alpn.utf8))
+                let connection: any ConnectionProtocol
+                do {
+                    connection = try await endpoint.connect(addr: address, alpn: Data(alpn.utf8))
+                } catch {
+                    // 寻址信息缺失（DNS 挂了）是可恢复的、秒级的问题，
+                    // 但它会让 connect 空转到上限。识别出来立刻抛，
+                    // 让上层马上重试 —— 逐字匹配是唯一的判据，iroh 的错误
+                    // 经 FFI 生成后没有可判别的类型字段。
+                    let text = String(describing: error)
+                    if text.contains("No addressing information") || text.contains("Failed to resolve TXT") {
+                        throw TetherError.transport(
+                            String(localized: "找不到这台电脑的地址（DNS 暂时不可用），正在重试")
+                        )
+                    }
+                    throw error
+                }
                 // 超时已经判过负了：这条连接是"迟到的"，必须自己关掉，
                 // 不能留着占主机侧那唯一一个连接位。
                 if await gate.isExpired {

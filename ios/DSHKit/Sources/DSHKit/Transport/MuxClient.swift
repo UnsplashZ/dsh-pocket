@@ -155,7 +155,15 @@ public actor MuxClient {
     // MARK: - socket 生命周期
 
     private func ensureSocket() async throws -> URLSessionWebSocketTask {
-        if let socket, socket.state == .running { return socket }
+        // **只在"确实还能用"时复用。**
+        //
+        // `state == .running` 不够：URLSessionWebSocketTask 在底层 socket 已经
+        // 不可用时仍可能停留在 `.running`（真机日志里 `sendPing` 报"Socket未连接"
+        // 却仍然是 running）。复用它会让后续所有请求都打在一个死连接上，
+        // 然后每次都要等一轮超时才重建。
+        // 加上 `closedReason == nil`：它由 `socketFailed` / 正常关闭时置上，
+        // 是"这条 socket 已经被判死"的直接证据。
+        if let socket, socket.state == .running, closedReason == nil { return socket }
         if let socket { socket.cancel(with: .goingAway, reason: nil) }
         setState(.connecting)
         let base = try await provider.webSocketURL()
@@ -195,14 +203,44 @@ public actor MuxClient {
         }
     }
 
+    /// 保活 ping。
+    ///
+    /// **ping 出错不等于连接断了。** 这里原来只要 `sendPing` 回一个 error 就立刻
+    /// `socketFailed` —— 把所有流全部断掉、清空订阅，然后整套重连。
+    /// 但 `URLSessionWebSocketTask.sendPing` 在 socket 还没真正就绪、或者
+    /// 正在被系统挂起时，会直接回一个"Socket未连接"的 error，
+    /// 而底层连接其实还活着（真机日志 2026-10-19：`mux 断开：未能完成该操作。
+    /// Socket未连接` 在没有任何后台切换的情况下每 20~35 秒刷一次，
+    /// 每次都要重订阅全部流）。
+    ///
+    /// 现在改成"连续失败才算真断"：单次 ping 失败只是记一笔；连续两次失败
+    /// （间隔一个周期，说明连接确实不通了）才判定断开。真正的断开由
+    /// `receiveLoop` 立刻发现 —— 那才是可靠信号，ping 只是补漏。
     private func startPingLoop(_ task: URLSessionWebSocketTask) {
         pingLoop?.cancel()
         pingLoop = Task { [weak self] in
+            var consecutiveFailures = 0
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(20))
                 guard !Task.isCancelled else { return }
-                task.sendPing { error in
-                    if let error { Task { await self?.socketFailed(error) } }
+                let failed = await withCheckedContinuation { continuation in
+                    task.sendPing { error in
+                        continuation.resume(returning: error != nil)
+                    }
+                }
+                if failed {
+                    consecutiveFailures += 1
+                    guard let self else { return }
+                    await self.logger?.log(.debug, "mux ping 失败（连续第 \(consecutiveFailures) 次）")
+                    // 连续两次失败才当真：单次多半是 socket 短暂不可用。
+                    if consecutiveFailures >= 2 {
+                        await self.socketFailed(
+                            DSHClientError.transport(.socketClosed(reason: String(localized: "连接已断开")))
+                        )
+                        return
+                    }
+                } else {
+                    consecutiveFailures = 0
                 }
             }
         }
