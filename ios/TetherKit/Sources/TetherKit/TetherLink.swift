@@ -158,7 +158,19 @@ actor TetherLink: TetherStreamFactory {
             logger?.log("连接电脑 \(hostEndpointId.prefix(12))…（preset N0，ALPN \(TetherWire.alpn)）")
 
             let tConnect = Date()
-            let connection = try await endpoint.connect(addr: address, alpn: Data(TetherWire.alpn.utf8))
+            // **建连必须有上限。**
+            //
+            // `endpoint.connect` 本身不设超时。锁屏/切网络之后 iroh 会卡在
+            // "等一个永远不会来的打洞结果"里 —— 真机日志实测 **43388ms** 才报
+            // `IrohError Connect timed out`。那 43 秒里界面就是「连接中」，
+            // 用户只能杀 App。这里给它一个上限，超时后由上层按退避重试
+            //（重试通常几百毫秒就成 —— 同一份日志里下一次建连只用 976ms）。
+            let connection = try await Self.connectWithCeiling(
+                endpoint: endpoint,
+                address: address,
+                alpn: TetherWire.alpn,
+                ceiling: .seconds(15)
+            )
             let connectMS = Int(Date().timeIntervalSince(tConnect) * 1000)
             self.endpoint = endpoint
             self.connection = connection
@@ -226,6 +238,44 @@ actor TetherLink: TetherStreamFactory {
             ))
         } catch {
             throw TetherError.transport(String(localized: "iroh 端点绑定失败：\(error.localizedDescription)"))
+        }
+    }
+
+    /// 给 `endpoint.connect` 套一个上限。
+    ///
+    /// 用 `withThrowingTaskGroup` 而不是 `Task.sleep` 轮询：iroh 的连接一旦成功，
+    /// 我们必须**立刻**拿到那个连接对象；超时就取消并抛错，让上层重试。
+    ///
+    /// 超时后必须显式关掉那条连接 —— 否则它会在后台继续尝试打洞，
+    /// 而下一次重连会再开一条，两条互相抢中继（这正是"越重连越慢"的形状）。
+    private static func connectWithCeiling(
+        endpoint: any EndpointProtocol,
+        address: EndpointAddr,
+        alpn: String,
+        ceiling: Duration
+    ) async throws -> any ConnectionProtocol {
+        final class Box: @unchecked Sendable { var connection: (any ConnectionProtocol)? }
+        let box = Box()
+        return try await withThrowingTaskGroup(of: (any ConnectionProtocol)?.self) { group in
+            group.addTask {
+                let connection = try await endpoint.connect(addr: address, alpn: Data(alpn.utf8))
+                box.connection = connection
+                return connection
+            }
+            group.addTask {
+                try await Task.sleep(for: ceiling)
+                return nil
+            }
+            defer { group.cancelAll() }
+            for try await result in group {
+                if let result { return result }
+                // 睡够了还没连上 → 收掉半成品，抛给上层
+                if let half = box.connection { try? half.close(errorCode: 0, reason: Data()) }
+                throw TetherError.transport(
+                    String(localized: "连接超时（\(ceiling.components.seconds) 秒），正在重试")
+                )
+            }
+            throw TetherError.transport(String(localized: "连接未完成"))
         }
     }
 

@@ -140,6 +140,14 @@ public final class SessionModel {
 
     private var followTask: Task<Void, Never>?
     private var generationTask: Task<Void, Never>?
+    /// 见过的传输世代（`AppModel.transportGeneration`）。
+    ///
+    /// 用来自证"这条断线已经被更近的一次重连修掉了" —— 迟到的退避重试据此让位，
+    /// 否则界面上会出现"明明已经连上了，却一直显示正在重连"（真机日志踩过）。
+    private var transportGenerationSeen = -1
+    /// 断线那一刻的世代。退避睡醒后如果它已经变了，说明期间发生过重连，
+    /// 慢路径就不该接管。
+    private var generationAtDisconnect = -1
     /// 本次打开是不是先用缓存铺出来的。决定快照到达时走"续拉"还是"整体重建"。
     private var restoredFromCache = false
     private var backgroundObserver: (any NSObjectProtocol)?
@@ -259,6 +267,7 @@ public final class SessionModel {
                 if Task.isCancelled { return }
                 defer { last = generation }
                 guard last >= 0, generation != last else { continue }
+                self.transportGenerationSeen = generation
                 // 重连后按已有的 lastSeq 续拉：宿主的快照会重放，用 seq 去重。
                 await self.subscribe()
             }
@@ -636,12 +645,30 @@ public final class SessionModel {
         isStreaming = false
         reconnectAttempt += 1
         let wait = RetryPolicy.default.delay(afterAttempt: reconnectAttempt)
+        generationAtDisconnect = transportGenerationSeen
         phase = .reconnecting(reason)
         logs.log(.warning, "会话流断开：\(reason)，\(wait.formatted) 后重订阅")
 
         try? await Task.sleep(for: wait)
         guard !Task.isCancelled else { return }
+        // **睡醒之后别急着改状态。**
+        //
+        // 这段退避和 `observeTransportGeneration` 是两条独立的恢复路径：
+        // 传输一旦重建 client，世代流会**立刻**重订阅（快得多）。以前这里睡醒了
+        // 无条件把 phase 设回 live/loading 再 subscribe —— 界面上就是"已经连上了，
+        // 却一直显示正在重连"（真机日志：`回到前台重连完成，用时 1051ms` 之后
+        // 还跟着三条 `会话流断开：尚未连接到电脑，2.2s/4.4s/7.7s 后重订阅`）。
+        //
+        // 所以这里分两种情形收尾，但**都要修正 phase** ——
+        // 只 else 掉 subscribe 而不修 phase，界面就会一直显示「正在重连」
+        // （这正是用户看到的那一屏）。
+        let generationMoved = generationAtDisconnect != transportGenerationSeen
         phase = sawSnapshot ? .live : .loading
+        if generationMoved {
+            // 期间发生过重连，世代那条快路径已经接管了重订阅。
+            // 不要再 subscribe 一次（虽然幂等，但会白白取消一条正常工作的流）。
+            return
+        }
         await subscribe()
     }
 

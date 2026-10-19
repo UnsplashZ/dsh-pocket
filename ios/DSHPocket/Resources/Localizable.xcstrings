@@ -6807,6 +6807,17 @@
         }
       }
     },
+    "连接未完成": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The connection didn’t complete"
+          }
+        }
+      }
+    },
     "连接电脑": {
       "extractionState": "manual",
       "localizations": {
@@ -6814,6 +6825,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Connect to computer"
+          }
+        }
+      }
+    },
+    "连接超时（%@ 秒），正在重试": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection timed out (%@s) — retrying"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接超时（%@ 秒），正在重试"
           }
         }
       }

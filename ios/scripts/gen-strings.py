@@ -668,6 +668,8 @@ EN: dict[str, str] = {
     "上一次连接还在进行中": "A connection attempt is already in progress",
     "%@\n连续失败 %lld 次。如果电脑端重装过插件或清过配对数据，请在「设置 → 主机」里删掉这台电脑，然后重新配对。":
         "%@\nFailed %lld times in a row. If the plugin was reinstalled or its pairing data was cleared on your computer, delete this computer under Settings → Computers and pair again.",
+    "连接超时（%@ 秒），正在重试": "Connection timed out (%@s) — retrying",
+    "连接未完成": "The connection didn’t complete",
     "思考中": "Thinking",
     "正在写回复": "Writing a reply",
     "正在思考": "Reasoning",
