@@ -184,6 +184,8 @@ public final class AppModel {
     private var listRefreshLoop: Task<Void, Never>?
     /// 连接状态自愈巡检（见 `startConnectionWatchdog`）。
     private var connectionWatchdog: Task<Void, Never>?
+    /// 传输层断线后的退避重连任务。**独立于状态流**跑，见 `.failed` 分支的注释。
+    private var transportReconnectTask: Task<Void, Never>?
     /// 传输世代：每次重建 client 自增。打开着的会话页据此**立刻**重订阅，
     /// 而不是等自己那套退避重试慢慢转过来。
     private(set) var transportGeneration = 0
@@ -402,6 +404,19 @@ public final class AppModel {
 
     private func dropGenerationContinuation(_ id: UUID) { generationContinuations[id] = nil }
 
+    /// 传输层**是否真的连着**（会话流退避重试用它决定要不要重订阅）。
+    ///
+    /// 和 `connection.isConnected` 分开：那个是界面状态，可能滞后或被别的路径
+    /// 改写；这里直接问传输层，问的是事实。传输没就绪时重订阅必然失败，
+    /// 只会再排一条更长的退避 —— 空转，还把界面钉在「正在重连」。
+    var isTransportConnected: Bool {
+        get async {
+            if await tether.isTransportHealthy() { return true }
+            if case .connected = await tether.currentState() { return true }
+            return false
+        }
+    }
+
     /// 传输层此刻的真实状态（诊断导出用）。
     ///
     /// 和 `connection` 分开列出来的理由：两者脱节正是已知 bug 的形状
@@ -509,12 +524,27 @@ public final class AppModel {
             consecutiveTransportFailures += 1
             setConnection(.failed(transportFailureMessage(base: reason)))
             logs.log(.warning, "传输断开（第 \(consecutiveTransportFailures) 次）：\(reason)")
-            await scheduleTransportReconnect()
+            // **不要 await 在这里。**
+            //
+            // `handle(transportState:)` 跑在一个串行的 `for await` 循环里 ——
+            // 在这里 await 一段退避（最长十几秒），整条状态流就被堵住了：
+            // 期间传输层送来的 `.connected` 一个都处理不到，界面于是永远停在
+            // 上一次写的「连接中…／连接失败」上。真机日志里"明明已经连上了
+            // 却一直卡连接中"就是这个形状。
+            // 重连排到独立任务里，状态流继续流。
+            scheduleTransportReconnectInBackground()
 
         case .idle:
             if settings.transportMode == .remote { setConnection(.idle) }
 
         case .connecting:
+            // **别把已经失败的状态打回「连接中」。**
+            //
+            // 真机日志（2026-10-19）里最常见的一屏就是「一直卡连接中」：
+            // `connect()` 超时 → `.failed`，紧接着下一次重试的 `.connecting`
+            // 广播又把界面盖回「连接中…」，于是用户永远看不到"它其实一直失败"这个事实。
+            // 失败态要留得住，用户才有机会看见原因、主动点重试。
+            if case .failed = connection { return }
             setConnection(.connecting(hostId: settings.activeHostId ?? ""))
         }
     }
@@ -541,6 +571,15 @@ public final class AppModel {
             format: String(localized: "%@\n如果是装完 App 第一次启动，请到「设置 → 隐私与安全性 → 本地网络」确认 DSH Pocket 是开的 —— 关着的话 iOS 会静默丢包，看起来就是一直连接中。"),
             base
         )
+    }
+
+    /// 被 `.failed` 分支调用：**不阻塞**状态流的重连调度。
+    private func scheduleTransportReconnectInBackground() {
+        transportReconnectTask?.cancel()
+        transportReconnectTask = Task { [weak self] in
+            guard let self else { return }
+            await self.scheduleTransportReconnect()
+        }
     }
 
     private func scheduleTransportReconnect() async {

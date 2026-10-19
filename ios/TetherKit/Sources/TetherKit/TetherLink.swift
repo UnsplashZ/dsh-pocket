@@ -246,37 +246,60 @@ actor TetherLink: TetherStreamFactory {
     /// 用 `withThrowingTaskGroup` 而不是 `Task.sleep` 轮询：iroh 的连接一旦成功，
     /// 我们必须**立刻**拿到那个连接对象；超时就取消并抛错，让上层重试。
     ///
-    /// 超时后必须显式关掉那条连接 —— 否则它会在后台继续尝试打洞，
-    /// 而下一次重连会再开一条，两条互相抢中继（这正是"越重连越慢"的形状）。
+    /// 超时后**必须**把那条连接彻底收掉，否则它会泄漏成一条幽灵连接。
+    ///
+    /// 这里有个踩过的坑（2026-10-19 真机日志：`回到前台重连完成，用时 30073ms`
+    /// + `连接超时（15 秒）`，正好是 **2×15 秒**）：`group.cancelAll()` 只是给
+    /// Swift 任务打上取消标记，而 `endpoint.connect` 内部是 FFI 调用，
+    /// **不会响应取消** —— 它在后台继续打洞、继续连，最后连上了一条没人要的连接。
+    /// 主机端同一身份只接受一条连接，于是下一次重连被这条幽灵顶掉，
+    /// 又要等一次 15 秒超时，串起来就是 30 秒起步、并且反复失败。
+    ///
+    /// 所以超时的时候关的不是"半成品连接"（那时它可能还不存在），
+    /// 而是**整个 endpoint**：它连带终止其上所有在途的连接尝试。
+    /// endpoint 本就是每次连接新建的（`bindEndpoint`），关掉不心疼。
     private static func connectWithCeiling(
         endpoint: any EndpointProtocol,
         address: EndpointAddr,
         alpn: String,
         ceiling: Duration
     ) async throws -> any ConnectionProtocol {
-        final class Box: @unchecked Sendable { var connection: (any ConnectionProtocol)? }
-        let box = Box()
+        let gate = TimeoutGate()
         return try await withThrowingTaskGroup(of: (any ConnectionProtocol)?.self) { group in
             group.addTask {
                 let connection = try await endpoint.connect(addr: address, alpn: Data(alpn.utf8))
-                box.connection = connection
+                // 超时已经判过负了：这条连接是"迟到的"，必须自己关掉，
+                // 不能留着占主机侧那唯一一个连接位。
+                if await gate.isExpired {
+                    try? connection.close(errorCode: 0, reason: Data())
+                    throw TetherError.transport(
+                        String(localized: "连接超时（\(ceiling.components.seconds) 秒），正在重试")
+                    )
+                }
                 return connection
             }
             group.addTask {
-                try await Task.sleep(for: ceiling)
+                try? await Task.sleep(for: ceiling)
+                await gate.expire()
                 return nil
             }
             defer { group.cancelAll() }
             for try await result in group {
                 if let result { return result }
-                // 睡够了还没连上 → 收掉半成品，抛给上层
-                if let half = box.connection { try? half.close(errorCode: 0, reason: Data()) }
+                // 超时分支赢了 → 关掉整个 endpoint，终止所有在途连接。
+                try? await endpoint.close()
                 throw TetherError.transport(
                     String(localized: "连接超时（\(ceiling.components.seconds) 秒），正在重试")
                 )
             }
             throw TetherError.transport(String(localized: "连接未完成"))
         }
+    }
+
+    /// 一个只回答"超时了没有"的小闸门，避免"迟到的连接"被当成好连接返回。
+    private actor TimeoutGate {
+        private(set) var isExpired = false
+        func expire() { isExpired = true }
     }
 
     /// 断开并释放全部资源。

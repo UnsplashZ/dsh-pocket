@@ -145,9 +145,11 @@ public final class SessionModel {
     /// 用来自证"这条断线已经被更近的一次重连修掉了" —— 迟到的退避重试据此让位，
     /// 否则界面上会出现"明明已经连上了，却一直显示正在重连"（真机日志踩过）。
     private var transportGenerationSeen = -1
-    /// 断线那一刻的世代。退避睡醒后如果它已经变了，说明期间发生过重连，
-    /// 慢路径就不该接管。
-    private var generationAtDisconnect = -1
+    /// 会话流断线后的退避重试任务。
+    ///
+    /// 必须可取消：它和世代流是两条竞争的恢复路径，不取消就会堆积成
+    /// "连刷 10 次尚未连接到电脑"（2026-10-19 真机日志）。
+    private var reconnectTask: Task<Void, Never>?
     /// 本次打开是不是先用缓存铺出来的。决定快照到达时走"续拉"还是"整体重建"。
     private var restoredFromCache = false
     private var backgroundObserver: (any NSObjectProtocol)?
@@ -268,6 +270,9 @@ public final class SessionModel {
                 defer { last = generation }
                 guard last >= 0, generation != last else { continue }
                 self.transportGenerationSeen = generation
+                // 世代变了 = 传输已重建：退避那条慢路径立刻作废，别再来抢。
+                self.reconnectTask?.cancel()
+                self.reconnectTask = nil
                 // 重连后按已有的 lastSeq 续拉：宿主的快照会重放，用 seq 去重。
                 await self.subscribe()
             }
@@ -275,6 +280,9 @@ public final class SessionModel {
     }
 
     private func subscribe() async {
+        // 任何主动重订阅都让退避作废 —— 否则它醒来会再起一条重复的流。
+        reconnectTask?.cancel()
+        reconnectTask = nil
         followTask?.cancel()
         let resumeAfter = lastSeq
         followTask = Task { [weak self] in
@@ -640,36 +648,46 @@ public final class SessionModel {
 
     // MARK: 断线与补齐
 
+    /// 会话流断了。**退避重试是一个可取消的独立任务**（`reconnectTask`）。
+    ///
+    /// 为什么必须是独立任务：这条慢路径和 `observeTransportGeneration`
+    /// （传输重建 client 时立刻重订阅）是**两条互相竞争的恢复路径**。
+    /// 以前退避就写在 `runFollow` 的收尾里，`subscribe()` 取消旧任务时
+    /// 取消不掉它 —— 于是真机上出现这个形状（2026-10-19 日志）：
+    ///
+    /// ```
+    /// 会话流断开：尚未连接到电脑，1.1s / 2.2s / 3.6s / 4.8s / 7.7s / 8.0s /
+    ///             9.9s / 10.0s 后重订阅        ← 连刷 10 次
+    /// 回到前台重连完成，用时 1668ms              ← 传输早就好了
+    /// ```
+    ///
+    /// 每一条旧任务都在"再断一次 → 再排一个更长的退避"，`reconnectAttempt`
+    /// 越滚越大，界面就一直挂在「正在重连」上。现在：
+    ///   · 退避存成 `reconnectTask`，世代一旦变化**立刻取消**它（快路径接手）；
+    ///   · `subscribe()` 也取消它（任何主动重订阅都让退避作废）。
     private func handleDisconnect(reason: String, sawSnapshot: Bool) async {
         guard !Task.isCancelled else { return }
         isStreaming = false
         reconnectAttempt += 1
         let wait = RetryPolicy.default.delay(afterAttempt: reconnectAttempt)
-        generationAtDisconnect = transportGenerationSeen
         phase = .reconnecting(reason)
         logs.log(.warning, "会话流断开：\(reason)，\(wait.formatted) 后重订阅")
 
-        try? await Task.sleep(for: wait)
-        guard !Task.isCancelled else { return }
-        // **睡醒之后别急着改状态。**
-        //
-        // 这段退避和 `observeTransportGeneration` 是两条独立的恢复路径：
-        // 传输一旦重建 client，世代流会**立刻**重订阅（快得多）。以前这里睡醒了
-        // 无条件把 phase 设回 live/loading 再 subscribe —— 界面上就是"已经连上了，
-        // 却一直显示正在重连"（真机日志：`回到前台重连完成，用时 1051ms` 之后
-        // 还跟着三条 `会话流断开：尚未连接到电脑，2.2s/4.4s/7.7s 后重订阅`）。
-        //
-        // 所以这里分两种情形收尾，但**都要修正 phase** ——
-        // 只 else 掉 subscribe 而不修 phase，界面就会一直显示「正在重连」
-        // （这正是用户看到的那一屏）。
-        let generationMoved = generationAtDisconnect != transportGenerationSeen
-        phase = sawSnapshot ? .live : .loading
-        if generationMoved {
-            // 期间发生过重连，世代那条快路径已经接管了重订阅。
-            // 不要再 subscribe 一次（虽然幂等，但会白白取消一条正常工作的流）。
-            return
+        // 上一条退避还没醒来就又要退避 —— 旧的作废，避免任务堆积。
+        reconnectTask?.cancel()
+        reconnectTask = Task { [weak self] in
+            try? await Task.sleep(for: wait)
+            guard !Task.isCancelled, let self else { return }
+            // 睡醒先看传输层到底好了没有。传输没就绪时重订阅必然失败，
+            // 只会又排一条更长的退避 —— 空转，而且把界面钉在「正在重连」。
+            let connected = await self.appModel.isTransportConnected
+            guard connected else {
+                self.logs.log(.debug, "退避醒来时传输仍未就绪，等传输层恢复的通知")
+                return
+            }
+            self.phase = sawSnapshot ? .live : .loading
+            await self.subscribe()
         }
-        await subscribe()
     }
 
     // MARK: 补历史
