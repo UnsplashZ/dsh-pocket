@@ -371,23 +371,16 @@ struct TurnGroupView: View {
     @State private var isExpanded = false
     @State private var hasAppliedDefault = false
 
-    /// 轮内除摘要两端之外的条目。
+    /// 轮首的 `turn/start`（渲染成一行"这一轮开始了"）。
     ///
     /// 在 `init` 里算一次 —— 它每个 body 求值都要扫一遍 `turn.items`，
     /// 而滚动期间 body 的求值次数远多于数据更新次数。
     private let startItem: TimelineItem?
-    private let bodyItems: [TimelineItem]
 
     init(turn: TimelineTurn, session: SessionModel) {
         self.turn = turn
         self.session = session
         self.startItem = turn.items.first { if case .turnStart = $0.kind { return true }; return false }
-        self.bodyItems = turn.items.filter { item in
-            switch item.kind {
-            case .turnStart, .turnEnd: return false
-            default: return true
-            }
-        }
     }
 
     var body: some View {
@@ -426,9 +419,27 @@ struct TurnGroupView: View {
                         .id(item.id)
                 }
             } else {
-                // 跑着：全展开，实时看得到。**不给操作行** ——
-                // 还没出最终结果，复制/点赞都没有对象。
-                ForEach(bodyItems) { item in
+                // **跑着的时候也折叠。** 桌面端就是这样：过程中只留一行
+                // 「思考中」，想看细节再点开。
+                //
+                // 以前这里是"全展开，实时看得到"，结果一个长轮次边跑边把几十条
+                // 工具行铺满屏幕（用户截图：连续几组 bash + job 事件刷了好几屏），
+                // 正在等的那句结论被推到看不见的地方。
+                //
+                // 折叠后仍然如实：摘要行带上"当前在做什么"（最新过程条目的标题），
+                // 点开就是完整实时过程，而且随新事件增长。
+                ForEach(turn.pinned) { item in
+                    TimelineRow(item: item, session: session)
+                        .padding(.horizontal, Token.Spacing.gutter)
+                        .id(item.id)
+                }
+
+                runningSummaryRow
+                    .padding(.horizontal, Token.Spacing.gutter)
+
+                // 跑着的轮次没有"结论"可言，所以收起态也**不渲染 headline**
+                //（那可能是半句话）。收起时只留摘要行；展开才是全过程。
+                ForEach(isExpanded ? turn.expandedItems : []) { item in
                     TimelineRow(item: item, session: session, actionsFor: nil)
                         .padding(.horizontal, Token.Spacing.gutter)
                         .id(item.id)
@@ -448,6 +459,74 @@ struct TurnGroupView: View {
             hasAppliedDefault = true
             if UserDefaults.standard.bool(forKey: "DSHExpandTurns") { isExpanded = true }
             #endif
+        }
+    }
+
+    /// 跑着的轮次的摘要行：一行「思考中」+ 当前在做什么。
+    ///
+    /// 用户要的是桌面端那种观感 —— 过程中只留一行，点开才看细节。
+    /// 但"折叠"不能变成"什么都看不到"：这一行必须如实说明**现在在干嘛**，
+    /// 所以取最新那条过程条目的标题（工具名 / 「正在写回复」等）。
+    @ViewBuilder
+    private var runningSummaryRow: some View {
+        Button {
+            isExpanded.toggle()
+        } label: {
+            HStack(spacing: Token.Spacing.tight) {
+                // 用进度圈而不是静态图标：这一行是"还在跑"的唯一提示。
+                ProgressView()
+                    .controlSize(.mini)
+                Text(String(localized: "思考中"))
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(.secondary)
+                if let current = currentActivityLabel {
+                    Text("·")
+                        .font(.footnote)
+                        .foregroundStyle(.tertiary)
+                    Text(current)
+                        .font(.footnote)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                Spacer(minLength: 0)
+                if !turn.collapsible.isEmpty {
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .frame(minHeight: Token.minimumHitTarget)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(turn.collapsible.isEmpty)
+        .accessibilityLabel(Text(String(localized: "思考中")))
+        .accessibilityHint(Text(isExpanded ? "收起这一轮的过程" : "展开这一轮的过程"))
+    }
+
+    /// 当前在做什么 —— 最新那条过程条目的名字。
+    ///
+    /// 只在**跑着的轮次**上用。取最后一条而不是"最后一条工具调用"：助手可能
+    /// 正在写正文（没有工具在跑），那时显示「正在写回复」比留着上一条
+    /// 已完成的工具名更准确。
+    private var currentActivityLabel: String? {
+        guard let item = turn.items.last(where: { item in
+            switch item.kind {
+            case .turnStart, .turnEnd, .userMessage: return false
+            default: return true
+            }
+        }) else { return nil }
+        switch item.kind {
+        case .toolCall(let call):
+            return call.name
+        case .assistantMessage(let message):
+            // 思考过程是助手消息里的 reasoning 块，不是独立条目 ——
+            // 只有推理、还没吐正文时如实说"正在思考"。
+            let hasText = !message.plainText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            return hasText ? String(localized: "正在写回复") : String(localized: "正在思考")
+        default:
+            return nil
         }
     }
 

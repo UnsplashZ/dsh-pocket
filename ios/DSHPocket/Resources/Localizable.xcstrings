@@ -3260,6 +3260,17 @@
         }
       }
     },
+    "思考中": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thinking"
+          }
+        }
+      }
+    },
     "思考中…": {
       "extractionState": "manual",
       "localizations": {
@@ -4422,6 +4433,17 @@
         }
       }
     },
+    "正在写回复": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Writing a reply"
+          }
+        }
+      }
+    },
     "正在和电脑握手，第一次可能要几秒。": {
       "extractionState": "manual",
       "localizations": {
@@ -4429,6 +4451,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Shaking hands with your computer — the first time can take a few seconds."
+          }
+        }
+      }
+    },
+    "正在思考": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reasoning"
           }
         }
       }

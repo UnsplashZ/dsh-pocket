@@ -668,6 +668,9 @@ EN: dict[str, str] = {
     "上一次连接还在进行中": "A connection attempt is already in progress",
     "%@\n连续失败 %lld 次。如果电脑端重装过插件或清过配对数据，请在「设置 → 主机」里删掉这台电脑，然后重新配对。":
         "%@\nFailed %lld times in a row. If the plugin was reinstalled or its pairing data was cleared on your computer, delete this computer under Settings → Computers and pair again.",
+    "思考中": "Thinking",
+    "正在写回复": "Writing a reply",
+    "正在思考": "Reasoning",
     "传输层：%@": "Transport: %@",
     "健康": "healthy",
     "%@\n如果是装完 App 第一次启动，请到「设置 → 隐私与安全性 → 本地网络」确认 DSH Pocket 是开的 —— 关着的话 iOS 会静默丢包，看起来就是一直连接中。":

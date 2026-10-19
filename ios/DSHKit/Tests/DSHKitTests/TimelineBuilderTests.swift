@@ -1223,6 +1223,71 @@ final class TimelineBuilderTests: XCTestCase {
         XCTAssertTrue(turnOnly.timelineBlocks().hasConversation)
     }
 
+    // MARK: 运行中的轮次也折叠（用户："运行过程中默认就多折叠一些"）
+
+    /// 跑着的轮次必须像桌面端那样收起来：摘要行 + 当前动作，点开才看全过程。
+    ///
+    /// 以前 `TurnGroupView` 对 `isComplete == false` 走的是"全展开"，一个长轮次
+    /// 边跑边把几十条工具行铺满屏幕（用户截图：连续几组 bash 刷了好几屏），
+    /// 正在等的那句结论被推到看不见的地方。
+    func testRunningTurnExposesCollapsibleItems() throws {
+        var builder = TimelineBuilder()
+        _ = builder.apply(try Fixture.event(Fixture.turnStart(1, seq: 0)))
+        _ = builder.apply(try Fixture.event(Fixture.userMessage("跑个命令", seq: 1)))
+        _ = builder.apply(try Fixture.event(
+            #"{"type":"tool/call","seq":2,"time":1791777000000,"data":{"callId":"c1","name":"bash","args":{}}}"#
+        ))
+        _ = builder.apply(try Fixture.event(Fixture.assistantMessage(text: "正在处理", seq: 3)))
+        // 注意：**没有 turn/end** —— 这一轮还在跑。
+
+        let blocks = builder.timelineBlocks()
+        guard case .turn(let turn)? = blocks.first(where: { if case .turn = $0 { return true }; return false }) else {
+            return XCTFail("应当有一个轮次块")
+        }
+        XCTAssertFalse(turn.isComplete, "这一轮还没结束")
+        XCTAssertFalse(turn.collapsible.isEmpty, "过程条目要能被收起来（否则运行中没法折叠）")
+        XCTAssertTrue(turn.expandedItems.count > turn.collapsedItems.count,
+                      "展开态应当比收起态多出过程条目")
+        XCTAssertEqual(turn.pinned.count, 1, "用户自己的话永远在明面上")
+    }
+
+    // MARK: 后台任务事件（真机 2026-10-19）
+
+    /// `job/registered` / `job/settled` 是后台任务的元数据事件，每条都带
+    /// `toolCall.callId` 指回**已经渲染过**的那次工具调用。实测一个 331 条记录的
+    /// 会话里 81 条这种事件，**全部**能对应到已有的 `tool/call` —— 一条不落地重复。
+    ///
+    /// 它们原来落进 default 分支画成「认不出」，屏幕上一半是灰条
+    /// （用户截图：连续几组 bash + job 事件刷了好几屏）。
+    /// 后台任务由独立面板（`session/jobs` → `JobsSheet`）承载，信息只多不少。
+    func testJobLifecycleEventsDoNotBecomeTimelineItems() throws {
+        var builder = TimelineBuilder()
+        _ = builder.apply(try Fixture.event("""
+        {"type":"job/registered","seq":10,"time":1792401102013,"data":{"jobId":"bash-1","owner":"s","kind":"bash","label":"grep -n x","startedAt":1792401102013,"toolCall":{"callId":"call_1","rootCallId":"call_1"}}}
+        """))
+        _ = builder.apply(try Fixture.event("""
+        {"type":"job/settled","seq":11,"time":1792401102027,"data":{"jobId":"bash-1","owner":"s","kind":"bash","label":"grep -n x","startedAt":1792401102013,"toolCall":{"callId":"call_1","rootCallId":"call_1"},"finishedAt":1792401102027,"status":"completed","cause":"producer","producerReported":true,"detail":"exit code: 0"}}
+        """))
+
+        XCTAssertTrue(builder.items.isEmpty, "后台任务事件不该进时间线，实际 \(builder.items.count) 条")
+        let unknowns = builder.items.filter { if case .unknown = $0.kind { return true }; return false }
+        XCTAssertTrue(unknowns.isEmpty, "更不该落进 unknown 画成「认不出」")
+    }
+
+    /// 反过来：真的不认识的类型仍然要被保留并显示 —— 丢弃只针对已知的 job 事件，
+    /// 别把"协议漂移检测"一起关掉。
+    func testUnknownEventsAreStillKept() throws {
+        var builder = TimelineBuilder()
+        _ = builder.apply(try Fixture.event(
+            #"{"type":"brand/new-event","seq":1,"time":1792401102013,"data":{"x":1}}"#
+        ))
+        XCTAssertEqual(builder.items.count, 1)
+        guard case .unknown(let type, _) = builder.items[0].kind else {
+            return XCTFail("未知事件应当保留成 unknown，实际：\(builder.items[0].kind)")
+        }
+        XCTAssertEqual(type, "brand/new-event")
+    }
+
     // MARK: 原始快照（本机抓包，缺失时跳过）
 
     func testRealCapturedSnapshotsIfPresent() throws {

@@ -654,6 +654,19 @@ public struct TimelineBuilder: Sendable {
                 into: &delta
             )
 
+        // **后台任务的元数据事件不进时间线。**
+        //
+        // `job/registered` / `job/settled` 是"这个 bash 任务起停了"的通知，每条都带
+        // `toolCall.callId` 指回**已经渲染过**的那次工具调用。实测一个 331 条记录的
+        // 会话里 81 条这种事件，**全部**能对应到已有的 `tool/call` —— 一条不落地重复。
+        // 它们原来落进 `default` 分支画成「认不出」，屏幕上一半是这种灰条（用户截图）。
+        //
+        // 后台任务本身由 `session/jobs`（独立面板 `JobsSheet`）承载，那里有完整的
+        // jobId/label/status/退出码，信息只多不少。所以这里直接丢弃，不占时间线。
+        case "job/registered", "job/settled", "job/started", "job/progress",
+             "job/output", "job/exited", "job/killed":
+            return delta
+
         default:
             if event.ignorable {
                 // 宿主明确标记"不认识也能跳过"的外部事件：静默跳过，不占用 UI。
