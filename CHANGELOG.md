@@ -22,7 +22,24 @@ All notable changes to this project are documented here.
 
 ---
 
-## [0.4.17] — 2026-10-19
+## [0.4.18] — 2026-10-19
+
+### Fixed
+
+- **换会话后屏幕一片空白，必须手动拖一下才回来**（用户："刚刚又触发了一下屏幕空白，
+  必须手动拖动一下才可以"）。这次日志里**没有任何 `mux 断开`** —— 0.4.17 的 ping
+  修复生效了，所以问题不在连接层，纯粹是滚动状态跨会话泄漏：
+  `SessionView` 切换会话时是**同一个视图实例**（`@State` 会保留），而
+  `userTookOverScroll` 一旦被手势置成 true 就再也没人清过。于是
+  "在 A 里往上翻过 → 点进 B"会得到：
+  · `BottomScrollAnchor(followsContentChanges: !userTookOverScroll)` 拿到 `false`，
+    **初始锚点被整个撤掉**；
+  · `isFollowingBottom` 还是上一个会话留下的 `false`；
+  → B 既没有初始锚点、也不跟随底部，滚动停在内容之外，屏幕一片空白。
+  手动拖一下会被 `onPreferenceChange` 里的逻辑重新算一次，所以"拖一下就好"。
+  `.onAppear` 里现在把 `isFollowingBottom`、`userTookOverScroll`、
+  `lastAutoLoadedSeq` 一起归零 —— 翻旧内容是**单次会话内**的意图，不该跨会话继承。
+
 
 ### Fixed
 

@@ -92,7 +92,25 @@ struct SessionView: View {
                 #endif
             }
         }
-        .onAppear { model.activeSessionId = summary.sessionId }
+        .onAppear {
+            model.activeSessionId = summary.sessionId
+            // **换会话时把滚动状态归零。**
+            //
+            // 这个视图在切换会话时是**同一个实例**（`@State` 会保留），
+            // 而 `userTookOverScroll` 一旦被手势置成 true 就再也没人清过。
+            // 于是"在 A 里往上翻过 → 点进 B"会出现：
+            //   · `BottomScrollAnchor(followsContentChanges: !userTookOverScroll)`
+            //     拿到 false，**初始锚点被整个撤掉**；
+            //   · `isFollowingBottom` 还是上次的 false；
+            //   → B 既没有初始锚点也不跟随底部，停在内容之外，
+            //     屏幕一片空白，必须手动拖一下才回来
+            //（用户 2026-10-19："刚刚又触发了一下屏幕空白，必须手动拖动一下才可以"）。
+            // 翻旧内容是**单次会话内**的意图，不该跨会话继承。
+            isFollowingBottom = true
+            userTookOverScroll = false
+            // 节流用的边界也一起清 —— 否则上一个会话补到哪儿会挡住这一个的自动补齐。
+            lastAutoLoadedSeq = nil
+        }
         .onDisappear {
             if model.activeSessionId == summary.sessionId { model.activeSessionId = nil }
             // 补滚任务持有 view 的 proxy，视图走了没有再跑的道理（也会白等 60ms）。
