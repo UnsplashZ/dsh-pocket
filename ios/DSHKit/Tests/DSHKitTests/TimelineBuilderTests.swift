@@ -996,7 +996,12 @@ final class TimelineBuilderTests: XCTestCase {
         //   · **折叠语义**又变了（`deliverables/presented` 改成按真实形状读 `files`）→
         //     旧缓存里那条产物条目是空列表，而 `resume` 不会再折一遍产物事件，
         //     卡片就永远是空的（"交付的文件看不到"，且看不出原因）。
-        XCTAssertEqual(TimelineBuilder.State.currentSchemaVersion, 6)
+        //   · **条目的产生规则**变了（`job/registered`、`job/settled` 不再进时间线）→
+        //     旧缓存里那些 unknown 条目还在，而 `resume` 只应用新事件 ——
+        //     它们永远留在时间线上，一半是认不出的灰条（用户："历史对话被异常
+        //     展示为思考中"、"一半是认不出"）。
+        XCTAssertEqual(TimelineBuilder.State.currentSchemaVersion, 7)
+        XCTAssertNil(TimelineBuilder(state: TimelineBuilder.State(schemaVersion: 6)))
         XCTAssertNil(TimelineBuilder(state: TimelineBuilder.State(schemaVersion: 5)))
         XCTAssertNil(TimelineBuilder(state: TimelineBuilder.State(schemaVersion: 4)))
         XCTAssertNil(TimelineBuilder(state: TimelineBuilder.State(schemaVersion: 3)))
@@ -1221,6 +1226,34 @@ final class TimelineBuilderTests: XCTestCase {
         _ = turnOnly.apply(try Fixture.event(Fixture.assistantMessage(text: "在", seq: 1)))
         _ = turnOnly.apply(try Fixture.event(Fixture.turnEnd(1, seq: 2)))
         XCTAssertTrue(turnOnly.timelineBlocks().hasConversation)
+    }
+
+    // MARK: 轮次边界判定（用户："有时候会话已经结束了，点进来还显示运行中"）
+
+    /// `isTurnOpen == false` 有两种含义，必须能区分：
+    ///   · 见过 `turn/end`（有边界）→ 真的结束了，不要被过期的列表标志翻案；
+    ///   · 一条轮次事件都没有（没边界）→ 日志说明不了，只能退回列表标志。
+    func testTurnBoundaryDistinguishesFinishedFromUnknown() throws {
+        // 有边界且已结束
+        var finished = TimelineBuilder()
+        _ = finished.apply(try Fixture.event(Fixture.turnStart(1, seq: 0)))
+        _ = finished.apply(try Fixture.event(Fixture.turnEnd(1, seq: 1)))
+        XCTAssertTrue(finished.hasTurnBoundary)
+        XCTAssertFalse(finished.isTurnOpen, "有 turn/end 就是结束了")
+
+        // 有边界但还开着
+        var open = TimelineBuilder()
+        _ = open.apply(try Fixture.event(Fixture.turnStart(1, seq: 0)))
+        XCTAssertTrue(open.hasTurnBoundary)
+        XCTAssertTrue(open.isTurnOpen)
+
+        // 没有边界：只有会话头（标题、权限 note），日志说明不了跑没跑
+        var noBoundary = TimelineBuilder()
+        _ = noBoundary.apply(try Fixture.event(
+            #"{"type":"permission/preset","seq":0,"time":1792397423709,"data":{"preset":"workspace-write"}}"#
+        ))
+        XCTAssertFalse(noBoundary.hasTurnBoundary)
+        XCTAssertFalse(noBoundary.isTurnOpen, "没有边界时 isTurnOpen 也是 false，但调用方不该据此断言'没在跑'")
     }
 
     // MARK: 运行中的轮次也折叠（用户："运行过程中默认就多折叠一些"）

@@ -340,8 +340,16 @@ public final class SessionModel {
                 builder.applyResuming(newEvents[index..<end])
                 index = end
                 // 每片之后把视图拉回底部：缓存与宿主差异越大，这一段越关键。
+                //
+                // 但**不用每片都发**：一个 3000 条的会话能折出几十片，而每片都会
+                // 触发一次滚动 + 一次重绘。真机上它们叠在一起，落点被甩到内容之外
+                //（用户："打开长对话会莫名其妙的往下滚，然后屏幕一片白"）。
+                // 每 4 片发一次，配合视图侧的单飞补滚就够了；最后一片之后
+                // `finishResume` 那里还有一次明确的请求。
                 publish()
-                requestScrollToBottom()
+                if index % (chunkSize * 4) == 0 || index >= newEvents.count {
+                    requestScrollToBottom()
+                }
                 await Task.yield()
             }
             builder.finishResume(with: snapshot)
@@ -452,9 +460,12 @@ public final class SessionModel {
         builder.setCursor(snapshot.cursor)
         lastSeq = max(lastSeq, Double(snapshot.cursor))
         phase = .live
-        // 日志里能看出这一轮还开着就用它；看不出来（有界快照切在半途）
-        // 就退回会话列表给的 running —— **不能无条件设 false**。
-        isTurnRunning = builder.isTurnOpen || summaryIsRunning
+        // 日志里能看出这一轮还开着就用它；**日志里有明确的轮次边界时以日志为准** ——
+        // 那种情况下"没开着"就是真结束了，不能再让 20 秒才刷一次的列表标志
+        // 把它翻回「运行中」（用户："有时候会话已经结束了，点进来还显示运行中"）。
+        // 只有在日志压根说明不了（有界快照切在半途、一条轮次事件都没有）时，
+        // 才退回会话列表给的 running。
+        isTurnRunning = builder.hasTurnBoundary ? builder.isTurnOpen : (builder.isTurnOpen || summaryIsRunning)
         syncTurnTimer()
         publish()
         // 快照分完了：这时候布局才稳定，明确要求滚到底一次。

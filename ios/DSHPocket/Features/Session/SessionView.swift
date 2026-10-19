@@ -35,6 +35,14 @@ struct SessionView: View {
     @State private var userTookOverScroll = false
     @State private var lastKnownTailId: String?
     @State private var highlightId: String?
+    /// 正在跑的那次"补滚"任务（见 `scrollToBottomTicket` 的 onChange）。
+    ///
+    /// 存在的理由：长对话冷启动时快照是**分片**折进来的（每 120 条一次
+    /// `requestScrollToBottom`），一个 3000 条的会话能连发几十次。每次都起一个
+    /// 60ms 后补滚的 Task，它们会一起醒来互相拉扯，落点被甩到内容之外 ——
+    /// 用户看到的就是"打开长对话先往下滚、然后一片白"。
+    /// 所以补滚**单飞**：新请求直接作废旧的那次，只保留最后一次。
+    @State private var settleScrollTask: Task<Void, Never>?
 
     private let bottomAnchor = "timeline-bottom"
 
@@ -81,6 +89,9 @@ struct SessionView: View {
         .onAppear { model.activeSessionId = summary.sessionId }
         .onDisappear {
             if model.activeSessionId == summary.sessionId { model.activeSessionId = nil }
+            // 补滚任务持有 view 的 proxy，视图走了没有再跑的道理（也会白等 60ms）。
+            settleScrollTask?.cancel()
+            settleScrollTask = nil
             session?.close()
         }
         .sheet(isPresented: $showFiles) {
@@ -303,9 +314,14 @@ struct SessionView: View {
                 // **再补一次。** `LazyVStack` 是惰性的：第一次 `scrollTo` 时
                 // 下面几屏还没布局出来，落点会偏短，看起来像"停在半路"——
                 // 点进一个积压了很多新消息的会话时最明显。
-                Task { @MainActor in
+                //
+                // **单飞**：分片折叠会连发几十次 ticket，原先每次都起一个 Task，
+                // 它们同时醒来会互相拉扯，把落点推到内容之外（"打开长对话先往下滚、
+                // 然后一片空白"）。这里先作废旧的那次，只保留最新一次的补滚。
+                settleScrollTask?.cancel()
+                settleScrollTask = Task { @MainActor in
                     try? await Task.sleep(for: .milliseconds(60))
-                    guard isFollowingBottom else { return }
+                    guard !Task.isCancelled, isFollowingBottom else { return }
                     scrollToBottom(proxy, animated: false)
                 }
             }

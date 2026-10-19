@@ -95,7 +95,13 @@ public struct TimelineBuilder: Sendable {
         /// 旧缓存里那条产物条目是**空列表**，而 `resume(with:)` 只应用
         /// `seq > lastSeq` 的事件 —— 产物事件不会再被折一遍，卡片就永远是空的。
         /// 不升版的话，修好之后用户还是"看不到交付的文件"，且看不出原因。
-        public static let currentSchemaVersion = 6
+        ///
+        /// 6 → 7：`job/registered`、`job/settled` 等后台任务事件不再折成条目
+        /// （它们 100% 重复 `tool/call`，以前画成「认不出」）。但旧缓存里那些
+        /// `unknown` 条目**还在**，而 `resume(with:)` 只应用新事件 —— 它们永远
+        /// 留在时间线上，用户看到的就是"一半是认不出的灰条"、
+        /// 以及"历史对话被异常展示成思考中"。不升版，这个修复对老会话等于没生效。
+        public static let currentSchemaVersion = 7
 
         public var schemaVersion: Int = State.currentSchemaVersion
         public var header: SessionHeader?
@@ -265,6 +271,26 @@ public struct TimelineBuilder: Sendable {
             }
         }
         return false
+    }
+
+    /// 日志里**有没有明确的轮次边界**（见过 `turn/start` 或 `turn/end`）。
+    ///
+    /// 用来区分 `isTurnOpen == false` 的两种含义，它们完全不同：
+    ///   · **有边界**：这一轮确实结束了 → 就是没在跑，不要再让别的标志翻案；
+    ///   · **没边界**：快照有界、切在会话头/一轮中段之外，日志压根说明不了
+    ///     "现在跑没跑" → 只能退回会话列表给的 `running`。
+    ///
+    /// 之前没有这个概念，上层写的是 `isTurnOpen || summaryIsRunning`，
+    /// 等价于"列表说在跑就算在跑"。而列表是**20 秒才刷一次**的弱信号，
+    /// 过期之后会把一个早就结束的会话一直显示成「运行中」
+    ///（用户："有时候会话已经结束了，点进来还显示运行中"）。
+    public var hasTurnBoundary: Bool {
+        items.contains { item in
+            switch item.kind {
+            case .turnStart, .turnEnd: return true
+            default: return false
+            }
+        }
     }
 
     /// 排队中的消息。
