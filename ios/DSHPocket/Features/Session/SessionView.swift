@@ -155,7 +155,22 @@ struct SessionView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: Token.Spacing.compact) {
-                    if session.phase == .loading, session.items.isEmpty {
+                    // **加载态不能跟"有没有条目"绑在一起。**
+                    //
+                    // 以前是 `phase == .loading && items.isEmpty` 才画骨架。
+                    // 而真机上最难受的那几秒恰恰是 `phase == .loading` 但
+                    // `items` **非空**（缓存恢复出 101 条）：骨架被跳过、内容
+                    // 又因为快照还在折/会话流正在重订阅而没渲染出来 ——
+                    // 两个分支都不画，屏幕就是纯空白，要等好几秒。
+                    //（用户 2026-10-19："手机上又出现点击会话一片空白的情况了，
+                    //  等了好几秒才正常"，截图里空白 + 「跳到最新」可见。）
+                    //
+                    // 现在的判据是"**屏幕上真的有东西可看吗**"：
+                    // 还在 loading、而且既没有可渲染的块也没有非隐藏条目 ——
+                    // 那才是"什么都没有"的时刻，画骨架。
+                    // 有缓存内容时它照常渲染，骨架不插队（不制造跳动）。
+                    if session.phase == .loading, !hasConversation(session),
+                       session.items.filter({ !$0.isShadowed }).isEmpty {
                         skeleton
                     }
 
@@ -239,7 +254,19 @@ struct SessionView: View {
                         .frame(height: 1)
                         .id(bottomAnchor)
                         .onAppear { isFollowingBottom = true }
-                        .onDisappear { isFollowingBottom = false }
+                        // **`onDisappear` 不能把 `isFollowingBottom` 置 false。**
+                        //
+                        // `LazyVStack` 会**回收**滚出视口的子视图 —— 那个哨兵消失
+                        // 只说明"它被回收了"，不说明"用户离开了底部"。可它一旦把
+                        // 标志打成 false，就再没有任何东西会把它变回 true
+                        // （哨兵已经被回收、不会再 onAppear），于是：
+                        //   · 视图不再跟随新内容；
+                        //   · 「跳到最新」按钮冒出来；
+                        //   · 滚动位置停在内容之外 —— 屏幕一片空白，等好几秒才恢复
+                        //（用户 2026-10-19 截图：空白 + 「跳到最新」可见）。
+                        //
+                        // "用户是不是接管了滚动"由真实手势（`userTookOverScroll`）判断，
+                        // 那是唯一可靠的信号；视图回收不是。
                 }
                 .padding(.vertical, Token.Spacing.compact)
                 // **不要**在这里开 `.textSelection(.enabled)`。

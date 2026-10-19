@@ -459,9 +459,9 @@ public final class SessionModel {
         if hasVisibleContent {
             builder = rebuilt
             publish()
-            logs.log(.info, "全量重建完成（双缓冲，\\(events.count) 条事件），期间旧内容一直在屏幕上")
+            logs.log(.info, "全量重建完成（双缓冲，\(events.count) 条事件），期间旧内容一直在屏幕上")
         } else {
-            logs.log(.info, "冷启动折叠完成（\\(events.count) 条事件）")
+            logs.log(.info, "冷启动折叠完成（\(events.count) 条事件）")
         }
         // **把宿主给的 cursor 落到 builder 上。**
         //
