@@ -199,13 +199,33 @@ public final class AppModel {
 
     // MARK: 初始化
 
+    /// 日志落盘的位置（App 容器内，`devicectl` 可以直接取）。
+    ///
+    /// 用 `Library/Logs` 而不是 `Documents`：它不会被"文件"App 暴露给用户，
+    /// 也不需要 iCloud 备份（`Logs` 默认被排除）。
+    private static var logFileURL: URL? {
+        FileManager.default
+            .urls(for: .libraryDirectory, in: .userDomainMask)
+            .first?
+            .appendingPathComponent("Logs/dsh-pocket.log")
+    }
+
     convenience init() {
         self.init(settings: AppSettings())
     }
 
     init(settings: AppSettings) {
         self.settings = settings
-        self.logs = MemoryLogSink(capacity: 2_000, minimumLevel: .debug)
+        // 日志同时落盘：连接类 bug 的现场往往在"App 被杀之后"，内存缓冲那时已经没了。
+        // 落盘后可以用 devicectl 一条命令取回，不用每次让用户手动导出：
+        //   xcrun devicectl device copy from --device <UDID> \
+        //     --domain-type appDataContainer --domain-identifier cc.unsplashz.dshpocket \
+        //     --source Library/Logs/dsh-pocket.log --destination /tmp/
+        self.logs = MemoryLogSink(
+            capacity: 2_000,
+            minimumLevel: .debug,
+            fileURL: Self.logFileURL
+        )
         self.sessionCache = SessionCache()
 
         let tether = TetherSession(
