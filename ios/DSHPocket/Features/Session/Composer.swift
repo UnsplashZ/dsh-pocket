@@ -148,13 +148,12 @@ struct Composer: View {
 
                     Spacer(minLength: Token.Spacing.hairline)
 
-                    // 跑着的时候**不显示**上下文条：那一行已经有三个动作按钮，
-                    // 再塞一根进度条会把权限胶囊和百分比都挤到截断（实测）。
-                    // 百分比挪到下面的统计行里，信息不丢。
-                    if !isRunning {
-                        contextBar
-                    }
-
+                    // 上下文占用**只留在底部统计行**里（"上下文 N%"）。
+                    //
+                    // 这里原来还有一根 44pt 的进度条 + 百分数，和底部那行完全重复，
+                    // 而且两处的取整方向不同，屏幕上会同时出现 "30%" 和 "31%"
+                    //（用户 2026-10-19："这个上下文的进度条和数字是不是有点多余了"）。
+                    // 删掉进度条后这一行也腾出空间给权限胶囊。
                     actionButtons
                 }
             }
@@ -784,35 +783,6 @@ struct Composer: View {
     private static let contextBarHeight = Token.Control.diameter
     private static let statsLineHeight: CGFloat = 16
 
-    @ViewBuilder
-    private var contextBar: some View {
-        if let pressure = session.contextPressure, pressure.contextWindow > 0 {
-            let ratio = min(1, Double(pressure.pressureTokens) / Double(pressure.contextWindow))
-            HStack(spacing: Token.Spacing.hairline) {
-                Capsule(style: .continuous)
-                    .fill(Color(.tertiarySystemFill))
-                    .frame(width: 44, height: 5)
-                    .overlay(alignment: .leading) {
-                        Capsule(style: .continuous)
-                            .fill(ratio > 0.85 ? Color.orange : Color.accentColor)
-                            .frame(width: max(3, 44 * ratio))
-                    }
-                // `verbatim`：这就是个百分数，不该进本地化目录
-                // （写成 `Text("\(…)")` 会生成一条 key 为 `%lld%` 的条目）。
-                Text(verbatim: "\(Int(ratio * 100))%")
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(ratio > 0.85 ? Color.orange : Color.secondary)
-            }
-            .frame(height: Self.contextBarHeight)
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel(Text(String(format: String(localized: "上下文占用 %lld%%"), Int(ratio * 100))))
-            .accessibilityValue(Text(Format.contextPressure(pressure) ?? ""))
-        } else {
-            // 占位：不显示任何东西，但**占住同样的高度**，数据到达时位置不跳。
-            Color.clear.frame(width: 0, height: Self.contextBarHeight)
-        }
-    }
-
     // MARK: 会话统计
 
     /// 输入框下面那行：轮数 / 步数 / 首字延迟 / 解码速度 / 缓存命中。
@@ -831,7 +801,13 @@ struct Composer: View {
                 HStack(spacing: Token.Spacing.hairline) {
                     Text(statTexts(stats).joined(separator: " · "))
                         .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        // **上下文快满时整行变橙**。
+                        //
+                        // 这行原来只是 `.tertiary` 的灰字，而"快满了要压缩历史"
+                        // 的预警一直由旁边那根进度条承担。进度条删掉之后（它和这里
+                        // 的「上下文 N%」完全重复，还会同时显示 30% / 31%），
+                        // 预警不能一起消失 —— 改成整行变色，不额外占空间。
+                        .foregroundStyle(contextIsTight ? Color.orange : Color.secondary.opacity(0.75))
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                 }
@@ -864,6 +840,14 @@ struct Composer: View {
         }
     }
 
+    /// 上下文吃紧（≥85%）—— 统计行据此变色。
+    ///
+    /// 阈值跟原来那根进度条一致（> 0.85 变橙），行为不变、只是换了承载物。
+    private var contextIsTight: Bool {
+        guard let pressure = session.contextPressure, pressure.contextWindow > 0 else { return false }
+        return Double(pressure.pressureTokens) / Double(pressure.contextWindow) > 0.85
+    }
+
     private func statTexts(_ stats: SessionStats) -> [String] {
         var parts: [String] = []
         parts.append(String(format: String(localized: "%lld 轮"), stats.turns))
@@ -877,7 +861,8 @@ struct Composer: View {
         if let cache = session.tokenUsage.cacheHitRate {
             parts.append(String(format: String(localized: "缓存 %.0f%%"), cache * 100))
         }
-        // 上下文占用挪到这里 —— 跑着的时候上面那行没地方放它。
+        // 上下文占用**只在这里显示**（原来输入框右边还有一根进度条 + 百分数，
+        // 重复且取整不一致，屏幕上会同时出现 30% 和 31%）。
         if let pressure = session.contextPressure, pressure.contextWindow > 0 {
             let ratio = min(1, Double(pressure.pressureTokens) / Double(pressure.contextWindow))
             parts.append(String(format: String(localized: "上下文 %.0f%%"), ratio * 100))
