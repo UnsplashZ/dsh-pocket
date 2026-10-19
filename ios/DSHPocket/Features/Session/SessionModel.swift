@@ -659,7 +659,14 @@ public final class SessionModel {
     ///      `hasMoreHistory` 被永久置成 false，"往上翻历史"整条链路死掉，
     ///      只有退出会话重进（走缓存恢复、cursor 被正确设上）才能恢复。
     ///      这里宁可**不发**也不发一个坏的游标：等 `cursor >= 0` 再来。
-    func loadOlderHistoryIfNeeded() async {
+    ///
+    /// - Parameter revealInserted: 补完之后要不要把视图**滚到新进来的那一条**。
+    ///   只有"用户主动按「载入更早的内容」"时才该 `true` —— 那是他明确要看更早的东西。
+    ///   自动补齐（滚到顶部触发）必须传 `false`：新内容插在**视口上方**，而
+    ///   `ScrollView` 自己会把当前内容锚在原处，用户看到的画面是稳的。
+    ///   以前这里无条件滚，于是"补历史往下拽、贴底逻辑往上拉"同时发生，
+    ///   屏幕一顿乱跳（用户："一边往上滚补历史消息，一边往下滚去最新消息"）。
+    func loadOlderHistoryIfNeeded(revealInserted: Bool = false) async {
         guard hasMoreHistory, !isLoadingHistory else { return }
         // cursor < 0 = 还没从快照拿到"覆盖到哪"。此时发出去只会拿到空页，
         // 然后被当成"没有更早的内容"记下来（见上）。不发，等下一次触发。
@@ -692,7 +699,11 @@ public final class SessionModel {
             hasMoreHistory = page.hasMore
             publish()
             // 让视图滚到新内容的第一条 —— 否则它插在视口上方，看起来什么都没发生。
-            if let first = delta.inserted.min(by: { $0.seq < $1.seq }) {
+            //
+            // **只在用户主动点「载入更早的内容」时做。** 自动补齐路径不滚：
+            // 插在上方的内容由系统保持视口锚定，画面本来就是稳的；
+            // 再滚一次反而会和贴底互相拉扯（见上面的参数说明）。
+            if revealInserted, let first = delta.inserted.min(by: { $0.seq < $1.seq }) {
                 // **滚它所属的那个块，不是它自己。** 补进来的第一条很可能已经被
                 // 收进一个收拢的轮次里（窗口顶部那半截、或者页边界落在某个已加载
                 // 轮次的中段）—— 那时它的 `.id` 不在视图里，`scrollTo` 静默失效，

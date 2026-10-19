@@ -43,6 +43,12 @@ struct SessionView: View {
     /// 用户看到的就是"打开长对话先往下滚、然后一片白"。
     /// 所以补滚**单飞**：新请求直接作废旧的那次，只保留最后一次。
     @State private var settleScrollTask: Task<Void, Never>?
+    /// 上一次自动补历史时时间线最老那条的 seq。
+    ///
+    /// 作用是节流：补齐之后顶部哨兵仍然在视口里，如果只靠 `offset > -120`
+    /// 判断，会一页接一页地拉取。只有用户继续上翻、最老那条真的变了，
+    /// 才补下一页。
+    @State private var lastAutoLoadedSeq: Double?
 
     private let bottomAnchor = "timeline-bottom"
 
@@ -389,8 +395,21 @@ struct SessionView: View {
                 //
                 // 等首次贴底落定之后才允许自动补。
                 guard canAutoLoadHistory else { return }
+                // **必须是用户自己滑上去的**（`userTookOverScroll`），
+                // 而不是"刚进会话、内容还短、哨兵恰好露头"。
+                guard userTookOverScroll else { return }
                 guard offset > -120 else { return }
-                Task { await session.loadOlderHistoryIfNeeded() }
+                // **补过一页就别接着补**：补齐后哨兵仍在视口里，不加这道闸
+                // 会一页接一页地拉，用户往上翻的时候内容一直在变。
+                // 等用户继续上翻（`lastAutoLoadedSeq` 变化）再补下一页。
+                guard session.items.first?.seq != lastAutoLoadedSeq else { return }
+                // 静默补齐：不改变滚动位置，用户接着往上翻就是了。
+                // **补完再记**：补进来之后最老那条会变小，记成"补完之后的值"
+                // 才能挡住"同一条边界反复触发"。
+                Task {
+                    await session.loadOlderHistoryIfNeeded()
+                    lastAutoLoadedSeq = session.items.first?.seq
+                }
             }
             .task {
                 // 给首次布局 + 贴底留出时间，之后才开放"往上滑自动补"。
@@ -442,7 +461,8 @@ struct SessionView: View {
                 ProgressView().controlSize(.small)
             } else {
                 Button {
-                    Task { await session.loadOlderHistoryIfNeeded() }
+                    // 用户明确要看更早的东西 —— 补完把这页的开头滚进视野。
+                    Task { await session.loadOlderHistoryIfNeeded(revealInserted: true) }
                 } label: {
                     Label("载入更早的内容", systemImage: "arrow.up.circle")
                 }
@@ -451,7 +471,13 @@ struct SessionView: View {
             Spacer()
         }
         .padding(.vertical, Token.Spacing.tight)
-        .onAppear { Task { await session.loadOlderHistoryIfNeeded() } }
+        // **不要 `.onAppear { loadOlderHistoryIfNeeded() }`。**
+        //
+        // 这个加载器在时间线**最顶部**，进会话时内容较短，它本来就落在视口里 ——
+        // 于是"打开会话"这个动作会立刻触发补历史，把更早的内容插到上方、
+        // 再把视图拽过去，同时底部的贴底逻辑还在往下拉。用户看到的就是
+        // "一边往上滚补历史、一边往下滚去最新消息"（真机反馈）。
+        // 自动补齐改由"用户真的滑到顶部"那条 `onPreferenceChange` 触发。
     }
 
     private func shadowedSection(_ session: SessionModel) -> some View {
