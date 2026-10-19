@@ -22,7 +22,22 @@ All notable changes to this project are documented here.
 
 ---
 
-## [0.4.14] — 2026-10-19
+## [0.4.15] — 2026-10-19
+
+### Fixed
+
+- **点进对话时底部数据栏会跳一下**（用户："底部的统计数据没有提前占位，每次点进对话，
+  底部数据栏都会跳一下"）。两处都是"条件渲染 + 数据异步到达"：
+  1. `statsLine` 在 `stats.isEmpty` 时**整行不渲染**，等第一次 `session/projections`
+     回来才凭空出现，把上面整块内容顶上去一截；
+  2. `contextBar`（那根 29% 的进度条）同样只在 `contextPressure != nil` 时渲染，
+     出现/消失都会改变这一行的高度；
+  3. 统计项本身也是逐项到的（先「轮/步」，随后的 `tok/s`、`缓存`、`上下文`
+     要等后续投影），字数一变换行与否也会让这一行忽高忽低。
+  现在两者**始终占住固定高度**（`contextBarHeight` / `statsLineHeight`），
+  数据没到就是空的但位置不变；统计文本行限死单行高度，长度靠 `minimumScaleFactor` 兜。
+  模拟器连拍对比：底部区域布局逐帧一致，只有计时器数字在变。
+
 
 ### Added
 

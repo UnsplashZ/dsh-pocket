@@ -774,6 +774,16 @@ struct Composer: View {
     ///
     /// 这个数字是"还能聊多久"的唯一线索 —— 快满的时候模型会开始压缩历史，
     /// 用户得能提前看到。桌面端把它放在输入框右边。
+    /// **固定高度的占位常量。**
+    ///
+    /// 数据和视图的到达时间不一样：点进会话时 `contextPressure` / `sessionStats`
+    /// 往往要等第一次 `session/projections` 回来才有。以前这两个区域都是
+    /// 条件渲染 —— 数据一到就凭空出现，把下面整块内容**顶上去一截**，
+    /// 用户看到的就是"点进对话，底部数据栏跳一下"（2026-10-19 反馈）。
+    /// 现在两者都**始终占住固定高度**，数据没到就是空的，位置不跳。
+    private static let contextBarHeight = Token.Control.diameter
+    private static let statsLineHeight: CGFloat = 16
+
     @ViewBuilder
     private var contextBar: some View {
         if let pressure = session.contextPressure, pressure.contextWindow > 0 {
@@ -793,10 +803,13 @@ struct Composer: View {
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(ratio > 0.85 ? Color.orange : Color.secondary)
             }
-            .frame(height: Token.Control.diameter)
+            .frame(height: Self.contextBarHeight)
             .accessibilityElement(children: .combine)
             .accessibilityLabel(Text(String(format: String(localized: "上下文占用 %lld%%"), Int(ratio * 100))))
             .accessibilityValue(Text(Format.contextPressure(pressure) ?? ""))
+        } else {
+            // 占位：不显示任何东西，但**占住同样的高度**，数据到达时位置不跳。
+            Color.clear.frame(width: 0, height: Self.contextBarHeight)
         }
     }
 
@@ -823,6 +836,10 @@ struct Composer: View {
                         .minimumScaleFactor(0.8)
                 }
                 .frame(maxWidth: .infinity, alignment: .center)
+                // **固定行高**：统计项是逐项到达的（先"轮/步"，随后的
+                // `tok/s`、`缓存`、`上下文` 要等后续投影），字数一变换行与否
+                // 都会让这一行忽高忽低。限死单行高度，长度靠 `minimumScaleFactor` 兜。
+                .frame(height: Self.statsLineHeight)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -832,6 +849,18 @@ struct Composer: View {
             .padding(.bottom, Token.Spacing.tight)
             .accessibilityElement(children: .combine)
             .accessibilityLabel(Text(statTexts(stats).joined(separator: "，")))
+        } else {
+            // **没数据也要占住这块高度。**
+            //
+            // 以前 `stats.isEmpty` 时整行不渲染：点进会话的瞬间没有这一行，
+            // 等第一次 `session/projections` 回来才出现 —— 内容被顶上去，
+            // 用户看到"底部数据栏跳一下"（2026-10-19 反馈）。
+            // 现在空态同样占住高度与内边距，位置不跳。
+            Color.clear
+                .frame(height: Self.statsLineHeight)
+                .padding(.horizontal, Token.Spacing.gutter)
+                .padding(.top, Token.Spacing.hairline)
+                .padding(.bottom, Token.Spacing.tight)
         }
     }
 
