@@ -1042,6 +1042,23 @@
         }
       }
     },
+    "传输层：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transport: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "传输层：%@"
+          }
+        }
+      }
+    },
     "你的回答": {
       "extractionState": "manual",
       "localizations": {

@@ -10,6 +10,9 @@ struct DiagnosticsView: View {
     @State private var isRunningSelfCheck = false
     @State private var selfCheck: [CheckResult] = []
     @State private var showsRawLog = false
+    /// 传输层此刻的**事实**。和 `model.connection`（界面状态）分开存：
+    /// 两者脱节正是已知 bug 的形状（"明明已经连接上了，界面还在连接中"）。
+    @State private var transportHealthy: Bool?
 
     struct CheckResult: Identifiable {
         let id = UUID()
@@ -31,11 +34,13 @@ struct DiagnosticsView: View {
         .task {
             await model.refreshDiagnostics()
             logEntries = await model.logs.snapshot()
+            transportHealthy = await model.transportSnapshot().healthy
         }
         .refreshable {
             await model.refreshDiagnostics()
             await model.refreshSessions()
             logEntries = await model.logs.snapshot()
+            transportHealthy = await model.transportSnapshot().healthy
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -253,6 +258,9 @@ struct DiagnosticsView: View {
     private var exportText: String {
         var lines: [String] = [String(localized: "# DSH Pocket 诊断"), ""]
         lines.append(String(localized: "状态：\(model.connection.label)"))
+        if let transportHealthy {
+            lines.append(String(localized: "传输层：\(transportHealthy ? "健康" : "未连接")"))
+        }
         lines.append(String(localized: "mux：\(muxLabel)"))
         if let diagnostics = model.diagnostics {
             lines.append(String(localized: "路径：\(pathLabel)"))

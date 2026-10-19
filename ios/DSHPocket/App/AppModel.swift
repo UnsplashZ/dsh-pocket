@@ -25,25 +25,20 @@ public final class AppModel {
 
     // MARK: 连接状态
 
-    enum Connection: Equatable {
-        case idle
-        case connecting(hostId: String)
-        case connected(mode: String)
-        case failed(String)
-
-        var isConnected: Bool { if case .connected = self { return true }; return false }
-
-        var label: String {
-            switch self {
-            case .idle: return String(localized: "未连接")
-            case .connecting: return String(localized: "连接中…")
-            case .connected(let mode): return mode
-            case .failed: return String(localized: "连接失败")
-            }
-        }
-    }
+    /// 连接状态。迁移规则在 DSHKit 的 `ConnectionPhase`（纯函数 + 单测），
+    /// 这里只负责把界面状态与传输层事实对齐 —— **所有写入都走 `setConnection`**，
+    /// 否则迟到的「连接中」会把已经连上的界面打回去（真机复现过两次）。
+    typealias Connection = ConnectionPhase
 
     private(set) var connection: Connection = .idle
+
+    /// 唯一的写入口：迟到的 `.connecting` 不会覆盖 `.connected`。
+    private func setConnection(_ next: Connection) {
+        let merged = connection.advanced(to: next)
+        guard merged != connection else { return }
+        connection = merged
+    }
+
     private(set) var diagnostics: TetherDiagnostics?
     private(set) var muxState: MuxClient.MuxState = .idle
 
@@ -187,6 +182,8 @@ public final class AppModel {
     private var workspaceTask: Task<Void, Never>?
     private var transportSupervisor: Task<Void, Never>?
     private var listRefreshLoop: Task<Void, Never>?
+    /// 连接状态自愈巡检（见 `startConnectionWatchdog`）。
+    private var connectionWatchdog: Task<Void, Never>?
     /// 传输世代：每次重建 client 自增。打开着的会话页据此**立刻**重订阅，
     /// 而不是等自己那套退避重试慢慢转过来。
     private(set) var transportGeneration = 0
@@ -247,6 +244,7 @@ public final class AppModel {
             if !sessions.isEmpty { logs.log(.info, "会话列表来自缓存（\(sessions.count) 条）") }
         }
         startTransportSupervisor()
+        startConnectionWatchdog()
 
         if settings.transportMode != .remote {
             // 直连网关：不需要 iroh，直接就能用。
@@ -282,6 +280,8 @@ public final class AppModel {
         logs.log(.info, "退到后台，断开传输")
         listRefreshLoop?.cancel()
         listRefreshLoop = nil
+        connectionWatchdog?.cancel()
+        connectionWatchdog = nil
         await eventCoordinator?.stop()
         eventCoordinator = nil
         workspaceTask?.cancel()
@@ -292,7 +292,7 @@ public final class AppModel {
         await tether.disconnect()
         coordinator.setRemoteBaseURL(nil)
         // 后台不保留"已连接"的外观：宁可显示未连接，也不做"假在线"。
-        if settings.transportMode == .remote { connection = .idle }
+        if settings.transportMode == .remote { setConnection(.idle) }
     }
 
     // MARK: 连接
@@ -322,12 +322,38 @@ public final class AppModel {
             consecutiveTransportFailures = 0
             if !connection.isConnected {
                 // UI 与传输层脱节时顺手对齐（传输一直在线，只是界面没被救回来）
-                connection = .connected(mode: String(localized: "远端连接"))
+                setConnection(.connected(mode: String(localized: "远端连接")))
             }
             return nil
         }
 
-        connection = .connecting(hostId: hostId)
+        // **只在真的没连上时才把界面打成「连接中」，而且绝不打回已经连上的状态。**
+        //
+        // 这一行以前是无条件执行，于是存在一个很难复现的竞态（真机 2026-10-19
+        // 反馈「还是会卡连接中，明明已经连接上了」）：
+        //   1. `tether.connect()` 内部把传输层状态切成 `.connected` 并广播；
+        //   2. 监督流立刻醒来跑 `activateClient()` —— 它中途把
+        //      `connection = .connected(...)` 写上（那时 `tether.connect()` 的
+        //      await 还没返回，主 actor 让出去过）；
+        //   3. `tether.connect()` 返回到这里，无条件写 `.connecting` ——
+        //      界面被打回「连接中」，而 `.connected` 只广播一次、不会再来。
+        // 表现就是传输层明明在线、界面永远「连接中」；重启 App 之所以好，
+        // 是因为重启后这次广播落在写入之后。
+        //
+        // 第 1 步那个「同 id 已连接就直接收工」的入口检查是 await 出来的，
+        // 存在同样的窗口，所以在写下这一行**之前**再确认一次状态。
+        if pairingCode == nil,
+           case .connected(let stateHost, _) = await tether.currentState(),
+           stateHost == hostId {
+            reconnectAttempt = 0
+            consecutiveTransportFailures = 0
+            if !connection.isConnected {
+                setConnection(.connected(mode: String(localized: "远端连接")))
+            }
+            return nil
+        }
+
+        setConnection(.connecting(hostId: hostId))
         if !silent {
             pendingApprovals.removeAll()
             pendingQuestions.removeAll()
@@ -343,10 +369,18 @@ public final class AppModel {
             settings.activeHostId = hostId
             hosts = await tether.hosts()
             consecutiveTransportFailures = 0
+            // **兜底对齐**：`tether.connect()` 对"已连接同 id"是提前返回的（不广播），
+            // 而监督流那边可能已经把 `.connected` 处理完、`connection` 也被别的路
+            // 打回过 `.connecting`。这里确认一次传输事实，别把「明明连上了」
+            // 留在「连接中」上 —— `setConnection` 只向前推进，重复写入是空操作。
+            if case .connected(let stateHost, _) = await tether.currentState(),
+               stateHost == hostId {
+                setConnection(.connected(mode: String(localized: "远端连接")))
+            }
             return nil
         } catch {
             let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            connection = .failed(message)
+            setConnection(.failed(message))
             logs.log(.error, "连接失败：\(message)")
             return message
         }
@@ -367,6 +401,49 @@ public final class AppModel {
     }
 
     private func dropGenerationContinuation(_ id: UUID) { generationContinuations[id] = nil }
+
+    /// 传输层此刻的真实状态（诊断导出用）。
+    ///
+    /// 和 `connection` 分开列出来的理由：两者脱节正是已知 bug 的形状
+    ///（"明明已经连接上了，界面还在连接中"）。有了这一行，下次看一眼就知道
+    /// 是界面状态没跟上，还是传输真的没连上。
+    func transportSnapshot() async -> (healthy: Bool, state: TetherSession.State) {
+        let healthy = await tether.isTransportHealthy()
+        let state = await tether.currentState()
+        return (healthy, state)
+    }
+
+    /// **连接状态自愈**：传输层明明健康、界面却停在「连接中」时把它拉正。
+    ///
+    /// 为什么需要它（2026-10-19 真机："还是会卡连接中，明明已经连接上了"）：
+    /// 界面状态与传输层事实由两条独立的异步路径更新（`connect()` 的写入、
+    /// 监督流的 `.connected` 广播），任何**未知的**交错都可能让界面停留在
+    /// 一个过时的值上。`setConnection` 的单向规则堵住了已知的那条
+    /// （迟到的 `.connecting` 打不回 `.connected`），但规则只能覆盖想得到的顺序。
+    ///
+    /// 这一层不猜顺序 —— 直接问传输层要事实：健康就说明连上了。低频（3 秒）是
+    /// 因为它是**兜底**，正常路径毫秒级就该对齐；3 秒的可见延迟只在"真的发生了
+    /// 没预料到的交错"时才出现，比永远卡着好得多。
+    private func startConnectionWatchdog() {
+        connectionWatchdog?.cancel()
+        connectionWatchdog = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(3))
+                guard !Task.isCancelled, let self else { return }
+                let healthy = await self.tether.isTransportHealthy()
+                guard healthy, !self.isBackgrounded else { continue }
+                guard settings.transportMode == .remote else { continue }
+                if !self.connection.isConnected {
+                    let state = await self.tether.currentState()
+                    if case .connected(let hostId, _) = state {
+                        self.logs.log(.info, "连接状态自愈：传输已就绪，界面从「\(self.connection.label)」拉正")
+                        self.setConnection(.connected(mode: String(localized: "远端连接")))
+                        self.settings.activeHostId = hostId
+                    }
+                }
+            }
+        }
+    }
 
     /// 前台期间**轻量定时刷新**会话列表。
     ///
@@ -430,15 +507,15 @@ public final class AppModel {
 
         case .failed(let reason):
             consecutiveTransportFailures += 1
-            connection = .failed(transportFailureMessage(base: reason))
+            setConnection(.failed(transportFailureMessage(base: reason)))
             logs.log(.warning, "传输断开（第 \(consecutiveTransportFailures) 次）：\(reason)")
             await scheduleTransportReconnect()
 
         case .idle:
-            if settings.transportMode == .remote { connection = .idle }
+            if settings.transportMode == .remote { setConnection(.idle) }
 
         case .connecting:
-            connection = .connecting(hostId: settings.activeHostId ?? "")
+            setConnection(.connecting(hostId: settings.activeHostId ?? ""))
         }
     }
 
@@ -488,6 +565,8 @@ public final class AppModel {
         transportSupervisor = nil
         listRefreshLoop?.cancel()
         listRefreshLoop = nil
+        connectionWatchdog?.cancel()
+        connectionWatchdog = nil
         reconnectAttempt = 0
         await eventCoordinator?.stop()
         eventCoordinator = nil
@@ -498,7 +577,7 @@ public final class AppModel {
         await client.closeTransport()
         await tether.disconnect()
         coordinator.setRemoteBaseURL(nil)
-        connection = .idle
+        setConnection(.idle)
         diagnostics = nil
         hostRelease = nil
         sessions = []
@@ -518,7 +597,7 @@ public final class AppModel {
         workspaceTask = nil
         await client.closeTransport()
         client = DSHClient(provider: coordinator, logger: logs)
-        connection = .connected(mode: modeLabel)
+        setConnection(.connected(mode: modeLabel))
 
         let coordinator = EventStreamCoordinator(client: client, logger: logs)
         await coordinator.setAnswerer { [weak self] request in
@@ -1371,6 +1450,20 @@ enum SessionPartition {
                 return summary.workspaceName == workspace
             }
             return true
+        }
+    }
+}
+
+// MARK: - 连接状态的展示文案
+
+/// 文案留在 App 层（DSHKit 不认识 SwiftUI、也不做本地化）。
+extension ConnectionPhase {
+    var label: String {
+        switch self {
+        case .idle: return String(localized: "未连接")
+        case .connecting: return String(localized: "连接中…")
+        case .connected(let mode): return mode
+        case .failed: return String(localized: "连接失败")
         }
     }
 }
