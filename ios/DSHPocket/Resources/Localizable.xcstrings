@@ -79,6 +79,17 @@
         }
       }
     },
+    "%@\n如果是装完 App 第一次启动，请到「设置 → 隐私与安全性 → 本地网络」确认 DSH Pocket 是开的 —— 关着的话 iOS 会静默丢包，看起来就是一直连接中。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@\nIf this is the first launch after installing, check Settings → Privacy & Security → Local Network and make sure DSH Pocket is allowed — with it off, iOS silently drops packets and it looks like “connecting” forever."
+          }
+        }
+      }
+    },
     "%@\n连续失败 %lld 次。如果电脑端重装过插件或清过配对数据，请在「设置 → 主机」里删掉这台电脑，然后重新配对。": {
       "extractionState": "manual",
       "localizations": {

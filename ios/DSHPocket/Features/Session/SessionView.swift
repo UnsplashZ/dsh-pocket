@@ -167,7 +167,7 @@ struct SessionView: View {
                     // **兜底：分组为空但条目还在，就直接渲染条目。**
                     // 正常情况下走不到这里；但真走到了，宁可排版差一点，
                     // 也不能给用户一片空白（实测重连时偶尔出现）。
-                    if session.timelineBlocks.isEmpty, !session.items.filter({ !$0.isShadowed }).isEmpty {
+                    if fallbackActive(session) {
                         ForEach(session.items.filter { !$0.isShadowed }) { item in
                             TimelineRow(item: item, session: session)
                                 .id(item.id)
@@ -175,19 +175,29 @@ struct SessionView: View {
                         }
                     }
 
-                    // 按轮次分组渲染：跑完的轮次收拢成一行摘要 + 最终结论。
-                    ForEach(session.timelineBlocks) { block in
-                        switch block {
-                        case .turn(let turn):
-                            TurnGroupView(turn: turn, session: session)
-                        case .item(let item):
-                            TimelineRow(item: item, session: session)
-                                .id(item.id)
-                                .padding(.horizontal, Token.Spacing.gutter)
-                                .background(
-                                    RoundedRectangle(cornerRadius: Token.Radius.card, style: .continuous)
-                                        .fill(highlightId == item.id ? Color.accentColor.opacity(0.12) : .clear)
-                                )
+                    // **只挂了一串控制 note 的会话，按"空会话"呈现。**
+                    //
+                    // 真实案例：新会话里只切过一次权限，主机日志里只有
+                    // permission/preset、sandbox/mode、approval/policy、model/selection
+                    // 这些控制事件，一条对话都没有。把它们逐条画出来（workspace-write、
+                    // ask…）配着大片空白，看起来就是"页面坏了"（实测截图）。
+                    // 这些 note 是**配置现状**，输入框的权限胶囊和模型标签本来
+                    // 就在显示，藏掉不丢信息。
+                    if hasConversation(session) {
+                        // 按轮次分组渲染：跑完的轮次收拢成一行摘要 + 最终结论。
+                        ForEach(session.timelineBlocks) { block in
+                            switch block {
+                            case .turn(let turn):
+                                TurnGroupView(turn: turn, session: session)
+                            case .item(let item):
+                                TimelineRow(item: item, session: session)
+                                    .id(item.id)
+                                    .padding(.horizontal, Token.Spacing.gutter)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: Token.Radius.card, style: .continuous)
+                                            .fill(highlightId == item.id ? Color.accentColor.opacity(0.12) : .clear)
+                                    )
+                            }
                         }
                     }
 
@@ -196,8 +206,9 @@ struct SessionView: View {
 
                     // 空态跟着**实际渲染的东西**走，不跟 `items` 走 ——
                     // 否则"条目在但一条都渲染不出来"时会变成一片空白。
-                    if session.timelineBlocks.isEmpty,
-                       session.items.filter({ !$0.isShadowed }).isEmpty,
+                    // `!hasConversation` 覆盖"只有控制 note"的情形（见上面的注释）；
+                    // 兜底分支正在直接渲染条目时不叠一个空态上去。
+                    if !hasConversation(session), !fallbackActive(session),
                        session.phase != .loading {
                         ContentUnavailableView(
                             "这个会话还是空的",
@@ -395,6 +406,17 @@ struct SessionView: View {
             }
         }
         .accessibilityLabel(Text("正在读取会话内容"))
+    }
+
+    /// 时间线里有没有"真内容"（轮次或消息）—— 只有控制 note 的会话按空会话呈现。
+    /// 判定本身在 DSHKit（`[TimelineBlock].hasConversation`），那里有单测。
+    private func hasConversation(_ session: SessionModel) -> Bool {
+        session.timelineBlocks.hasConversation
+    }
+
+    /// 兜底分支（分组为空但条目还在时直接渲染条目）此刻有没有生效。
+    private func fallbackActive(_ session: SessionModel) -> Bool {
+        session.timelineBlocks.isEmpty && !session.items.filter({ !$0.isShadowed }).isEmpty
     }
 
     private func historyLoader(_ session: SessionModel) -> some View {

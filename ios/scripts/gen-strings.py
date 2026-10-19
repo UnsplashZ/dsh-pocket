@@ -668,6 +668,8 @@ EN: dict[str, str] = {
     "上一次连接还在进行中": "A connection attempt is already in progress",
     "%@\n连续失败 %lld 次。如果电脑端重装过插件或清过配对数据，请在「设置 → 主机」里删掉这台电脑，然后重新配对。":
         "%@\nFailed %lld times in a row. If the plugin was reinstalled or its pairing data was cleared on your computer, delete this computer under Settings → Computers and pair again.",
+    "%@\n如果是装完 App 第一次启动，请到「设置 → 隐私与安全性 → 本地网络」确认 DSH Pocket 是开的 —— 关着的话 iOS 会静默丢包，看起来就是一直连接中。":
+        "%@\nIf this is the first launch after installing, check Settings → Privacy & Security → Local Network and make sure DSH Pocket is allowed — with it off, iOS silently drops packets and it looks like “connecting” forever.",
     # 模型页 / 筛选 / 思考过程
     "正在读取模型清单…": "Loading the model list…",
     "这台电脑上没有可用模型": "No models available on this computer",

@@ -1178,6 +1178,51 @@ final class TimelineBuilderTests: XCTestCase {
         XCTAssertNil(blocks.blockId(containing: "并不存在"))
     }
 
+    // MARK: 只有控制 note 的会话（真机 2026-10-19）
+
+    /// 新会话里只切过一次权限：主机日志里只有 `permission/preset`、
+    /// `sandbox/mode`、`approval/policy`、`model/selection`，一条对话都没有。
+    /// 这些 note 折叠后都是 `isConversational == true`，于是被照常渲染成
+    /// 几行 `workspace-write`／`ask` 配着大片空白 —— 用户看到的是
+    /// "点进去一片空白，半天没变化，重进也没反应"（真机 + 模拟器同一形状）。
+    func testTimelineWithOnlyControlNotesReportsNoConversation() throws {
+        var builder = TimelineBuilder()
+        for text in [
+            #"{"type":"permission/preset","seq":0,"time":1792397423709,"data":{"preset":"workspace-write"}}"#,
+            #"{"type":"sandbox/mode","seq":1,"time":1792397423710,"data":{"mode":"workspace-write"}}"#,
+            #"{"type":"approval/policy","seq":2,"time":1792397423711,"data":{"policy":"ask"}}"#,
+            #"{"type":"model/selection","seq":3,"time":1792397423999,"data":{"provider":"magpie","model":"kimi-work/k2d8-preview","level":"high"}}"#,
+        ] {
+            _ = builder.apply(try Fixture.event(text))
+        }
+
+        let blocks = builder.timelineBlocks()
+        XCTAssertFalse(blocks.isEmpty, "这些 note 确实会变成块（这正是问题所在：块非空、内容没有）")
+        XCTAssertTrue(
+            blocks.allSatisfy { if case .item(let item) = $0 { return !item.isShadowed }; return false },
+            "在空会话里它们都是散落的独立条目"
+        )
+        XCTAssertFalse(blocks.hasConversation, "一条对话都没有，应当按空会话呈现")
+    }
+
+    /// 反过来：只要有一条真人消息，就不算空会话 —— 别把"head 里挂着权限 note
+    /// 的正常会话"也判成空的。
+    func testTimelineWithOneMessageIsAConversation() throws {
+        var builder = TimelineBuilder()
+        _ = builder.apply(try Fixture.event(
+            #"{"type":"permission/preset","seq":0,"time":1792397423709,"data":{"preset":"workspace-write"}}"#
+        ))
+        _ = builder.apply(try Fixture.event(Fixture.userMessage("你好", seq: 1)))
+        XCTAssertTrue(builder.timelineBlocks().hasConversation)
+
+        // 只有轮次（含工具调用、没有独立条目）时同样算有内容。
+        var turnOnly = TimelineBuilder()
+        _ = turnOnly.apply(try Fixture.event(Fixture.turnStart(1, seq: 0)))
+        _ = turnOnly.apply(try Fixture.event(Fixture.assistantMessage(text: "在", seq: 1)))
+        _ = turnOnly.apply(try Fixture.event(Fixture.turnEnd(1, seq: 2)))
+        XCTAssertTrue(turnOnly.timelineBlocks().hasConversation)
+    }
+
     // MARK: 原始快照（本机抓包，缺失时跳过）
 
     func testRealCapturedSnapshotsIfPresent() throws {
@@ -1228,6 +1273,17 @@ final class TimelineBuilderTests: XCTestCase {
             )
             // content 解析必须真的解出东西：空 assistant/message 是合法的
             // （max-tokens 步只带 usage），所以看总体而不是逐条。
+            //
+            // **只有控制 note 的会话是合法样本**：一个新会话只切过权限/模型、
+            // 一句话都没说，主机日志里就只有 permission/preset 那些事件。
+            // 拿它做"助手正文必须非空"的断言会误判（实测抓包踩过）。
+            let hasAnyAssistant = builder.items.contains {
+                if case .assistantMessage = $0.kind { return true }
+                return false
+            }
+            guard hasAnyAssistant || builder.timelineBlocks().hasConversation else {
+                continue
+            }
             var assistantWithBlocks = 0
             var totalText = 0
             for item in builder.items {

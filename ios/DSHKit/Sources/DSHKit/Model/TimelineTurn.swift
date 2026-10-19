@@ -254,6 +254,27 @@ public enum TimelineBlock: Sendable, Identifiable {
 }
 
 extension Array where Element == TimelineBlock {
+    /// 这批块里有没有**对话内容**（轮次，或轮次之外的任何非 note 条目）。
+    ///
+    /// 真机案例（2026-10-19）：一个只切过权限的新会话，主机日志里只有
+    /// `permission/preset`、`sandbox/mode`、`approval/policy`、`model/selection`
+    /// 这些控制事件，一条对话都没有。它们全是 `isConversational == true` 的
+    /// `note`，于是视图照常渲染 —— 屏幕上就是几行 `workspace-write`／`ask`
+    /// 配着大片空白，用户看到的是"页面坏了、重进也没反应"。
+    ///
+    /// 这些 note 是**配置现状**（输入框的权限胶囊与模型标签都在显示），
+    /// 所以"只有控制 note"的会话应当按空会话呈现。
+    public var hasConversation: Bool {
+        contains { block in
+            switch block {
+            case .turn: return true
+            case .item(let item):
+                if case .note = item.kind { return false }
+                return true
+            }
+        }
+    }
+
     /// 找到**包含**某条目的那个块的 id。
     ///
     /// 用在"补完历史之后滚到新进来的第一条"上：那条条目很可能已经被收进一个

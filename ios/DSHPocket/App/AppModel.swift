@@ -444,15 +444,25 @@ public final class AppModel {
 
     /// 反复失败到一定次数就换一句**可执行**的话。
     ///
-    /// 这个场景真的会发生：电脑端的配对白名单被清过（重装插件、换 data-dir），
-    /// 而这台手机还记着旧记录。此时 App 会一直发 hello，电脑端一直以
-    /// `protocol` 关掉 —— 光看"连接失败"用户无从下手。
+    /// 两个真的会发生的场景：
+    ///  1. **装完 App 第一次启动一直「连接中」**（2026-10-19 真机实测）：iOS 的
+    ///     「本地网络」权限在授权之前会**静默丢包**（iroh 的 UDP 打洞全灭），
+    ///     而授权弹窗可能恰好在锁屏/不在场时出现过。重启 App 之所以"就好了"，
+    ///     是因为那时权限已经给过了。≥2 次失败就把这个指向说出来。
+    ///  2. 电脑端的配对白名单被清过（重装插件、换 data-dir），手机还记着旧记录，
+    ///     于是一直 hello、一直被判协议错误。≥3 次失败提示重新配对。
     private func transportFailureMessage(base: String) -> String {
-        guard consecutiveTransportFailures >= 3 else { return base }
+        if consecutiveTransportFailures >= 3 {
+            return String(
+                format: String(localized: "%@\n连续失败 %lld 次。如果电脑端重装过插件或清过配对数据，请在「设置 → 主机」里删掉这台电脑，然后重新配对。"),
+                base,
+                consecutiveTransportFailures
+            )
+        }
+        guard consecutiveTransportFailures >= 2 else { return base }
         return String(
-            format: String(localized: "%@\n连续失败 %lld 次。如果电脑端重装过插件或清过配对数据，请在「设置 → 主机」里删掉这台电脑，然后重新配对。"),
-            base,
-            consecutiveTransportFailures
+            format: String(localized: "%@\n如果是装完 App 第一次启动，请到「设置 → 隐私与安全性 → 本地网络」确认 DSH Pocket 是开的 —— 关着的话 iOS 会静默丢包，看起来就是一直连接中。"),
+            base
         )
     }
 
