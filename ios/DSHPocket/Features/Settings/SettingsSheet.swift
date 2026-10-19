@@ -349,7 +349,10 @@ struct SettingsSheet: View {
     private var aboutSection: some View {
         Section {
             LabeledContent("版本", value: Bundle.main.shortVersion)
-            LabeledContent("协议", value: "DSH 0.2.0-rc.2")
+            // 主机版本是**连上之后从首页 HTML 抠出来的**（协议里没有版本 RPC），
+            // 不再写死 —— 写死的那行在宿主升级后就成了错的。
+            LabeledContent("主机版本", value: model.hostRelease?.displayName ?? String(localized: "未连接"))
+            LabeledContent("协议基线", value: "DSH 0.2.0-rc.2")
             LabeledContent("传输", value: "iroh 1.1.0 · ALPN dsh-tether/0")
 
             NavigationLink {

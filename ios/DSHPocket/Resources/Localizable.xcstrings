@@ -815,6 +815,17 @@
         }
       }
     },
+    "主机版本": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Host version"
+          }
+        }
+      }
+    },
     "主题": {
       "extractionState": "manual",
       "localizations": {
@@ -1561,6 +1572,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "API"
+          }
+        }
+      }
+    },
+    "协议基线": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Protocol baseline"
           }
         }
       }

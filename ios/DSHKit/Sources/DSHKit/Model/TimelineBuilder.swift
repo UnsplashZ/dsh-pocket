@@ -242,7 +242,11 @@ public struct TimelineBuilder: Sendable {
     ///
     /// 目前只认审批策略变化那一句 —— 它是 DSH 里唯一会往**用户消息**里
     /// 注入"通知"的地方。**版本耦合**，换措辞就会失效（失效只是噪音回来）。
-    static func isMachineNotice(_ text: String) -> Bool {
+    ///
+    /// `public` 的原因：队列有两条数据源 —— 这里维护的日志推导那份，和
+    /// `SessionModel` 里投影 + 增量 splice 那份（UI 实际渲染的是后者）。
+    /// 过滤规则只有一条，两边共用（见 `Array.removingMachineNotices`）。
+    public static func isMachineNotice(_ text: String) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.hasPrefix("The approval policy changed from ")
     }

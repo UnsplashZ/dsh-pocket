@@ -804,6 +804,72 @@ public actor DSHClient {
         return SettingsNamespace(json: value, isWritable: true)
     }
 
+    // MARK: - 主机版本
+
+    /// 宿主的发布版本（`dsh web` 注入首页 HTML 的 `__DSH_BOOT__.release`）。
+    public struct HostRelease: Sendable, Hashable {
+        public var version: String
+        public var commit: String?
+
+        public init(version: String, commit: String? = nil) {
+            self.version = version
+            self.commit = commit
+        }
+
+        /// 关于页显示用：`DSH 0.2.1-rc.2 (332895e)`。
+        public var displayName: String {
+            if let commit, !commit.isEmpty { return "DSH \(version) (\(commit))" }
+            return "DSH \(version)"
+        }
+    }
+
+    /// 拉宿主版本。
+    ///
+    /// **协议里没有版本 RPC** —— `system/info` / `gateway/release` / `host/info`
+    /// 一路试下来全是 `not found`（2026-10-19 对 0.2.1-rc.2 实测）。版本号唯一的
+    /// 出处是 `dsh web` 注入到首页 HTML 里的 `window.__DSH_BOOT__.release`。
+    /// 所以这里直接 `GET /` 再抠出来。
+    ///
+    /// 失败返回 nil（而不是抛）：关于页不该因为这一行显示不出就报错。
+    public func hostRelease() async -> HostRelease? {
+        do {
+            let base = try await provider.baseURL()
+            var request = URLRequest(url: base)
+            request.timeoutInterval = 15
+            for (name, value) in await provider.requestHeaders() {
+                request.setValue(value, forHTTPHeaderField: name)
+            }
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+            return Self.parseHostRelease(html: String(decoding: data, as: UTF8.self))
+        } catch {
+            return nil
+        }
+    }
+
+    /// 从首页 HTML 里抠 `__DSH_BOOT__` 的 `release`。
+    ///
+    /// 线上形状（0.2.1-rc.2 实测）：
+    /// `window.__DSH_BOOT__ = {"rev":"…","release":{"version":"0.2.1-rc.2","commit":"332895e"},…}`
+    ///
+    /// 不用正则引擎，就是两次 `range(of:)`：键名顺序变了顶多解不出来（返回 nil），
+    /// 不会解错。
+    static func parseHostRelease(html: String) -> HostRelease? {
+        guard let releaseStart = html.range(of: "\"release\":{") else { return nil }
+        let tail = html[releaseStart.upperBound...]
+        guard let releaseEnd = tail.range(of: "}") else { return nil }
+        let release = String(tail[..<releaseEnd.lowerBound])
+        func field(_ name: String) -> String? {
+            guard let keyRange = release.range(of: "\"\(name)\":\"") else { return nil }
+            let valueTail = release[keyRange.upperBound...]
+            guard let endQuote = valueTail.range(of: "\"") else { return nil }
+            let value = String(valueTail[..<endQuote.lowerBound])
+            return value.isEmpty ? nil : value
+        }
+        guard let version = field("version") else { return nil }
+        return HostRelease(version: version, commit: field("commit"))
+    }
+
     // MARK: - 权限档位
 
     /// 可选的权限档位（`permissionPresets/catalog`，只读）。

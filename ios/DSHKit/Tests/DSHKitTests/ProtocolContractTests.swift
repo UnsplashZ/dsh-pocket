@@ -246,6 +246,55 @@ final class ProtocolContractTests: XCTestCase {
         XCTAssertTrue(parsed.inbox.isEmpty)
     }
 
+    /// 队列 UI 渲染的是**投影**这份（`SessionModel.projectionQueued`），
+    /// 不是 `TimelineBuilder` 日志推导那份 —— 所以机器通知的过滤必须也盖到
+    /// 投影路径，否则「The approval policy changed from …」照样出现在排队面板
+    ///（2026-10-19 实测：0.4.5 上过滤只加了日志路径，面板上照样冒）。
+    func testMachineNoticesAreDroppedFromTheProjectionQueue() throws {
+        let baseline = [queued("我自己排的队")]
+
+        // ① splice 插进来的机器通知（带引号，不能用 inboxItem 那个不转义的 helper）
+        let noticeItem = Fixture.json(#"""
+        {"id":"n1","content":[{"type":"text","text":"The approval policy changed from \"ask\" to \"never\" (changed by the user)."}],"source":{"kind":"user"}}
+        """#)
+        let spliced = baseline.applyingInboxSplice(start: 1, removedCount: 0, inserted: [noticeItem])
+        XCTAssertEqual(spliced.removingMachineNotices().map(\.text), ["我自己排的队"])
+
+        // ② 投影全量里带着的机器通知（重进会话时走这条路）
+        let projections = SessionProjections(json: Fixture.json(#"""
+        {"values":{"inbox":{"next-turn":[
+            {"content":[{"type":"text","text":"The approval policy changed from \"never\" to \"ask\" (changed by the user)."}],"source":{"kind":"user"},"role":"user","id":"n1"},
+            {"content":[{"type":"text","text":"真消息"}],"source":{"kind":"user"},"role":"user","id":"m1"}
+         ],"next-step":[]}}}
+        """#))
+        let all = projections.inbox.nextTurn + projections.inbox.nextStep
+        XCTAssertEqual(all.count, 2, "过滤发生在发布口，不在解析层 —— 数据本身不能丢")
+        XCTAssertEqual(all.removingMachineNotices().map(\.text), ["真消息"])
+    }
+
+    // MARK: 主机版本
+
+    /// 协议里**没有**版本 RPC（system/info、gateway/release 全是 not found），
+    /// 唯一出处是 `dsh web` 注入首页的 `__DSH_BOOT__.release`。
+    /// 这段 HTML 截自 0.2.1-rc.2 的首页响应。
+    func testHostReleaseParsesFromBootHTML() throws {
+        let html = #"""
+        <html><head><script>window["__DSH_BOOT__"] = {"rev":"8ce5cd98d1eb","release":{"version":"0.2.1-rc.2","commit":"332895e"},"entries":[{"id":"@deepseek-ai/dsh-api-gateway"}]};</script></head></html>
+        """#
+        let release = try XCTUnwrap(DSHClient.parseHostRelease(html: html))
+        XCTAssertEqual(release.version, "0.2.1-rc.2")
+        XCTAssertEqual(release.commit, "332895e")
+        XCTAssertEqual(release.displayName, "DSH 0.2.1-rc.2 (332895e)")
+
+        // 没有 commit 字段也能解
+        let noCommit = try XCTUnwrap(DSHClient.parseHostRelease(html: #""release":{"version":"0.2.0-rc.2"}"#))
+        XCTAssertEqual(noCommit.displayName, "DSH 0.2.0-rc.2")
+
+        // 页面里没有 boot 注入（比如代理错误页）：如实返回 nil，界面显示"未连接"
+        XCTAssertNil(DSHClient.parseHostRelease(html: "<html>not found</html>"))
+        XCTAssertNil(DSHClient.parseHostRelease(html: #""release":{"commit":"abc"}"#), "没有 version 不能算数")
+    }
+
     // MARK: 主机插件
 
     func testPluginParsesToggleabilityAndReadOnlyReason() throws {

@@ -532,6 +532,16 @@ extension String {
 
 
 extension Array where Element == QueuedMessage {
+    /// 去掉宿主注入的机器通知（审批策略变化那句英文）。
+    ///
+    /// **投影这份队列必须和日志推导那份用同一条过滤规则。** 之前过滤只加在
+    /// `TimelineBuilder.applyInbox`（日志路径），而 UI 实际渲染的是投影 +
+    /// 增量 splice 这份（`SessionModel.projectionQueued`）—— 于是
+    /// "The approval policy changed from …" 照样出现在排队面板里（实测）。
+    public func removingMachineNotices() -> [QueuedMessage] {
+        filter { !TimelineBuilder.isMachineNotice($0.text) }
+    }
+
     /// 把一条 `agent/inbox/spliced` **增量地**应用到队列上。
     ///
     /// 线上形状是 `{start, removedCount, inserted}` —— 一次 splice：

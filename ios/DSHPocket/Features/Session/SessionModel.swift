@@ -863,12 +863,16 @@ public final class SessionModel {
         modelSelection = ModelSelection(provider: provider, model: model, reasoningEffort: reasoningEffort)
     }
 
-    /// 队列变了：**从日志推导**，并把已经被队列接管的乐观插入撤掉。
+    /// 队列变了：**从投影那份发布**，并把已经被队列接管的乐观插入撤掉。
     ///
     /// 不撤的话同一句话会显示两遍 —— 一遍是"发送中…"的乐观气泡，
     /// 一遍是"排队中"的队列项。
+    ///
+    /// 机器通知（"The approval policy changed from …"）在**这里**过滤：
+    /// UI 渲染的是投影这份队列，不是 `TimelineBuilder` 日志推导那份
+    ///（之前过滤只加在后者，所以面板上照样冒出来 —— 实测）。
     private func publishQueuedMessages() {
-        queuedMessages = projectionQueued
+        queuedMessages = projectionQueued.removingMachineNotices()
         let queuedRpcIds = Set(queuedMessages.compactMap(\.rpcId))
         guard !queuedRpcIds.isEmpty else { return }
         var removed = false
@@ -924,7 +928,8 @@ public final class SessionModel {
             removedCount: event.int("data.removedCount") ?? 0,
             inserted: event.array("data.inserted") ?? []
         )
-        queuedMessages = projectionQueued
+        // 走统一的发布口：机器通知过滤与乐观插入收敛都在那里。
+        publishQueuedMessages()
     }
 
     // MARK: 斜杠命令 / 后台任务

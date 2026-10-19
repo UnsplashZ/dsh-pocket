@@ -22,6 +22,37 @@ All notable changes to this project are documented here.
 
 ---
 
+## [0.4.6] — 2026-10-19
+
+### Fixed
+
+- **切换权限时冒出一条排队消息**（用户："切换权限时会显示一条排队消息"）。
+  `dsh-user-approval` 在审批策略变化时会把一句
+  `The approval policy changed from "x" to "y" (changed by the user).` 当成
+  **用户消息**塞进队列。0.4.5 已经过滤过这条 —— 但过滤加在了
+  `TimelineBuilder.applyInbox`（**日志推导**那份队列），而排队面板实际渲染的是
+  **投影 + 增量 splice** 那份（`SessionModel.projectionQueued`），所以面板上
+  照冒不误。现在过滤收敛到统一的发布口 `publishQueuedMessages()`
+  （`removingMachineNotices`），两条数据源共用一条规则；投影解析层本身不动
+  （数据不丢，只是不显示）。
+- **关于页的「协议」版本不随主机更新**（用户："协议版本没有随着主机自动更新"）。
+  那一行是硬编码的 `DSH 0.2.0-rc.2`，宿主升到 0.2.1-rc.2 之后它就是错的。
+  排查发现**协议里没有版本 RPC**（`system/info`、`gateway/release` 等全是
+  `not found`），版本号唯一的出处是 `dsh web` 注入首页 HTML 的
+  `__DSH_BOOT__.release`。现在连接建立时 `GET /` 抠出真实版本，关于页拆成两行：
+  「主机版本」（实时，未连接时如实显示）和「协议基线」（已实测对齐的 0.2.0-rc.2）。
+- **装机脚本自动挑设备挑到的是手表**（上一版遗留在 HEAD 的未发版修复）：
+  `--list` 与自动挑选现在走同一个 filter（physical + iOS），
+  不再先命中 Apple Watch。
+
+### 顺带
+
+- 新增 3 条单测：投影队列的机器通知过滤（splice 与全量投影两条路）、
+  `__DSH_BOOT__` 的 `release` 解析（含无 commit / 无 boot 的退化情形）。
+  DSHKit 152 条、App 测试全绿。
+
+---
+
 ## [0.4.5] — 2026-10-16
 
 ### Fixed

@@ -87,6 +87,12 @@ public final class AppModel {
 
     private(set) var hosts: [TetherHostRecord] = []
     private(set) var localEndpointId: String = ""
+    /// 当前主机的发布版本（`__DSH_BOOT__.release`）。
+    ///
+    /// **不能写死**：关于页曾经把"DSH 0.2.0-rc.2"硬编码进去，宿主升到
+    /// 0.2.1-rc.2 之后那行就成了错的（用户："协议版本没有随着主机自动更新"）。
+    /// 连接建立时从首页 HTML 抠一次；拿不到就保持 nil，界面如实显示"未连接"。
+    private(set) var hostRelease: DSHClient.HostRelease?
 
     // MARK: 待处理的 waterfall
 
@@ -484,6 +490,7 @@ public final class AppModel {
         coordinator.setRemoteBaseURL(nil)
         connection = .idle
         diagnostics = nil
+        hostRelease = nil
         sessions = []
         archivedSessionIds = []
         pinnedSessionIds = []
@@ -523,6 +530,7 @@ public final class AppModel {
         await observeMuxState()
         await observeTetherMessages()
         await observeWorkspace()
+        await refreshHostRelease()
         await refreshHostPlugins()
         await refreshAgentPresets()
         await refreshSessions()
@@ -1038,6 +1046,17 @@ public final class AppModel {
 
     func refreshDiagnostics() async {
         diagnostics = await tether.diagnostics()
+    }
+
+    /// 拉一次主机版本（连接建立时调一次；拉不到就保持旧值）。
+    ///
+    /// 挂在 `activateClient` 上而不是关于页的 `.task`：关于页一开一关就重新
+    /// 打一次 `GET /` 不值当，而连接建立本来就要拉一串清单，顺便带上它。
+    func refreshHostRelease() async {
+        if let release = await client.hostRelease() {
+            hostRelease = release
+            logs.log(.info, "主机版本：\(release.displayName)")
+        }
     }
 
     // MARK: waterfall 路由
