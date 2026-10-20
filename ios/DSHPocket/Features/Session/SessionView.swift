@@ -52,6 +52,12 @@ struct SessionView: View {
 
     private let bottomAnchor = "timeline-bottom"
 
+    /// 末尾哨兵离视口底边多近算"停在尾部"。
+    ///
+    /// 足够宽松以容纳行高/内边距的抖动，又足够严格 —— 用户往上翻半屏
+    /// 就不该再算"在尾部"，否则读历史时会被思考过程不断拽回去。
+    private static let bottomProximityThreshold: CGFloat = 200
+
     var body: some View {
         Group {
             if let session {
@@ -271,6 +277,18 @@ struct SessionView: View {
                     Color.clear
                         .frame(height: 1)
                         .id(bottomAnchor)
+                        // 末尾哨兵的**位置**：它离视口底边多远，是"用户是否停在尾部"
+                        // 最可靠的信号。`onAppear` 只在进入视口时触发一次，
+                        // 用户往回滚之后它不会退回 false（0.4.14 去掉了 onDisappear
+                        // 的错误写法），所以单靠它无法表达"现在离底部多远"。
+                        .background(
+                            GeometryReader { geometry in
+                                Color.clear.preference(
+                                    key: TimelineBottomOffsetKey.self,
+                                    value: geometry.frame(in: .named(Self.timelineSpace)).maxY
+                                )
+                            }
+                        )
                         .onAppear { isFollowingBottom = true }
                         // **`onDisappear` 不能把 `isFollowingBottom` 置 false。**
                         //
@@ -306,6 +324,16 @@ struct SessionView: View {
             // 最后偏移停在 2829 而内容只剩 1272 —— 落在内容之外，屏幕上**一片空白**。
             //
             // 交给系统锚点就没有这个问题：初始位置由系统按锚点定，不依赖任何"估算末尾"。
+            // **只有"用户没接管滚动"且"确实停在尾部"时才自动贴底。**
+            //
+            // 原来只看 `!userTookOverScroll` —— 而那个标志只在 DragGesture 里置位。
+            // 后果：用户靠惯性滑动停在上方、或点开某个轮次正在读历史时，
+            // 它仍然是 false，于是**思考过程每吐一点字、内容高度一变，
+            // 系统锚点就把视图拽回底部**（用户 2026-10-20："思考过程有新输出
+            // 会导致窗口强制往下滚"）。读历史时被不断拽走，非常难用。
+            //
+            // `isFollowingBottom` 由末尾哨兵的 onAppear 置真、离屏时不再被写死，
+            // 它描述的是"尾部此刻在不在视口里" —— 正是这里该用的判据。
             .modifier(BottomScrollAnchor(followsContentChanges: !userTookOverScroll))
             // 点消息区也收键盘。
             //
@@ -431,6 +459,46 @@ struct SessionView: View {
                 #endif
             }
             .coordinateSpace(name: Self.timelineSpace)
+            .onPreferenceChange(TimelineBottomOffsetKey.self) { bottom in
+                // 视口高度拿不到精确值，用一个宽松阈值：哨兵下端还在
+                // 视口底边之上 200pt 以内，就算"停在尾部"。
+                // 用户往上翻超过这个距离，就明确不再自动跟随 ——
+                // 这正是"思考过程有新输出会强制往下滚"的解药。
+                // **这里只跟踪"位置"，不碰"是不是用户接管的"。**
+                //
+                // 两个标志职责必须分开，否则会成环：
+                //   · `isFollowingBottom` = 尾部此刻在不在视口附近（几何事实，
+                //     由这个 preference 更新）；
+                //   · `userTookOverScroll` = 用户是否**主动**离开过底部（意图，
+                //     只由 DragGesture 与"跳到最新"改写）。
+                // 如果在这里顺手把 `userTookOverScroll` 清掉，那么
+                // "锚点参数变化 → 布局变化 → preference 再报 → 又改状态"
+                // 会自激抖动（`defaultScrollAnchor` 的 `.sizeChanges` 角色最怕这个）。
+                guard canAutoLoadHistory else { return }
+                let nearBottom = bottom < Self.bottomProximityThreshold
+                if isFollowingBottom != nearBottom {
+                    isFollowingBottom = nearBottom
+                    // **离开底部就立刻放弃自动跟随。**
+                    //
+                    // 这是"思考过程有新输出导致窗口强制往下滚"的正解：
+                    // 系统锚点（`.sizeChanges` 那个角色）在内容高度变化时会把
+                    // 视图拽回底部，而它只看 `userTookOverScroll`。
+                    // 用户靠惯性滑到上方读历史时并没有 DragGesture 在跑，
+                    // 那个标志是 false —— 于是每吐一点思考就被拽回去一次。
+                    //
+                    // 一旦几何上确认"尾部已经不在视口附近"，就把它记成
+                    // 用户接管（语义上是"他现在不想要跟随"），锚点随之撤掉。
+                    // 用户滚回底部时，`TimelineTopOffsetKey`/手势会再交还。
+                    if !nearBottom {
+                        userTookOverScroll = true
+                    } else if userTookOverScroll {
+                        // 用户自己滚回尾部 → 交还控制权，之后新内容继续跟随。
+                        // 这也修掉了"`userTookOverScroll` 一旦置位就永远为真、
+                        // 回到最新之后再也收不到新消息"的老问题。
+                        userTookOverScroll = false
+                    }
+                }
+            }
             .onPreferenceChange(TimelineTopOffsetKey.self) { offset in
                 // **打开会话时不要自动补历史。**
                 //
@@ -724,6 +792,17 @@ struct SessionView: View {
 
 
 /// 时间线顶部哨兵在视口里的位置。用来做"上滑到底自动补历史"。
+/// 末尾哨兵下端相对时间线坐标系的位置。
+///
+/// 用来判断"用户此刻是不是停在最新消息处"。内容增长时只有真的停在尾部
+/// 才自动跟随 —— 否则读历史/看思考过程时会被不断拽回底部。
+private struct TimelineBottomOffsetKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 private struct TimelineTopOffsetKey: PreferenceKey {
     static let defaultValue: CGFloat = .greatestFiniteMagnitude
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
