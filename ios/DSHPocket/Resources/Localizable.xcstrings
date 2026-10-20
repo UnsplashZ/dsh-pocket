@@ -1009,6 +1009,17 @@
         }
       }
     },
+    "会话流已结束": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The session stream ended"
+          }
+        }
+      }
+    },
     "会话流（mux）": {
       "extractionState": "manual",
       "localizations": {
@@ -5294,17 +5305,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Known boundary on the computer"
-          }
-        }
-      }
-    },
-    "电脑端结束了这条会话流": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Your computer closed this session stream"
           }
         }
       }

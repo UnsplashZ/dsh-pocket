@@ -310,7 +310,11 @@ public final class SessionModel {
                 reconnectAttempt = 0
             }
             if !Task.isCancelled {
-                await handleDisconnect(reason: String(localized: "电脑端结束了这条会话流"), sawSnapshot: sawSnapshot)
+                // 措辞保持中性：流"正常结束"有两个完全不同的来源 ——
+                // 电脑端主动关掉，以及我们自己退到后台时 `appModel` 把 mux 关了。
+                // 写"电脑端结束了"在后台那半里是错的，会把人往错的方向带
+                //（实测日志：`退到后台，断开传输` 紧跟着这条）。
+                await handleDisconnect(reason: String(localized: "会话流已结束"), sawSnapshot: sawSnapshot)
             }
         } catch {
             if Task.isCancelled { return }
@@ -899,8 +903,18 @@ public final class SessionModel {
             let result = try await client.attachment(sessionId: sessionId, attachmentId: reference.attachmentId)
             imageCache[reference.attachmentId] = result.data
             return result.data
+        } catch is CancellationError {
+            // **被取消不是失败。**
+            //
+            // 调用方是 `TimelineRow` 里的 `.task { ... }` —— 视图消失（切会话、
+            // 滚出视口被 `LazyVStack` 回收）时系统会取消这个 task，
+            // 请求随之抛 `CancellationError`。以前这里一律记 `取图片失败`，
+            // 于是真机日志里全是这种"假失败"（实测 9 条 / 4 张图，
+            // 对应 `session/attachment` 请求只有 → 没有 ✓ 的那几条），
+            // 排查时非常误导：看起来像图片坏了，其实只是没人等了。
+            return nil
         } catch {
-            logs.log(.warning, "取图片失败：\(reference.attachmentId)")
+            logs.log(.warning, "取图片失败：\(reference.attachmentId)：\(error.localizedDescription)")
             return nil
         }
     }
