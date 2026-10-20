@@ -1107,6 +1107,15 @@ struct AttachmentThumbnail: View {
 
     @State private var data: Data?
     @State private var showPreview = false
+    /// 加载状态。**占位图必须区分"正在取"和"取失败了"。**
+    ///
+    /// 以前只有一个静态的相片图标，两种情况长得一模一样 ——
+    /// 而且图片请求会被 `.task` 的取消打断（视图滚出视口 /
+    /// 切换会话时系统取消这个 task）。真机日志实测 28 个附件请求里
+    /// 有 9 个是这么"失败"的，屏幕上的结果就是一张永远停在相片图标的灰块，
+    /// 用户看不出是没加载完还是坏了，也没有任何办法重试。
+    private enum LoadState { case loading, loaded, failed }
+    @State private var state: LoadState = .loading
 
     var body: some View {
         Group {
@@ -1117,16 +1126,41 @@ struct AttachmentThumbnail: View {
             } else {
                 ZStack {
                     Color(.tertiarySystemFill)
-                    Image(systemName: "photo")
-                        .foregroundStyle(.secondary)
+                    switch state {
+                    case .loading:
+                        ProgressView().controlSize(.small)
+                    case .failed:
+                        // 明确说"没取到"，并且**可点重试** —— 不做无声的灰块。
+                        VStack(spacing: Token.Spacing.hairline) {
+                            Image(systemName: "arrow.clockwise")
+                                .foregroundStyle(.secondary)
+                            Text("点按重试")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    case .loaded:
+                        // 数据到了但解不出图（真损坏）：如实说，别再画相片图标骗人。
+                        Image(systemName: "exclamationmark.triangle")
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
         }
         .frame(width: 140, height: 140)
         .clipShape(RoundedRectangle(cornerRadius: Token.Radius.chip, style: .continuous))
-        .onTapGesture { showPreview = true }
+        .onTapGesture {
+            if case .failed = state {
+                // 失败时点一下就是重试，不弹预览。
+                Task { await load() }
+            } else if data != nil {
+                showPreview = true
+            }
+        }
         .task {
-            if data == nil { data = await session.image(for: reference) }
+            // `.task` 会在视图出现时跑、消失时取消。取消本身不是错误，
+            // 下次出现会自动重来 —— 所以这里不需要额外处理，
+            // 只要保证"没数据就再取一次"。
+            if data == nil { await load() }
         }
         .accessibilityLabel(Text(reference.name ?? String(localized: "图片附件")))
         .accessibilityAddTraits(.isImage)
@@ -1135,6 +1169,26 @@ struct AttachmentThumbnail: View {
             if let data, let image = UIImage(data: data) {
                 ImagePreview(image: image, onClose: { showPreview = false })
             }
+        }
+    }
+
+    /// 取一次图片并更新状态机。
+    ///
+    /// 用 `imageResult(for:)` 而不是 `image(for:)`：后者把"取消"和"失败"
+    /// 都折成 `nil`，而这两者对用户的意义完全相反 —— 取消是"视图走了，
+    /// 下次出现自动再来"，失败才该显示"点按重试"。
+    @MainActor
+    private func load() async {
+        state = .loading
+        switch await session.imageResult(for: reference) {
+        case .success(let fetched):
+            data = fetched
+            state = .loaded
+        case .cancelled:
+            // 视图已经走了（或被复用），不写状态 —— 下次出现会重新 load。
+            break
+        case .failed:
+            state = .failed
         }
     }
 }

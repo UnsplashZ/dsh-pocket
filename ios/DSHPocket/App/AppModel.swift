@@ -403,7 +403,7 @@ public final class AppModel {
         } catch {
             let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             setConnection(.failed(message))
-            logs.log(.error, "连接失败：\(message)")
+            logs.log(.error, "连接失败：\(Self.brief(message))")
             return message
         }
     }
@@ -543,7 +543,7 @@ public final class AppModel {
         case .failed(let reason):
             consecutiveTransportFailures += 1
             setConnection(.failed(transportFailureMessage(base: reason)))
-            logs.log(.warning, "传输断开（第 \(consecutiveTransportFailures) 次）：\(reason)")
+            logs.log(.warning, "传输断开（第 \(consecutiveTransportFailures) 次）：\(Self.brief(reason))")
             // **不要 await 在这里。**
             //
             // `handle(transportState:)` 跑在一个串行的 `for await` 循环里 ——
@@ -567,6 +567,20 @@ public final class AppModel {
             if case .failed = connection { return }
             setConnection(.connecting(hostId: settings.activeHostId ?? ""))
         }
+    }
+
+    /// 把过长的底层错误压成一行。
+    ///
+    /// iroh 的错误 `description` 带着整段 `Caused by:` 链（实测单条 834~848 字节，
+    /// 同一件事还会在"连接失败"和"传输断开"各打一遍）。日志落盘之后这些噪音
+    /// 会挤掉真正有用的行 —— 而且**首行就已经说明问题了**。
+    /// 只取首行；需要细节时看 `caused by` 第一条，其余是重复的探测失败清单。
+    static func brief(_ message: String, limit: Int = 160) -> String {
+        let firstLine = message
+            .split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: true)
+            .first
+            .map(String.init) ?? message
+        return firstLine.count <= limit ? firstLine : String(firstLine.prefix(limit)) + "…"
     }
 
     /// 反复失败到一定次数就换一句**可执行**的话。

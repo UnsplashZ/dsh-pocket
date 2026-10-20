@@ -1057,6 +1057,7 @@ EN: dict[str, str] = {
     "密钥名": "Key name",
     "尚未连接到电脑": "Not connected to your computer yet",
     "会话流已结束": "The session stream ended",
+    "点按重试": "Tap to retry",
     "工具": "Tool",
     "已有一次连接正在进行": "A connection is already in progress",
     "开代理流失败：%@": "Failed to open the proxy stream: %@",

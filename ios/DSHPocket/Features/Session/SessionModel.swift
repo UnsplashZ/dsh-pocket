@@ -894,6 +894,36 @@ public final class SessionModel {
     // MARK: 图片取回
 
     /// 会话里引用过的图片：走 `session/attachment`（base64）。带一层内存缓存。
+    /// 图片取回的**结果**。
+    ///
+    /// 调用方需要区分"没取到"的两种原因 —— 取消（视图走了，下次再来）
+    /// 和真失败（该给用户一个重试入口）。只返回 `Data?` 分不出来。
+    enum ImageFetchResult {
+        case success(Data)
+        case cancelled
+        case failed
+    }
+
+    func imageResult(for reference: TimelineItem.ImageRef) async -> ImageFetchResult {
+        if let cached = imageCache[reference.attachmentId] { return .success(cached) }
+        if reference.attachmentId.hasPrefix("pending-") {
+            if let data = attachments.first(where: { "pending-\($0.id)" == reference.attachmentId })?.data {
+                return .success(data)
+            }
+            return .failed
+        }
+        do {
+            let result = try await client.attachment(sessionId: sessionId, attachmentId: reference.attachmentId)
+            imageCache[reference.attachmentId] = result.data
+            return .success(result.data)
+        } catch is CancellationError {
+            return .cancelled
+        } catch {
+            logs.log(.warning, "取图片失败：\(reference.attachmentId)：\(error.localizedDescription)")
+            return .failed
+        }
+    }
+
     func image(for reference: TimelineItem.ImageRef) async -> Data? {
         if let cached = imageCache[reference.attachmentId] { return cached }
         if reference.attachmentId.hasPrefix("pending-") {
@@ -909,8 +939,8 @@ public final class SessionModel {
             // 调用方是 `TimelineRow` 里的 `.task { ... }` —— 视图消失（切会话、
             // 滚出视口被 `LazyVStack` 回收）时系统会取消这个 task，
             // 请求随之抛 `CancellationError`。以前这里一律记 `取图片失败`，
-            // 于是真机日志里全是这种"假失败"（实测 9 条 / 4 张图，
-            // 对应 `session/attachment` 请求只有 → 没有 ✓ 的那几条），
+            // 于是真机日志里全是这种"假失败"（实测 28 个请求里 9 个，
+            // 对应 `session/attachment` 只有 → 没有 ✓ 的那几条），
             // 排查时非常误导：看起来像图片坏了，其实只是没人等了。
             return nil
         } catch {

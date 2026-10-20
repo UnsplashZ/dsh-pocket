@@ -4989,6 +4989,17 @@
         }
       }
     },
+    "点按重试": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tap to retry"
+          }
+        }
+      }
+    },
     "点按预览这个文件": {
       "extractionState": "manual",
       "localizations": {
