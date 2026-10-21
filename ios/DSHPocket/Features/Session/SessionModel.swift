@@ -152,6 +152,13 @@ public final class SessionModel {
     private var reconnectTask: Task<Void, Never>?
     /// 本次打开是不是先用缓存铺出来的。决定快照到达时走"续拉"还是"整体重建"。
     private var restoredFromCache = false
+    /// 开始等会话快照的时刻。骨架屏用它显示"已经等了几秒"。
+    ///
+    /// 真机上"点进会话一片骨架"能持续十几秒（宿主产快照慢），而骨架是**静止的**，
+    /// 用户分不清"在加载"还是"卡死了"。有这个时间戳就能把秒数画出来。
+    private(set) var loadingSince: Date?
+    /// 已经为"快照太浅"补过一次历史。重连后快照会重放，不能每次都再补一遍。
+    private var didBackfillShallowSnapshot = false
     private var backgroundObserver: (any NSObjectProtocol)?
     /// 流式更新合帧用的待发任务。见 `scheduleStreamPublish`。
     private var pendingStreamPublish: Task<Void, Never>?
@@ -188,6 +195,7 @@ public final class SessionModel {
     func open() async {
         guard followTask == nil else { return }
         phase = .loading
+        loadingSince = Date()
 
         // 先用缓存把内容铺出来 —— 这一步是"切换会话不用等"的全部意义。
         if let cached = await appModel.sessionCache.session(for: sessionId),
@@ -200,6 +208,7 @@ public final class SessionModel {
             publish()
             // 内容已经在屏幕上了，就别再显示加载骨架。
             phase = .live
+            loadingSince = nil
             logs.log(.debug, "会话 \(sessionId.prefix(12))… 命中缓存（\(builder.items.count) 条，seq \(Int(lastSeq))）")
         }
 
@@ -293,13 +302,22 @@ public final class SessionModel {
 
     private func runFollow(resumeAfter: Double) async {
         var sawSnapshot = false
+        // 从"开流"到"快照到手"的耗时：这是"点进会话一片骨架"的唯一可靠度量。
+        //
+        // 真机实测（2026-10-21）：宿主产快照要 2~14 秒（一个 300+ 条的会话，
+        // 有一次 14.1 秒），期间手机上什么都没有。以前日志里完全看不出这段，
+        // 只能靠"折叠完成"的时间戳去反推。现在直接打出来。
+        let waitStartedAt = Date()
         do {
             for try await frame in client.follow(sessionId: sessionId, assistantStream: true) {
                 if Task.isCancelled { return }
                 switch frame {
                 case .snapshot(let snapshot):
                     sawSnapshot = true
+                    let waited = Int(Date().timeIntervalSince(waitStartedAt) * 1000)
+                    logs.log(.info, "会话快照到达：\(snapshot.events.count) 条事件，等 \(waited)ms")
                     await applySnapshot(snapshot)
+                    await backfillIfSnapshotIsTooShallow()
                 case .event(let event):
                     // 重连后宿主会把快照重放一遍；用自己的 lastSeq 去重。
                     guard event.seq > lastSeq else { continue }
@@ -381,6 +399,7 @@ public final class SessionModel {
             hasMoreHistory = snapshot.hasMore
             lastSeq = max(lastSeq, Double(snapshot.cursor))
             phase = .live
+            loadingSince = nil
             // **这条提前 return 的路径也要设计时器起点。**
             // 命中缓存重进会话时走的就是这里 —— 漏了的话
             // "工作中"那个实时计时器永远不显示（实测）。
@@ -481,6 +500,7 @@ public final class SessionModel {
         builder.setCursor(snapshot.cursor)
         lastSeq = max(lastSeq, Double(snapshot.cursor))
         phase = .live
+        loadingSince = nil
         // 日志里能看出这一轮还开着就用它；**日志里有明确的轮次边界时以日志为准** ——
         // 那种情况下"没开着"就是真结束了，不能再让 20 秒才刷一次的列表标志
         // 把它翻回「运行中」（用户："有时候会话已经结束了，点进来还显示运行中"）。
@@ -715,6 +735,38 @@ public final class SessionModel {
     ///   `ScrollView` 自己会把当前内容锚在原处，用户看到的画面是稳的。
     ///   以前这里无条件滚，于是"补历史往下拽、贴底逻辑往上拉"同时发生，
     ///   屏幕一顿乱跳（用户："一边往上滚补历史消息，一边往下滚去最新消息"）。
+    /// 快照"太浅"时主动往前补几页。
+    ///
+    /// 为什么需要（2026-10-21 真机截图）：有界快照只带最近 50 条消息，而一个正在跑
+    /// 的大轮次可能有一百多步 —— 50 条**全落在这一轮内部**，折出来只有一个收拢的
+    /// 「思考中」行。打开会话看到的就是「载入更早的内容」+ 一条「思考中」+ 一大片空白，
+    /// 像是什么都没加载。
+    ///
+    /// 自动补历史那条路被 `userTookOverScroll` 门禁挡着（打开时**故意**不补：
+    /// 内容插到上方会让视图跳走，见 SessionView 里的说明）。那条规则对正常会话是对的，
+    /// 但"整页只有一两个块"时它没有东西可跳，只剩一片空白 —— 这里给它开个口子。
+    ///
+    /// 判据用块数而不是像素：一屏正常能看到好几块，只有 1~2 块就说明快照切在大轮次里。
+    /// 补页有硬上限，翻到头或补够了就停。
+    private func backfillIfSnapshotIsTooShallow() async {
+        guard !didBackfillShallowSnapshot, hasMoreHistory else { return }
+        didBackfillShallowSnapshot = true
+        let targetBlocks = 4
+        let maxPages = 6
+        var pages = 0
+        let startedAt = Date()
+        while hasMoreHistory, builder.items.count < targetBlocks, pages < maxPages {
+            if Task.isCancelled { return }
+            await loadOlderHistoryIfNeeded()
+            pages += 1
+        }
+        guard pages > 0 else { return }
+        let elapsedMS = Int(Date().timeIntervalSince(startedAt) * 1000)
+        logs.log(.info, "浅快照自动补齐：补了 \(pages) 页、\(elapsedMS)ms，现在 \(builder.items.count) 块")
+        // 补完内容变长了，但用户此刻应该还在底部 —— 明确再贴一次。
+        requestScrollToBottom()
+    }
+
     func loadOlderHistoryIfNeeded(revealInserted: Bool = false) async {
         guard hasMoreHistory, !isLoadingHistory else { return }
         // cursor < 0 = 还没从快照拿到"覆盖到哪"。此时发出去只会拿到空页，

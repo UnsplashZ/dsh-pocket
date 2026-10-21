@@ -4554,6 +4554,34 @@
         }
       }
     },
+    "正在读取会话内容…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading this conversation…"
+          }
+        }
+      }
+    },
+    "正在读取会话内容…已等 %@ 秒": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading this conversation… %@s so far"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在读取会话内容…已等 %@ 秒"
+          }
+        }
+      }
+    },
     "正在读取插件包…": {
       "extractionState": "manual",
       "localizations": {

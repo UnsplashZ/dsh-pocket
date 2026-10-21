@@ -694,6 +694,9 @@ EN: dict[str, str] = {
     "正在思考": "Reasoning",
     "传输层：%@": "Transport: %@",
     "健康": "healthy",
+    # 会话加载骨架（慢的时候要能看见"还在动"）
+    "正在读取会话内容…": "Loading this conversation…",
+    "正在读取会话内容…已等 %@ 秒": "Loading this conversation… %@s so far",
     # 寻址解析的诊断片段（只进日志/诊断页，但走的是 String(localized:) 路径）
     "无 relay": "no relay",
     "解析器返回错误码 %@": "the resolver returned error code %@",

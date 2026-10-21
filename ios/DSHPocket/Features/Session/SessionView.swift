@@ -539,6 +539,23 @@ struct SessionView: View {
 
     private var skeleton: some View {
         VStack(alignment: .leading, spacing: Token.Spacing.compact) {
+            // **加载慢的时候必须让人看见"它还在动"。**
+            //
+            // 真机上宿主产快照要 2~14 秒（2026-10-21 日志：300+ 条的会话等过 14.1 秒），
+            // 而骨架是静止的 —— 用户分不清"在加载"还是"卡死了"，只能反复退出重进。
+            // 这里加一个转圈 + 秒数，秒数直接读 `session.loadingSince`。
+            HStack(spacing: Token.Spacing.tight) {
+                ProgressView().controlSize(.small)
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    Text(loadingCaption(at: context.date))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, Token.Spacing.gutter)
+            .padding(.top, Token.Spacing.compact)
+            .accessibilityElement(children: .combine)
+
             ForEach(0..<6, id: \.self) { index in
                 Card {
                     VStack(alignment: .leading, spacing: Token.Spacing.tight) {
@@ -554,6 +571,18 @@ struct SessionView: View {
             }
         }
         .accessibilityLabel(Text("正在读取会话内容"))
+    }
+
+    /// 骨架屏上那行"正在读取…（已等 N 秒）"。
+    ///
+    /// 前 2 秒不报秒数：正常会话一两秒就好了，秒数只会闪一下显得卡。
+    private func loadingCaption(at date: Date) -> String {
+        guard let since = session?.loadingSince else {
+            return String(localized: "正在读取会话内容…")
+        }
+        let seconds = Int(date.timeIntervalSince(since))
+        guard seconds >= 2 else { return String(localized: "正在读取会话内容…") }
+        return String(localized: "正在读取会话内容…已等 \(seconds) 秒")
     }
 
     /// 时间线里有没有"真内容"（轮次或消息）—— 只有控制 note 的会话按空会话呈现。
