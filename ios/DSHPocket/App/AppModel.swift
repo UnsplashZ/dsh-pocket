@@ -310,6 +310,14 @@ public final class AppModel {
         // 只有"确实没连着"才重连：之前每次回到前台都无条件重建一条 iroh 连接，
         // 电脑端会把前一条顶掉（日志里是 closed by peer: 0），看起来就是"连一会就断"。
         if await tether.isTransportHealthy() { return }
+        // 冷启动时 `start()` 已经在建连，而 scenePhase 的 `.active` 紧跟着就来一次：
+        // 这时再调 `connect()` 会被重入保护拒掉，日志里就成了
+        // `回到前台重连失败，用时 0ms`（真机 2026-10-21 装机后首启，两条）。
+        // 已经有一次建连在跑，既不重复发起、也不算失败。
+        if isConnecting {
+            logs.log(.debug, "回到前台时已有一次建连在进行中，不重复发起")
+            return
+        }
         logs.log(.info, "回到前台，传输不健康，重连")
         let startedAt = Date()
         let backgroundedBefore = lastBackgroundAt

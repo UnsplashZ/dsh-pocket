@@ -237,7 +237,7 @@ public actor MuxClient {
                     guard let text = Self.text(of: message) else { continue }
                     await self.handle(text: text)
                 } catch {
-                    await self.socketFailed(error)
+                    await self.socketFailed(error, from: task)
                     return
                 }
             }
@@ -276,7 +276,8 @@ public actor MuxClient {
                     // 连续两次失败才当真：单次多半是 socket 短暂不可用。
                     if consecutiveFailures >= 2 {
                         await self.socketFailed(
-                            DSHClientError.transport(.socketClosed(reason: String(localized: "连接已断开")))
+                            DSHClientError.transport(.socketClosed(reason: String(localized: "连接已断开"))),
+                            from: task
                         )
                         return
                     }
@@ -329,13 +330,26 @@ public actor MuxClient {
         }
     }
 
-    private func socketFailed(_ error: any Error) {
+    /// socket 出事了。
+    ///
+    /// `from` 是**出事的那条** socket：它可能已经不是当前这条了。
+    ///
+    /// 为什么必须认身份（2026-10-21 装机后第一次启动的真机日志）：旧的 receiveLoop
+    /// 是异步发现 socket 死了的，如果这期间 `ensureSocket` 已经换了一条新的，
+    /// 这条迟到的死讯会把**新 socket 一起清掉**（`socket = nil` + 结束所有流），
+    /// 表现就是"刚连上十几秒就断一次、然后立刻重连"。
+    private func socketFailed(_ error: any Error, from task: URLSessionWebSocketTask) {
         let reason = (error as? any LocalizedError)?.errorDescription ?? error.localizedDescription
         // 主动 `close()` 之后 socket 被 cancel，`receiveLoop` 必然抛一次
         //「Socket未连接」。那是**我们让它断的**，不是故障 —— 记 debug 就够，
         // 否则每次退到后台都会在日志里留一条 WARN，把真问题淹掉。
         if isClosing {
             logger?.log(.debug, "mux 已关闭（主动，忽略底层报错：\(reason)）")
+            return
+        }
+        // 这条 socket 已经被换掉了：它的死讯不该影响现在这条连接。
+        if socket !== task {
+            logger?.log(.debug, "旧 socket 报错（已被替换，忽略）：\(reason)")
             return
         }
         guard !continuations.isEmpty || state != .disconnected(reason: reason) else { return }
