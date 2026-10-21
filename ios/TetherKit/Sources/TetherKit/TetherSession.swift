@@ -76,7 +76,12 @@ public actor TetherSession {
         case idle
         case connecting(hostId: String)
         case connected(hostId: String, baseURL: String)
-        case failed(String)
+        /// 失败原因 + **该不该继续重试**。
+        ///
+        /// 分类必须由传输层给出：只有这里还看得到原始错误类型。上层拿到的是一句
+        /// 文案，靠猜文案分不清「DNS 抖一下」和「电脑端不认这台手机了」——
+        /// 2026-10-21 的真机日志里 App 就是因为分不清而永久放弃了重连。
+        case failed(reason: String, policy: TetherFailurePolicy)
 
         public var isConnected: Bool { if case .connected = self { return true }; return false }
     }
@@ -94,6 +99,9 @@ public actor TetherSession {
     /// 连接一旦建立就把 hostId 记下来，掉线后监督器要拿它重连。
     private var connectedHostId: String?
     private var isDisconnecting = false
+    /// 取消代数。`cancelConnect()` 自增；`connect()` 在几个 await 边界比对它，
+    /// 发现自己过时了就抛 `TetherError.cancelled`，而不是当成一次真失败。
+    private var connectGeneration = 0
     private var watchdog: Task<Void, Never>?
 
     public init(
@@ -206,6 +214,7 @@ public actor TetherSession {
             return url
         }
         setState(.connecting(hostId: hostId))
+        let generation = connectGeneration
 
         do {
             // 重连前先把上一代的本地代理收掉。
@@ -232,11 +241,14 @@ public actor TetherSession {
             }
 
             try await link.connect(hostEndpointId: hostId, firstMessage: firstMessage)
+            // 建连期间退到后台（或被新连接顶掉）：别继续起代理，直接收工。
+            try ensureCurrent(generation)
 
             let preferred = TetherProxyPort.port(for: hostId)
             let proxy = LocalProxyServer(factory: link, preferredPort: preferred, logger: logger)
             let tProxy = Date()
             let base = try await proxy.start()
+            try ensureCurrent(generation)
             let proxyMS = Int(Date().timeIntervalSince(tProxy) * 1000)
             self.proxy = proxy
             self.proxyPort = UInt16(base.port ?? 0)
@@ -253,10 +265,33 @@ public actor TetherSession {
             logger?.log("已连接并起好本地代理（本地代理启动 \(proxyMS)ms）：\(base.absoluteString)")
             return base
         } catch {
-            setState(.failed((error as? LocalizedError)?.errorDescription ?? error.localizedDescription))
+            let policy = (error as? TetherError)?.policy ?? .retry
             await teardown()
+            if policy == .cancelled {
+                // 我们自己取消的：不是故障，别让界面停在「失败」上。
+                setState(.idle)
+            } else {
+                setState(.failed(
+                    reason: (error as? LocalizedError)?.errorDescription ?? error.localizedDescription,
+                    policy: policy
+                ))
+            }
             throw error
         }
+    }
+
+    /// 取消正在进行的建连（退到后台、或被一次新的连接顶掉时调用）。
+    ///
+    /// 只标记不终止是不够的：`link.connect` 里的 iroh 调用不响应 Swift 取消，
+    /// 会一直挂着并占着 `connecting` 标志，等它自己超时可能要好几分钟（App 被
+    /// 挂起时计时器还停着）。所以这里让 TetherLink 把 endpoint 关掉，立刻打断它。
+    public func cancelConnect() async {
+        connectGeneration &+= 1
+        await link?.cancelConnect()
+    }
+
+    private func ensureCurrent(_ generation: Int) throws {
+        if generation != connectGeneration { throw TetherError.cancelled }
     }
 
     public func disconnect() async {
@@ -276,7 +311,8 @@ public actor TetherSession {
         proxyPort = nil
         await link?.disconnect()
         link = nil
-        setState(.failed(String(localized: "与电脑的连接断了：\(reason)")))
+        // 掉线几乎总是网络侧的事（切网络、锁屏、中继被掐），按可重试处理。
+        setState(.failed(reason: String(localized: "与电脑的连接断了：\(reason)"), policy: .retry))
     }
 
     /// 监督器要用的：当前连的是哪台。

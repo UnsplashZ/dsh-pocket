@@ -34,6 +34,22 @@ public struct TetherIdentity: Sendable {
     }
 }
 
+/// 一次失败之后该不该继续重试。
+///
+/// 分类放在传输层做，因为只有这里看得到**原始错误类型**。上层拿到的是一句
+/// 本地化文案，再靠猜文案去区分"DNS 抖一下"和"电脑端不认这台手机了"必然出错 ——
+/// 2026-10-21 的真机日志就是这么错的：DNS 临时不通被当成终态，App 直接
+/// 打了一句「连续失败已达 7 次，暂停自动重连」就再也不试了，而那时只要
+/// 关掉 VPN，1.1 秒就能连上。
+public enum TetherFailurePolicy: Sendable, Equatable {
+    /// 网络 / DNS / 超时这类**暂时性**问题：退避后继续重试，永不放弃。
+    case retry
+    /// 需要用户动手（重新配对、修电脑端配置）：停下并给出可执行提示。
+    case stop
+    /// 我们自己取消的（退到后台、被新连接顶掉）：不计数、不提示、不重试。
+    case cancelled
+}
+
 /// TetherKit 的错误。每一条都要能变成给用户看的一句话（见 docs/TRANSPORT.md §7）。
 public enum TetherError: Error, Sendable {
     /// 还没配对。
@@ -50,11 +66,34 @@ public enum TetherError: Error, Sendable {
     case proxyRefused
     /// 控制流断了。
     case controlClosed(String)
+    /// 连接被主动取消（退到后台、或被一次新的连接顶掉）。不是故障。
+    case cancelled
+}
+
+extension TetherError {
+    /// 这次失败该不该继续重试。
+    ///
+    /// 判据只看**错误的性质**，不看失败次数：次数多只说明网络一直不好，
+    /// 不代表重试没意义 —— 网络恢复的时刻永远是随机的。
+    public var policy: TetherFailurePolicy {
+        switch self {
+        case .notPaired, .pairingFailed, .invalidEndpointId, .proxyRefused:
+            // 这几种重试一万次结果也一样，必须用户动手。
+            return .stop
+        case .transport, .proxyUnavailable, .controlClosed:
+            // 建连超时、DNS 不通、控制流被掐断：都可能在下一秒自己好。
+            return .retry
+        case .cancelled:
+            return .cancelled
+        }
+    }
 }
 
 extension TetherError: LocalizedError {
     public var errorDescription: String? {
         switch self {
+        case .cancelled:
+            return String(localized: "连接已取消")
         case .notPaired:
             return String(localized: "还没有和这台电脑配对")
         case .pairingFailed(let failure):

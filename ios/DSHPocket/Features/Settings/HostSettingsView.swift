@@ -63,12 +63,12 @@ struct HostSettingsView: View {
             }
             .task {
                 await model.refreshHostSettings()
-                await model.refreshHostPlugins()
+                await model.refreshHostPlugins(force: true)
                 #if DEBUG
                 if UserDefaults.standard.bool(forKey: "DSHShowProviders") { showProviders = true }
                 #endif
             }
-            .refreshable { await model.refreshHostSettings(); await model.refreshHostPlugins() }
+            .refreshable { await model.refreshHostSettings(); await model.refreshHostPlugins(force: true) }
             .sheet(isPresented: $showModelPicker) {
                 DefaultModelPickerSheet()
             }

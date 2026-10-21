@@ -79,28 +79,6 @@
         }
       }
     },
-    "%@\n如果是装完 App 第一次启动，请到「设置 → 隐私与安全性 → 本地网络」确认 DSH Pocket 是开的 —— 关着的话 iOS 会静默丢包，看起来就是一直连接中。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@\nIf this is the first launch after installing, check Settings → Privacy & Security → Local Network and make sure DSH Pocket is allowed — with it off, iOS silently drops packets and it looks like “connecting” forever."
-          }
-        }
-      }
-    },
-    "%@\n连续失败 %lld 次。如果电脑端重装过插件或清过配对数据，请在「设置 → 主机」里删掉这台电脑，然后重新配对。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@\nFailed %lld times in a row. If the plugin was reinstalled or its pairing data was cleared on your computer, delete this computer under Settings → Computers and pair again."
-          }
-        }
-      }
-    },
     "%@ 输出": {
       "extractionState": "manual",
       "localizations": {
@@ -2155,6 +2133,28 @@
         }
       }
     },
+    "如果是装完 App 第一次启动，请到「设置 → 隐私与安全性 → 本地网络」确认 DSH Pocket 是开的 —— 关着的话 iOS 会静默丢包，看起来就是一直连接中。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "If this is the first launch after installing, check Settings → Privacy & Security → Local Network and make sure DSH Pocket is allowed — with it off, iOS silently drops packets and it looks like “connecting” forever."
+          }
+        }
+      }
+    },
+    "如果电脑端重装过插件或清过配对数据，请在「设置 → 主机」里删掉这台电脑，然后重新配对。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "If the plugin was reinstalled or its pairing data was cleared on your computer, delete this computer under Settings → Computers and pair again."
+          }
+        }
+      }
+    },
     "子 agent": {
       "extractionState": "manual",
       "localizations": {
@@ -3024,6 +3024,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Left plan mode"
+          }
+        }
+      }
+    },
+    "已退到后台，跳过这次连接": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The app moved to the background — skipping this attempt"
           }
         }
       }
@@ -4032,6 +4043,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "The new session belongs to the workspace you pick; you go straight into it."
+          }
+        }
+      }
+    },
+    "无 relay": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "no relay"
           }
         }
       }
@@ -5824,6 +5846,17 @@
         }
       }
     },
+    "网络看起来解析不到这台电脑的地址，正在后台继续重试。如果一直这样，检查手机的网络、代理或 VPN（它们常会拦掉 DNS 查询）。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The phone can’t resolve this computer’s address — still retrying in the background. If this keeps happening, check the phone’s network, proxy or VPN (they often block DNS lookups)."
+          }
+        }
+      }
+    },
     "能在工作区目录里读写。工作区之外的操作仍然要你批准。": {
       "extractionState": "manual",
       "localizations": {
@@ -5885,6 +5918,23 @@
         }
       }
     },
+    "解析器返回错误码 %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "the resolver returned error code %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "解析器返回错误码 %@"
+          }
+        }
+      }
+    },
     "认不出": {
       "extractionState": "manual",
       "localizations": {
@@ -5931,6 +5981,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "When a background command runs on your computer, it shows up here — with live output."
+          }
+        }
+      }
+    },
+    "记录不存在（NXDOMAIN）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "no such record (NXDOMAIN)"
           }
         }
       }
@@ -6786,6 +6847,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "The connection was closed"
+          }
+        }
+      }
+    },
+    "连接已取消": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection cancelled"
           }
         }
       }

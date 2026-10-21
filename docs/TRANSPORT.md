@@ -39,10 +39,23 @@ let ep = try await Endpoint.bind(options: EndpointOptions(
 
 // 3) 连接主机
 let peer = try EndpointId.fromString(s: hostEndpointIdHex)
-let addr = EndpointAddr(id: peer, relayUrl: nil, addresses: [])
+// 寻址信息**自己解析**（TetherDiscovery），不要留空：
+let hint = await TetherDiscovery.resolve(hostHexId: hostEndpointIdHex)
+let addr = hint.succeeded
+    ? EndpointAddr(id: peer, relayUrl: hint.hint.relayURL, addresses: hint.hint.addresses)
+    : EndpointAddr(id: peer, relayUrl: nil, addresses: [])   // 解析失败才回落内置发现
 let conn = try await ep.connect(addr: addr, alpn: Data(Tether.alpn.utf8))
 let id   = conn.remoteId().description                // 用于本地簿去重
 ```
+
+> **为什么不能把 `EndpointAddr` 留空**（2026-10-21 真机事故）：留空就等于把寻址完全交给
+> iroh 的 DNS 发现，而 iroh 1.0.3 在 iOS 上读不到 `/etc/resolv.conf`，会退回 hickory 的
+> `ResolverConfig::default()` —— **硬编码的 8.8.8.8 / 8.8.4.4**。国内蜂窝网、以及带分流
+> 规则的 VPN 都会丢掉发往 8.8.8.8 的 UDP/53，于是每次建连卡满约 5.5 秒后报
+> `No addressing information available`，App 里显示「找不到这台电脑的地址」。
+> 现在 `TetherDiscovery` 自己拼 DNS 查询（`_iroh.<z32>.<origin> TXT`，带 EDNS0），
+> 发给 **119.29.29.29（腾讯）/ 223.5.5.5（阿里）** 并取先回来的那个，把 `relay=` / `addr=`
+> 解析出来喂给 iroh —— 建连不再依赖 iroh 的解析路径。查不到才回落到空地址。
 
 > 命名以 IrohLib 的 DocC 为准（<https://n0-computer.github.io/iroh-ffi/swift/documentation/irohlib/>）。以上名字取自官方示例 [hello-iroh-ffi](https://github.com/n0-computer/hello-iroh-ffi)。
 
@@ -257,6 +270,7 @@ Tailscale / 局域网本身有加密与设备认证，令牌是第二道门；�
 | 现象 | 先看 | 原因 |
 |---|---|---|
 | 连不上、超时 | 电脑端 sidecar 进程在不在（`ps -eo command \| grep tether-host`） | 插件没运行 / endpoint id 写错 |
+| 报「找不到这台电脑的地址（DNS 暂时不可用）」 | 手机是否开着 VPN / 代理 / 自定义 DNS；日志里搜 `寻址信息` | iroh 在 iOS 上会退回 8.8.8.8，被 VPN 或运营商丢掉。App 现在自己走 119.29.29.29 / 223.5.5.5（见 §1.1） |
 | 超时且同 Wi-Fi | 系统「本地网络」权限 | 见 §6 的 issue #6 类问题 |
 | 配对报 `no-window` | 电脑端是否刚点过「连接手机」 | 窗口没开 |
 | 配对报 `expired` / `too-many-attempts` | —— | 10 分钟过期 / 错 3 次 |

@@ -192,9 +192,26 @@ public final class AppModel {
     private var generationContinuations: [UUID: AsyncStream<Int>.Continuation] = [:]
     private var reconnectAttempt = 0
     private var isBackgrounded = false
-    /// 连续几次传输失败。用来把"电脑端已经不认这台手机了"这种需要人工介入的
-    /// 情况和普通网络抖动区分开 —— 后者重试就好，前者要用户去删掉主机记录重新配对。
+    /// 最近一次退到后台的时刻。用来判断"这次前台重连的耗时里有没有夹着后台挂起"——
+    /// 真机日志里出现过 `回到前台重连完成，用时 1762496ms`（29 分钟），
+    /// 那段时间 App 一直在后台睡着，这个数字毫无意义还误导排障。
+    private var lastBackgroundAt: Date?
+    /// 连续几次传输失败。**只用于文案**（提示用户），不再用来决定要不要继续重试 ——
+    /// 重不重试由传输层给出的 `TetherFailurePolicy` 决定（见 `handle(transportState:)`）。
+    ///
+    /// 以前这里是"超过 6 次就不再自动重连"，而 DNS 临时不通也被算进这个计数器：
+    /// 2026-10-21 的真机日志里，VPN 把 8.8.8.8 拦掉 2.5 小时，App 打到
+    /// 「连续失败已达 7 次，暂停自动重连」就彻底不试了 —— 用户关掉 VPN 之后
+    /// 它仍然不知道，必须手动切一次前台才连上。
     private var consecutiveTransportFailures = 0
+    /// 上一次失败被判定为"必须用户动手"（重新配对、修电脑端配置）。
+    /// **只有**这种情况才停止自动重连；网络类问题永远继续试。
+    private var stoppedByTerminalFailure = false
+    /// 插件清单/插件包/preset 的拉取任务。它们只服务设置页和"频道"入口，
+    /// 不该挡住会话列表（真机日志：一次前台重连为此多等 18 秒）。
+    private var hostMetadataTask: Task<Void, Never>?
+    /// 插件清单最近一次成功拉取的时间（缓存判据）。
+    private var hostPluginsFetchedAt: Date?
     private let notifier = NotificationCenterAdapter()
 
     // MARK: 初始化
@@ -279,6 +296,11 @@ public final class AppModel {
     /// 退到前台：iOS 不允许常驻后台连接，所以这里**立即重连**（DESIGN §9）。
     func handleForeground() async {
         isBackgrounded = false
+        // 回到前台是"重新开始"：失败计数与"必须人工介入"的封锁都清掉，
+        // 否则昨天那次 DNS 抖动留下的 7 次计数会一直压着后面的重试。
+        consecutiveTransportFailures = 0
+        reconnectAttempt = 0
+        stoppedByTerminalFailure = false
         guard settings.transportMode == .remote else {
             // 直连网关没有 iroh 连接要恢复，只要 client 还在就继续用。
             if !connection.isConnected { await activateClient(modeLabel: coordinator.mode.label) }
@@ -289,27 +311,61 @@ public final class AppModel {
         // 电脑端会把前一条顶掉（日志里是 closed by peer: 0），看起来就是"连一会就断"。
         if await tether.isTransportHealthy() { return }
         logs.log(.info, "回到前台，传输不健康，重连")
-        let tFg = Date()
-        await connect(hostId: hostId, pairingCode: nil, silent: true)
+        let startedAt = Date()
+        let backgroundedBefore = lastBackgroundAt
+        let failure = await connect(hostId: hostId, pairingCode: nil, silent: true)
         // 留成常驻日志：用户报过"后台回来重连特别慢"。传输层那边还有一行
         // "建连耗时：…"，两行合起来就能定位是 iroh 建连慢还是别的地方慢。
-        logs.log(.info, "回到前台重连完成，用时 \(Int(Date().timeIntervalSince(tFg) * 1000))ms")
+        //
+        // 两个口径上的坑（都在真机日志里见过）：
+        //   1. 失败也打「重连完成」—— 现在分开写，失败就是失败；
+        //   2. 用时里夹着后台挂起 —— 那次 App 在后台睡了 29 分钟，
+        //      打出来是 1762496ms。期间退过后台就不报数字，只说明情况。
+        let elapsed = Int(Date().timeIntervalSince(startedAt) * 1000)
+        let suspended = backgroundedBefore != lastBackgroundAt
+        if failure != nil {
+            // 被自己取消掉的那次不是失败，别写成"重连失败"吓人。
+            if lastConnectCancelled {
+                logs.log(.debug, "回到前台这次重连被取消（又退到后台了）")
+            } else if suspended {
+                logs.log(.warning, "回到前台重连失败（期间进过后台，耗时不计）")
+            } else {
+                logs.log(.warning, "回到前台重连失败，用时 \(elapsed)ms")
+            }
+        } else if suspended {
+            logs.log(.info, "回到前台重连完成（期间进过后台，耗时不计）")
+        } else {
+            logs.log(.info, "回到前台重连完成，用时 \(elapsed)ms")
+        }
     }
 
     /// 退到后台：断开传输，只保留通知（iOS 上这是正解，别试图保活）。
     func handleBackground() async {
+        // **幂等**：scenePhase 会重复投递 `.background`（真机日志里
+        // `退到后台，断开传输` 出现过连续两条，间隔 1 秒）。
+        guard !isBackgrounded else { return }
         isBackgrounded = true
+        lastBackgroundAt = Date()
         logs.log(.info, "退到后台，断开传输")
         listRefreshLoop?.cancel()
         listRefreshLoop = nil
         connectionWatchdog?.cancel()
         connectionWatchdog = nil
+        // **先把在途的建连取消掉，再拆传输。**
+        //
+        // 不取消的话那条连接会一直挂着：真机日志里 07:11:45 退到后台、
+        // 07:11:45.659 还在起连接，一路挂到 16:28（App 被挂起，15 秒超时计时器也停着），
+        // 期间 `connecting` 标志一直为真，于是前台重连被静默拒绝 ——
+        // 界面上那条 `回到前台重连完成，用时 0ms` 就是它。
+        await tether.cancelConnect()
         await eventCoordinator?.stop()
         eventCoordinator = nil
         workspaceTask?.cancel()
         workspaceTask = nil
         tetherMessagesTask?.cancel()
         tetherMessagesTask = nil
+        hostMetadataTask?.cancel()
+        hostMetadataTask = nil
         await client.closeTransport()
         await tether.disconnect()
         coordinator.setRemoteBaseURL(nil)
@@ -331,7 +387,19 @@ public final class AppModel {
         // 并发建连会把彼此顶掉。
         guard !isConnecting else { return String(localized: "上一次连接还在进行中") }
         isConnecting = true
+        lastConnectCancelled = false
         defer { isConnecting = false }
+
+        // **已经退到后台就不要再起连接。**
+        //
+        // iOS 会立刻把 App 挂起，这条连接就一直挂着（连同它的 15 秒超时计时器），
+        // 而 `isConnecting` 期间前台的重连会被上面那道重入保护挡掉、且是静默挡掉的。
+        // 真机日志：07:11:45 退到后台、.659 起连接，挂到 16:28；11:45:44 又一次，
+        // 12 分钟后才报「连接超时（15 秒）」，中间每一次前台重连都被拒绝。
+        if isBackgrounded {
+            logs.log(.debug, "已在后台，跳过这次建连")
+            return String(localized: "已退到后台，跳过这次连接")
+        }
 
         // 已经连在同一台电脑上时直接收工：`TetherSession.connect` 对同 id 是空操作、
         // 不会再广播 `.connected`，若照常往下走把 UI 打成「连接中」，
@@ -342,6 +410,7 @@ public final class AppModel {
            current == hostId {
             reconnectAttempt = 0
             consecutiveTransportFailures = 0
+            stoppedByTerminalFailure = false
             if !connection.isConnected {
                 // UI 与传输层脱节时顺手对齐（传输一直在线，只是界面没被救回来）
                 setConnection(.connected(mode: String(localized: "远端连接")))
@@ -369,6 +438,7 @@ public final class AppModel {
            stateHost == hostId {
             reconnectAttempt = 0
             consecutiveTransportFailures = 0
+            stoppedByTerminalFailure = false
             if !connection.isConnected {
                 setConnection(.connected(mode: String(localized: "远端连接")))
             }
@@ -391,6 +461,7 @@ public final class AppModel {
             settings.activeHostId = hostId
             hosts = await tether.hosts()
             consecutiveTransportFailures = 0
+            stoppedByTerminalFailure = false
             // **兜底对齐**：`tether.connect()` 对"已连接同 id"是提前返回的（不广播），
             // 而监督流那边可能已经把 `.connected` 处理完、`connection` 也被别的路
             // 打回过 `.connecting`。这里确认一次传输事实，别把「明明连上了」
@@ -402,13 +473,26 @@ public final class AppModel {
             return nil
         } catch {
             let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            // 被自己取消（退到后台、或被新连接顶掉）不是失败：不写失败态、不计数、不提示。
+            if (error as? TetherError)?.policy == .cancelled {
+                lastConnectCancelled = true
+                logs.log(.debug, "这次建连被取消（退到后台或被新连接顶掉），不按失败处理")
+                return message
+            }
             setConnection(.failed(message))
-            logs.log(.error, "连接失败：\(Self.brief(message))")
+            // 文案里已经带了「连接失败：」（`TetherError.transport` 的 description），
+            // 这里再拼一次就成了「连接失败：连接失败：…」—— 真机日志里一天出现 11 次。
+            logs.log(.error, "建连失败：\(Self.brief(Self.strippingFailurePrefix(message)))")
             return message
         }
     }
 
     private var isConnecting = false
+    /// 上一次 `connect()` 是不是**被我们自己取消**的。
+    ///
+    /// 不用"把返回的错误文案和「连接已取消」比字符串"那种写法：文案是本地化的，
+    /// 换个语言或改一个字就失效，而这里的语义是"这次没失败，只是不算数"。
+    private var lastConnectCancelled = false
 
     /// 传输世代变化流。会话页订阅它，重连后立刻重订阅会话流。
     func generationUpdates() -> AsyncStream<Int> {
@@ -534,25 +618,45 @@ public final class AppModel {
         switch state {
         case .connected(let hostId, let baseURL):
             reconnectAttempt = 0
+            consecutiveTransportFailures = 0
+            stoppedByTerminalFailure = false
             guard let url = URL(string: baseURL) else { return }
             coordinator.setRemoteBaseURL(url)
             settings.activeHostId = hostId
             await activateClient(modeLabel: String(localized: "远端连接"))
             logs.log(.info, "传输就绪 \(hostId.prefix(12))… → \(baseURL)")
 
-        case .failed(let reason):
-            consecutiveTransportFailures += 1
-            setConnection(.failed(transportFailureMessage(base: reason)))
-            logs.log(.warning, "传输断开（第 \(consecutiveTransportFailures) 次）：\(Self.brief(reason))")
-            // **不要 await 在这里。**
+        case .failed(let reason, let policy):
+            // **按性质分流，而不是按次数。**
             //
-            // `handle(transportState:)` 跑在一个串行的 `for await` 循环里 ——
-            // 在这里 await 一段退避（最长十几秒），整条状态流就被堵住了：
-            // 期间传输层送来的 `.connected` 一个都处理不到，界面于是永远停在
-            // 上一次写的「连接中…／连接失败」上。真机日志里"明明已经连上了
-            // 却一直卡连接中"就是这个形状。
-            // 重连排到独立任务里，状态流继续流。
-            scheduleTransportReconnectInBackground()
+            // 传输层已经替我们分好了（`TetherFailurePolicy`）：
+            //   · retry —— 网络/DNS/超时：继续退避重试，**永不放弃**；
+            //   · stop  —— 需要用户动手（重新配对等）：停下并给出可执行提示；
+            //   · cancelled —— 我们自己取消的：不计数、不提示、不重试。
+            let summary = Self.brief(Self.strippingFailurePrefix(reason))
+            switch policy {
+            case .cancelled:
+                logs.log(.debug, "传输断开（主动取消）：\(summary)")
+                return
+            case .stop:
+                consecutiveTransportFailures += 1
+                stoppedByTerminalFailure = true
+                setConnection(.failed(transportFailureMessage(base: reason, policy: .stop)))
+                logs.log(.warning, "传输断开（第 \(consecutiveTransportFailures) 次，需要人工介入）：\(summary)")
+            case .retry:
+                consecutiveTransportFailures += 1
+                setConnection(.failed(transportFailureMessage(base: reason, policy: .retry)))
+                logs.log(.warning, "传输断开（第 \(consecutiveTransportFailures) 次）：\(summary)")
+                // **不要 await 在这里。**
+                //
+                // `handle(transportState:)` 跑在一个串行的 `for await` 循环里 ——
+                // 在这里 await 一段退避（最长十几秒），整条状态流就被堵住了：
+                // 期间传输层送来的 `.connected` 一个都处理不到，界面于是永远停在
+                // 上一次写的「连接中…／连接失败」上。真机日志里"明明已经连上了
+                // 却一直卡连接中"就是这个形状。
+                // 重连排到独立任务里，状态流继续流。
+                scheduleTransportReconnectInBackground()
+            }
 
         case .idle:
             if settings.transportMode == .remote { setConnection(.idle) }
@@ -569,42 +673,64 @@ public final class AppModel {
         }
     }
 
-    /// 把过长的底层错误压成一行。
+    /// 把过长的底层错误压成一行，但**留住根因那一句**。
     ///
     /// iroh 的错误 `description` 带着整段 `Caused by:` 链（实测单条 834~848 字节，
-    /// 同一件事还会在"连接失败"和"传输断开"各打一遍）。日志落盘之后这些噪音
-    /// 会挤掉真正有用的行 —— 而且**首行就已经说明问题了**。
-    /// 只取首行；需要细节时看 `caused by` 第一条，其余是重复的探测失败清单。
-    static func brief(_ message: String, limit: Int = 160) -> String {
-        let firstLine = message
-            .split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: true)
-            .first
-            .map(String.init) ?? message
-        return firstLine.count <= limit ? firstLine : String(firstLine.prefix(limit)) + "…"
+    /// 同一件事还会在"连接失败"和"传输断开"各打一遍）。落盘之后这些噪音会挤掉
+    /// 真正有用的行，所以只取前两行。
+    ///
+    /// 为什么不再"只留首行"（0.4.20 就是这么做的）：首行往往是最笼统的那句
+    /// `No addressing information available`，真正说明问题的是它下面那行
+    /// `Failed to resolve TXT record` —— 2026-10-21 排查 DNS 时就是因为这行被截掉，
+    /// 只能反过来去翻 iroh 源码才知道到底是超时还是域名不存在。
+    static func brief(_ message: String, limit: Int = 200) -> String {
+        let lines = message
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+        guard let first = lines.first else { return message }
+        var summary = first
+        // 优先挑 `Caused by:` 后面那一行（它是根因）；没有就退回第二行。
+        if let cause = lines.firstIndex(where: { $0.lowercased().hasPrefix("caused by:") }),
+           cause + 1 < lines.count {
+            summary += " ← " + lines[cause + 1]
+        } else if lines.count > 1 {
+            summary += " ← " + lines[1]
+        }
+        return summary.count <= limit ? summary : String(summary.prefix(limit)) + "…"
     }
 
-    /// 反复失败到一定次数就换一句**可执行**的话。
+    /// 剥掉错误文案自带的前缀，避免日志里出现「连接失败：连接失败：…」。
     ///
-    /// 两个真的会发生的场景：
-    ///  1. **装完 App 第一次启动一直「连接中」**（2026-10-19 真机实测）：iOS 的
-    ///     「本地网络」权限在授权之前会**静默丢包**（iroh 的 UDP 打洞全灭），
-    ///     而授权弹窗可能恰好在锁屏/不在场时出现过。重启 App 之所以"就好了"，
-    ///     是因为那时权限已经给过了。≥2 次失败就把这个指向说出来。
-    ///  2. 电脑端的配对白名单被清过（重装插件、换 data-dir），手机还记着旧记录，
-    ///     于是一直 hello、一直被判协议错误。≥3 次失败提示重新配对。
-    private func transportFailureMessage(base: String) -> String {
-        if consecutiveTransportFailures >= 3 {
-            return String(
-                format: String(localized: "%@\n连续失败 %lld 次。如果电脑端重装过插件或清过配对数据，请在「设置 → 主机」里删掉这台电脑，然后重新配对。"),
-                base,
-                consecutiveTransportFailures
-            )
+    /// `TetherError.transport` 的 `errorDescription` 本身就以「连接失败：」开头
+    /// （那是给界面看的完整句子），日志再加一次标签就重复了。
+    static func strippingFailurePrefix(_ message: String) -> String {
+        for prefix in ["连接失败：", "与电脑的连接已断开：", "与电脑的连接断了："] where message.hasPrefix(prefix) {
+            return String(message.dropFirst(prefix.count))
+        }
+        return message
+    }
+
+    /// 反复失败时换一句**可执行**的话。
+    ///
+    /// 三种真的会发生的场景，对应三种不同的建议 —— 混在一起说会把人带偏：
+    ///  1. **需要用户动手**（`stop`：电脑端重装过插件/清过配对数据）：删掉主机记录重新配对；
+    ///  2. **DNS 解析不通**（`retry`，且错误里就是解析失败）：多半是网络或 VPN 拦了 DNS
+    ///     —— 2026-10-21 现场：手机开着 VPN，把发往 8.8.8.8 的查询全丢了，关掉就好；
+    ///  3. **本地网络权限**（`retry`，且是连接超时）：装完 App 第一次启动时，
+    ///     iOS 在授权之前会静默丢包，看起来就是一直连接中。
+    private func transportFailureMessage(base: String, policy: TetherFailurePolicy) -> String {
+        if policy == .stop {
+            return base + "\n" + String(localized: "如果电脑端重装过插件或清过配对数据，请在「设置 → 主机」里删掉这台电脑，然后重新配对。")
         }
         guard consecutiveTransportFailures >= 2 else { return base }
-        return String(
-            format: String(localized: "%@\n如果是装完 App 第一次启动，请到「设置 → 隐私与安全性 → 本地网络」确认 DSH Pocket 是开的 —— 关着的话 iOS 会静默丢包，看起来就是一直连接中。"),
-            base
-        )
+        let looksLikeDNS = base.contains("DNS") || base.contains("地址")
+        if looksLikeDNS {
+            return base + "\n" + String(localized: "网络看起来解析不到这台电脑的地址，正在后台继续重试。如果一直这样，检查手机的网络、代理或 VPN（它们常会拦掉 DNS 查询）。")
+        }
+        if base.contains("超时") {
+            return base + "\n" + String(localized: "如果是装完 App 第一次启动，请到「设置 → 隐私与安全性 → 本地网络」确认 DSH Pocket 是开的 —— 关着的话 iOS 会静默丢包，看起来就是一直连接中。")
+        }
+        return base
     }
 
     /// 被 `.failed` 分支调用：**不阻塞**状态流的重连调度。
@@ -616,17 +742,34 @@ public final class AppModel {
         }
     }
 
+    /// 断线重连的退避参数。
+    ///
+    /// 和 `RetryPolicy.default` 的区别只有一个：上限 30 秒而不是 10 秒。
+    /// 因为这里的重试**永不停止**（网络类失败），间隔太短会一直唤醒无线模块耗电；
+    /// 30 秒是"网络恢复后最多半分钟就自己回来"和"待机耗电可忽略"之间的折中。
+    private static let reconnectPolicy = RetryPolicy(
+        maxAttempts: Int.max,
+        baseDelay: .milliseconds(500),
+        maxDelay: .seconds(30),
+        jitter: 0.25
+    )
+
     private func scheduleTransportReconnect() async {
         guard !isBackgrounded, settings.transportMode == .remote else { return }
-        // 连续失败太多就别再无脑重试了：这多半需要用户动手（重新配对），
-        // 一直重试只会刷日志、耗电。
-        guard consecutiveTransportFailures <= 6 else {
-            logs.log(.warning, "连续失败已达 \(consecutiveTransportFailures) 次，暂停自动重连")
+        // **只有"必须用户动手"的失败才停。**
+        //
+        // 这里以前是"连续失败超过 6 次就不再自动重连"，把 DNS/网络这类
+        // 秒级可恢复的问题也算进去了：2026-10-21 手机 VPN 拦掉 DNS 两小时半，
+        // App 打到第 7 次就彻底罢工，用户关掉 VPN 之后它也不会自己回来
+        //（只能切一次前台或杀 App）。现在按性质分：网络类无限重试，
+        // 次数只影响提示文案。
+        guard !stoppedByTerminalFailure else {
+            logs.log(.debug, "上次失败需要人工介入，暂停自动重连")
             return
         }
         guard let hostId = settings.activeHostId, !hostId.isEmpty else { return }
         reconnectAttempt += 1
-        let wait = RetryPolicy.default.delay(afterAttempt: reconnectAttempt)
+        let wait = Self.reconnectPolicy.delay(afterAttempt: reconnectAttempt)
         logs.log(.info, "\(wait.formatted) 后重连电脑（第 \(reconnectAttempt) 次）")
         try? await Task.sleep(for: wait)
         guard !Task.isCancelled, !isBackgrounded else { return }
@@ -641,12 +784,15 @@ public final class AppModel {
         connectionWatchdog?.cancel()
         connectionWatchdog = nil
         reconnectAttempt = 0
+        stoppedByTerminalFailure = false
         await eventCoordinator?.stop()
         eventCoordinator = nil
         workspaceTask?.cancel()
         workspaceTask = nil
         tetherMessagesTask?.cancel()
         tetherMessagesTask = nil
+        hostMetadataTask?.cancel()
+        hostMetadataTask = nil
         await client.closeTransport()
         await tether.disconnect()
         coordinator.setRemoteBaseURL(nil)
@@ -693,10 +839,21 @@ public final class AppModel {
         await observeTetherMessages()
         await observeWorkspace()
         await refreshHostRelease()
-        await refreshHostPlugins()
-        await refreshAgentPresets()
+        // **会话列表先落地**，插件清单/插件包/preset 挪到后台并行拉。
+        //
+        // 这些元数据只服务设置页和"频道"入口，却排在 `refreshSessions()` 前面、
+        // 而且是串行 await —— 真机日志（2026-10-21 19:57 那次前台重连）：
+        // 隧道 1157ms 就绪，`传输就绪` 却到 19 秒才打出来，中间 4.1s + 8.3s
+        // 全花在拉 207 个插件和 28 个插件包上（同期 `session/projections` 只要 34ms，
+        // 所以慢的是 host 侧每次重扫，不是网络）。
         await refreshSessions()
         startListRefreshLoop()
+        hostMetadataTask?.cancel()
+        hostMetadataTask = Task { [weak self] in
+            guard let self else { return }
+            await self.refreshHostPlugins()
+            await self.refreshAgentPresets()
+        }
     }
 
     /// 订阅工作区流：归档/置顶集合只有这一条路能拿到。
@@ -917,7 +1074,18 @@ public final class AppModel {
     }
 
     /// 拉一次插件清单（连接建立后、以及需要时）。
-    func refreshHostPlugins() async {
+    ///
+    /// **带缓存**：这两条 RPC 在 host 侧是每次重扫（真机实测 207 个插件 4.1~4.7 秒、
+    /// 28 个包 1.1~8.3 秒），而它们只服务设置页和"频道"入口，重连一次拉一遍纯属浪费。
+    /// 5 分钟内复用上次结果；设置页的"下拉刷新"和开关插件后走 `force: true`。
+    func refreshHostPlugins(force: Bool = false) async {
+        if !force,
+           !hostPlugins.isEmpty,
+           let fetchedAt = hostPluginsFetchedAt,
+           Date().timeIntervalSince(fetchedAt) < 300 {
+            logs.log(.debug, "插件清单复用缓存（\(hostPlugins.count) 个）")
+            return
+        }
         do {
             hostPlugins = try await client.listPlugins()
             logs.log(.info, "主机插件 \(hostPlugins.count) 个，其中启用 \(hostPlugins.filter(\.enabled).count) 个")
@@ -928,6 +1096,7 @@ public final class AppModel {
         do {
             hostBundles = try await client.listBundles()
             logs.log(.info, "主机插件包 \(hostBundles.count) 个")
+            hostPluginsFetchedAt = Date()
         } catch {
             logs.log(.debug, "插件包拉取失败：\(error.localizedDescription)")
         }
@@ -937,7 +1106,7 @@ public final class AppModel {
     func setBundleEnabled(name: String, enabled: Bool) async -> String? {
         do {
             try await client.setBundleEnabled(name: name, enabled: enabled)
-            await refreshHostPlugins()
+            await refreshHostPlugins(force: true)
             logs.log(.info, "插件包 \(name) → \(enabled ? "启用" : "停用")")
             return nil
         } catch {
@@ -949,7 +1118,7 @@ public final class AppModel {
     func setPluginEnabled(id: String, enabled: Bool) async -> String? {
         do {
             try await client.setPluginEnabled(id: id, enabled: enabled)
-            await refreshHostPlugins()
+            await refreshHostPlugins(force: true)
             logs.log(.info, "插件 \(id) → \(enabled ? "启用" : "停用")")
             return nil
         } catch {

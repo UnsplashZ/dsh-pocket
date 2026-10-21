@@ -36,6 +36,14 @@ public actor MuxClient {
     private var continuations: [String: AsyncThrowingStream<MuxFrame, any Error>.Continuation] = [:]
     private var endpoints: [String: String] = [:]
     private var closedReason: String?
+    /// 正在建的那条 socket（单飞，见 `ensureSocket`）。并发开流时共用它，避免建出两条。
+    private var socketCreation: Task<URLSessionWebSocketTask, any Error>?
+    /// 我们自己调了 `close()`。
+    ///
+    /// 主动关闭会让 `receiveLoop` 抛「Socket未连接」，那**不是**故障 ——
+    /// 真机日志里 4 条 `mux 断开：未能完成该操作。Socket未连接` 全部紧跟在
+    /// `退到后台，断开传输` 之后，是纯噪音。有它就能静音。
+    private var isClosing = false
 
     private var stateContinuations: [UUID: AsyncStream<MuxState>.Continuation] = [:]
 
@@ -154,6 +162,17 @@ public actor MuxClient {
 
     // MARK: - socket 生命周期
 
+    /// 建 socket 的**单飞**入口。
+    ///
+    /// 为什么必须有它（2026-10-21 真机日志：`mux 已连接` 在**同一毫秒**打两条，
+    /// 一天 3 次）：`open()` 给每条流各起一个 Task，`$events` 和 `workspace/follow`
+    /// 是并发开的，于是两个调用同时进到 `ensureSocket`。复用判断在
+    /// `await webSocketURL()` / `await requestHeaders()` **之前**做，两条都判定
+    /// "还没有 socket" → 各建一条 → 后写的覆盖前写的：前一条既没 cancel、
+    /// `receiveLoop` 变量也被覆盖（旧循环再也取消不掉），泄漏下来的那条稍后出错
+    /// 还会走 `socketFailed` 把所有流全清掉、全量重订阅。
+    ///
+    /// 现在把"建一条"这件事做成单飞任务：并发调用共享同一个结果，只可能建一条。
     private func ensureSocket() async throws -> URLSessionWebSocketTask {
         // **只在"确实还能用"时复用。**
         //
@@ -164,6 +183,22 @@ public actor MuxClient {
         // 加上 `closedReason == nil`：它由 `socketFailed` / 正常关闭时置上，
         // 是"这条 socket 已经被判死"的直接证据。
         if let socket, socket.state == .running, closedReason == nil { return socket }
+        if let inflight = socketCreation { return try await inflight.value }
+        let creation = Task { try await self.createSocket() }
+        socketCreation = creation
+        do {
+            let created = try await creation.value
+            socketCreation = nil
+            return created
+        } catch {
+            socketCreation = nil
+            throw error
+        }
+    }
+
+    /// 真正建一条 socket（只由 `ensureSocket` 的单飞任务调用）。
+    private func createSocket() async throws -> URLSessionWebSocketTask {
+        isClosing = false
         if let socket { socket.cancel(with: .goingAway, reason: nil) }
         setState(.connecting)
         let base = try await provider.webSocketURL()
@@ -179,6 +214,12 @@ public actor MuxClient {
         socket = task
         closedReason = nil
         task.resume()
+        // 建 socket 期间被 `close()` 了（退到后台）：这条已经没人要，别把循环挂上去。
+        if isClosing {
+            task.cancel(with: .goingAway, reason: nil)
+            socket = nil
+            throw DSHClientError.transport(.socketClosed(reason: String(localized: "连接已取消")))
+        }
         startReceiveLoop(task)
         startPingLoop(task)
         setState(.connected)
@@ -290,6 +331,13 @@ public actor MuxClient {
 
     private func socketFailed(_ error: any Error) {
         let reason = (error as? any LocalizedError)?.errorDescription ?? error.localizedDescription
+        // 主动 `close()` 之后 socket 被 cancel，`receiveLoop` 必然抛一次
+        //「Socket未连接」。那是**我们让它断的**，不是故障 —— 记 debug 就够，
+        // 否则每次退到后台都会在日志里留一条 WARN，把真问题淹掉。
+        if isClosing {
+            logger?.log(.debug, "mux 已关闭（主动，忽略底层报错：\(reason)）")
+            return
+        }
         guard !continuations.isEmpty || state != .disconnected(reason: reason) else { return }
         logger?.log(.warning, "mux 断开：\(reason)")
         socket = nil
@@ -306,6 +354,9 @@ public actor MuxClient {
     }
 
     public func close() {
+        isClosing = true
+        socketCreation?.cancel()
+        socketCreation = nil
         socket?.cancel(with: .normalClosure, reason: nil)
         receiveLoop?.cancel()
         pingLoop?.cancel()

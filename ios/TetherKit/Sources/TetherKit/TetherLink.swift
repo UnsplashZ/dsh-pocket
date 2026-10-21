@@ -82,6 +82,9 @@ actor TetherLink: TetherStreamFactory {
     private var controlRecv: (any RecvStreamProtocol)?
     private var controlLoop: Task<Void, Never>?
     private var connecting = false
+    /// 取消代数。每次 `cancelConnect()` 自增；`connect()` 在几个 await 边界上比对它，
+    /// 发现自己已经过时就直接抛 `TetherError.cancelled`（而不是当成一次真失败）。
+    private var connectEpoch = 0
     private var hostId: String?
     private var establishedAt: Date?
 
@@ -142,6 +145,7 @@ actor TetherLink: TetherStreamFactory {
             throw TetherError.invalidEndpointId(hostEndpointId)
         }
         connecting = true
+        let epoch = connectEpoch
         defer { connecting = false }
 
         isTearingDown = true
@@ -152,10 +156,17 @@ actor TetherLink: TetherStreamFactory {
         do {
             let tBind = Date()
             let endpoint = try await bindEndpoint()
+            // **提前登记**：取消时要能关掉它。iroh 的 `endpoint.connect` 是 FFI 调用、
+            // 不响应 Swift 的取消标记，唯一能终止在途建连的手段就是关掉承载它的 endpoint
+            //（和 `connectWithCeiling` 里超时那条路同一个道理）。
+            self.endpoint = endpoint
             let bindMS = Int(Date().timeIntervalSince(tBind) * 1000)
             let peer = try EndpointId.fromString(s: hostEndpointId)
-            let address = EndpointAddr(id: peer, relayUrl: nil, addresses: [])
             logger?.log("连接电脑 \(hostEndpointId.prefix(12))…（preset N0，ALPN \(TetherWire.alpn)）")
+            // 寻址信息**自己解析**（见 TetherDiscovery 的说明：iroh 在 iOS 上会退回
+            // 硬编码的 8.8.8.8，国内经常查不通）。解析不到就用空地址回落给 iroh 内置发现。
+            let address = await resolveAddress(hostEndpointId: hostEndpointId, peer: peer)
+            try ensureNotCancelled(epoch: epoch)
 
             let tConnect = Date()
             // **建连必须有上限。**
@@ -183,6 +194,11 @@ actor TetherLink: TetherStreamFactory {
                 alpn: TetherWire.alpn,
                 ceiling: .seconds(15)
             )
+            // 超时/取消之后才连上的那条连接没人要，不能留它占着主机侧那唯一一个连接位。
+            if epoch != connectEpoch {
+                try? connection.close(errorCode: 0, reason: Data())
+                throw TetherError.cancelled
+            }
             let connectMS = Int(Date().timeIntervalSince(tConnect) * 1000)
             self.endpoint = endpoint
             self.connection = connection
@@ -234,11 +250,48 @@ actor TetherLink: TetherStreamFactory {
             logger?.log("控制流就绪；远端 \(connection.remoteId().description.prefix(12))")
         } catch let error as TetherError {
             await teardownConnection()
+            if epoch != connectEpoch { throw TetherError.cancelled }
             throw error
         } catch {
             await teardownConnection()
+            if epoch != connectEpoch { throw TetherError.cancelled }
             throw TetherError.transport(error.localizedDescription)
         }
+    }
+
+    /// 取消正在进行的建连。退到后台、或被一次新的连接顶掉时调用。
+    ///
+    /// 只自增代数是不够的：`endpoint.connect` 卡在 FFI 里不会理会 Swift 的取消，
+    /// 所以还得把 endpoint 关掉，让在途的建连立刻失败退出。
+    func cancelConnect() async {
+        connectEpoch &+= 1
+        guard connecting else { return }
+        logger?.log("取消进行中的建连")
+        if let endpoint { try? await endpoint.close() }
+        endpoint = nil
+    }
+
+    private func ensureNotCancelled(epoch: Int) throws {
+        if epoch != connectEpoch { throw TetherError.cancelled }
+    }
+
+    /// 解析这台电脑的寻址信息，拼成 iroh 的 `EndpointAddr`。
+    ///
+    /// 成功时**信息是完整的**（relay + 直连地址），iroh 拿它就能直接拨号，
+    /// 不需要走自己的发现流程；失败时退回空地址 —— 那就等于回到改动之前的行为，
+    /// 由 iroh 内置发现去试（此时它大概率也会因为 8.8.8.8 不通而失败，但至少不会更差）。
+    private func resolveAddress(hostEndpointId: String, peer: EndpointId) async -> EndpointAddr {
+        let result = await TetherDiscovery.resolve(hostHexId: hostEndpointId)
+        if result.succeeded {
+            logger?.log("寻址信息：\(result.detail)")
+            return EndpointAddr(
+                id: peer,
+                relayUrl: result.hint.relayURL,
+                addresses: result.hint.addresses
+            )
+        }
+        logger?.log("寻址信息解析失败（\(result.detail)），回退 iroh 内置发现")
+        return EndpointAddr(id: peer, relayUrl: nil, addresses: [])
     }
 
     private func bindEndpoint() async throws -> any EndpointProtocol {

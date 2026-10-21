@@ -105,6 +105,20 @@ NOT_LOCALIZED: dict[str, str] = {
     "照片.\\(ext)": "附件文件名（会写进会话数据），不是界面文案",
 }
 
+# `TetherDiscovery` 的解析细节 + `AppModel` 里做前缀剥离/类型判断用的字面量：
+# **都只进日志**，不是界面文案。放名单而不是写成 `String(localized:)`，是因为
+# 它们描述的是 DNS 报文和错误链的内部细节 —— 翻成英文反而会在排障时对不上
+# iroh 的原始报错（那些报错本身是英文）。
+for _diagnostic in (
+    "应答太短", "应答段损坏", "应答被截断", "截断", "问题段损坏",
+    "查询报文构造失败", "没有解析器返回结果", "两个解析器都没回（\\(lastFailure)）",
+    "端点 ID 不是合法的 64 位十六进制", "解析器地址不合法：\\(server)",
+    "\\(hint.addresses.count) 条直连", "\\(outcome.server) · \\(elapsed)ms · 记录存在但没有任何地址",
+    "socket() 失败", "发送失败（\\(sent)）", "\\(server) 没有回应",
+    "连接失败：", "与电脑的连接已断开：", "与电脑的连接断了：", "超时",
+):
+    NOT_LOCALIZED.setdefault(_diagnostic, "诊断/匹配用字面量（只进日志），不是界面文案")
+
 # 字面量扫描统一走 `read_string_literal` / `iter_string_literals`（配对感知）。
 # 曾经用正则 `[^"\\]` 扫，插值里再嵌一对引号的那种
 # （`"RTT：\(m.map { "\($0)ms" } ?? "—")"`）会被截断成一个假 key —— 已修。
@@ -665,8 +679,12 @@ EN: dict[str, str] = {
     "插队给这一轮": "Steer into this turn",
     # 连接失败的可执行提示
     "上一次连接还在进行中": "A connection attempt is already in progress",
-    "%@\n连续失败 %lld 次。如果电脑端重装过插件或清过配对数据，请在「设置 → 主机」里删掉这台电脑，然后重新配对。":
-        "%@\nFailed %lld times in a row. If the plugin was reinstalled or its pairing data was cleared on your computer, delete this computer under Settings → Computers and pair again.",
+    "连接已取消": "Connection cancelled",
+    "已退到后台，跳过这次连接": "The app moved to the background — skipping this attempt",
+    "如果电脑端重装过插件或清过配对数据，请在「设置 → 主机」里删掉这台电脑，然后重新配对。":
+        "If the plugin was reinstalled or its pairing data was cleared on your computer, delete this computer under Settings → Computers and pair again.",
+    "网络看起来解析不到这台电脑的地址，正在后台继续重试。如果一直这样，检查手机的网络、代理或 VPN（它们常会拦掉 DNS 查询）。":
+        "The phone can’t resolve this computer’s address — still retrying in the background. If this keeps happening, check the phone’s network, proxy or VPN (they often block DNS lookups).",
     "找不到这台电脑的地址（DNS 暂时不可用），正在重试": "Can’t resolve this computer’s address (DNS is temporarily unavailable) — retrying",
     "连接已断开": "The connection was lost",
     "连接超时（%@ 秒），正在重试": "Connection timed out (%@s) — retrying",
@@ -676,8 +694,12 @@ EN: dict[str, str] = {
     "正在思考": "Reasoning",
     "传输层：%@": "Transport: %@",
     "健康": "healthy",
-    "%@\n如果是装完 App 第一次启动，请到「设置 → 隐私与安全性 → 本地网络」确认 DSH Pocket 是开的 —— 关着的话 iOS 会静默丢包，看起来就是一直连接中。":
-        "%@\nIf this is the first launch after installing, check Settings → Privacy & Security → Local Network and make sure DSH Pocket is allowed — with it off, iOS silently drops packets and it looks like “connecting” forever.",
+    # 寻址解析的诊断片段（只进日志/诊断页，但走的是 String(localized:) 路径）
+    "无 relay": "no relay",
+    "解析器返回错误码 %@": "the resolver returned error code %@",
+    "记录不存在（NXDOMAIN）": "no such record (NXDOMAIN)",
+    "如果是装完 App 第一次启动，请到「设置 → 隐私与安全性 → 本地网络」确认 DSH Pocket 是开的 —— 关着的话 iOS 会静默丢包，看起来就是一直连接中。":
+        "If this is the first launch after installing, check Settings → Privacy & Security → Local Network and make sure DSH Pocket is allowed — with it off, iOS silently drops packets and it looks like “connecting” forever.",
     # 模型页 / 筛选 / 思考过程
     "正在读取模型清单…": "Loading the model list…",
     "这台电脑上没有可用模型": "No models available on this computer",
