@@ -1,0 +1,11 @@
+# 多路接入的组合层。
+#
+# 这一条不能省：profile 的 `dsh.profile.bundles` 只说明"这个包是 bundle"，
+# 真正把它实例化进组合树的是**这个 patch 里的 insert 行**。少了它，包会被
+# 列进 bundles 却什么都不加载 —— dsh 的市场会如实判定为「已安装，校验未通过」
+# （源码：dshmarket 的 verify.ts，`inBundles && !patchLoads(...)` → broken）。
+#
+# 只挂自己：本插件不替换任何内置组件，也不改别人的行为。
+- insert:
+    - id: dsh-uplink
+      name: dsh-plugin-uplink

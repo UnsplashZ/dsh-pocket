@@ -412,15 +412,21 @@ M0 结束就能拿到 §12 前两行指标 —— 也就是说**最高频场景�
 
 ## 15. 与现有 tether 的关系
 
-**依赖它的二进制，不依赖它的插件。** `dsh-tether-host-*` 是独立 npm 包，新插件 `spawn` 它、
-沿用它的 `host --proxy-target` 参数与 stdin/stdout JSON-lines 控制流，只多要一件事：
-把 `pairing` / `devices` 消息接进自己的配对流程。
+**什么都不依赖。** 早期实现借用 `dsh-plugin-tether` 的 sidecar 二进制（`dsh-tether-host-*`），
+后来改成**完全独立构建**：不声明 `peerDependencies`、不解析别人的 `node_modules`、
+不假设隔壁装了哪个插件（有回归测试钉住：`lib/tiers/iroh.js` 里不许再出现 `createRequire`
+与 `dsh-tether-host-`）。
 
-- 好处：iroh 档位零 Rust 工作量，上游升级我们只跟很小的控制流。
-- 代价：多一个 npm 依赖；它不在时 `iroh` 档位自动隐藏，其余档位照常工作。
-- **共存**：两个插件可以同时装（tether 走 iroh，uplink 走 LAN/TS/frp），但端口与配对会重复。
-  建议 M0 起就关掉 tether 的传输、由 uplink 统一管理 —— 翻案理由见
-  [DECISIONS.md](DECISIONS.md) ADR-0029。
+iroh 档位的二进制因此只有两个来路，都不涉及外部包：
+
+1. 随本包发布的 `bin/<platform>-<arch>/tether-host`（自包含发布的落点）；
+2. 包内 `target/release|debug/tether-host`（本地 cargo build）。
+
+都没有时**只是这一档不可用**，LAN / Tailscale / ZeroTier / frp 照常工作。要临时借一个外部
+sidecar，用 `tiers.iroh.binaryPath` 显式指 —— 那是用户的选择，不是插件的隐式依赖。
+
+**与 tether 的关系**：可以完全卸载它。若两者同时装，各自会有独立身份与配对，端口/设备会重复，
+所以建议只留一个（`dsh.profile.bundles` 里只列 uplink，tether 最多留作二进制的临时来源）。
 
 ---
 

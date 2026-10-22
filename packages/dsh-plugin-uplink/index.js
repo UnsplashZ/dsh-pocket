@@ -10,8 +10,7 @@
  * 这个文件只做装配：读配置 → 起网关 → 起各档 → 算清单 → 挂管理路由。
  * 真正的逻辑都在 lib/ 下，每个模块单独可测。
  */
-import { constants as fsConstants } from 'node:fs'
-import { access, mkdir, readdir, readFile } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import { homedir, hostname } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -31,7 +30,7 @@ const name = 'dsh-plugin-uplink'
 /** `connection` 动态 inject：老版本 dsh 没有这个服务，缺了也不该让插件起不来。 */
 const inject = ['webServer']
 
-const VERSION = '0.2.0'
+const VERSION = '0.3.0'
 
 /** 终端文案跟随系统语言；插件打在 dsh 的同一个终端上，不能一半中文一半英文。 */
 const terminalZh = /^zh/i.test(
@@ -106,49 +105,6 @@ async function readJson(req, limit = 8192) {
     })
     req.on('error', () => resolve(undefined))
   })
-}
-
-/**
- * 兜底找 tether sidecar。
- *
- * 为什么需要这一步：本插件是通过 `link:` 装进 profile 的，Node 解析裸模块名时用的是
- * **realpath**（仓库路径），所以 profile 自己的 `node_modules` 不在解析链上 ——
- * `resolveHostBinary()` 的 `createRequire().resolve()` 必然落空，而 sidecar 恰恰只装在
- * profile 里。这里直接去 profile 目录翻一遍，避免用户为了一个可选档位手工填路径。
- *
- * 找不到就返回 null，iroh 档位不可用而已，其余档位照常工作。
- */
-async function findSidecarInProfiles() {
-  const home = process.env.DSH_HOME && process.env.DSH_HOME !== '' ? process.env.DSH_HOME : join(homedir(), '.dsh')
-  const profiles = join(home, 'profiles')
-  const exe = process.platform === 'win32' ? 'tether-host.exe' : 'tether-host'
-  let entries
-  try {
-    entries = await readdir(profiles, { withFileTypes: true })
-  } catch {
-    return null
-  }
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue
-    const modules = join(profiles, entry.name, 'node_modules')
-    let packages
-    try {
-      packages = await readdir(modules)
-    } catch {
-      continue
-    }
-    for (const pkg of packages) {
-      if (!pkg.startsWith('dsh-tether-host-')) continue
-      const candidate = join(modules, pkg, 'bin', exe)
-      try {
-        await access(candidate, fsConstants.X_OK)
-        return candidate
-      } catch {
-        // 该平台的子包没装（npm 只装匹配当前平台的），继续翻下一个
-      }
-    }
-  }
-  return null
 }
 
 /** 状态文件默认落在 dsh 的 home 下，跟其它插件的数据放一起。 */
@@ -403,13 +359,15 @@ function apply(ctx, rawConfig = {}) {
       return { ok: false, reason: 'disabled' }
     }
     if (irohTier === null) {
+      // 只看本包自己 + 用户显式指定的路径。**不向任何外部包伸手** ——
+      // 这是"完全独立构建"的硬约束（见 lib/tiers/iroh.js 的 resolveHostBinary）。
       const binaryPath = config.tiers.iroh.binaryPath !== ''
         ? config.tiers.iroh.binaryPath
-        : (resolveHostBinary() ?? await findSidecarInProfiles())
+        : resolveHostBinary()
       if (!binaryPath) {
         logger.warn(`[uplink] ${tt(
-          '找不到 tether sidecar 二进制，iroh 档位不可用（其余档位照常工作）。装 dsh-plugin-tether 或配 tiers.iroh.binaryPath',
-          'the tether sidecar binary was not found, so the iroh tier is unavailable (other tiers still work). Install dsh-plugin-tether or set tiers.iroh.binaryPath',
+          '找不到 iroh sidecar 二进制，iroh 档位不可用（其余档位照常工作）。本插件不依赖外部包：把二进制放进包内 bin/，或用 tiers.iroh.binaryPath 显式指一个',
+          'the iroh sidecar binary was not found, so the iroh tier is unavailable (other tiers still work). This plugin depends on no external package: ship the binary under the package bin/ directory, or point tiers.iroh.binaryPath at one',
         )}`)
         return { ok: false, reason: 'not-installed' }
       }

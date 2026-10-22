@@ -14,7 +14,15 @@ import { createAdvertiser } from '../lib/publish.js'
 
 const MDNS_ADDRESS = '224.0.0.251'
 const MDNS_PORT = 5353
-const SERVICE_DOMAIN = '_dsh._tcp.local'
+// 每次跑用**唯一的服务类型**。
+//
+// 5353 是共用总线：开发机上 dsh 真的在跑时，它自己的 uplink 也在广播 `_dsh._tcp`，
+// 于是"第一个应答"很可能是别人的包（实例名、端口、TXT 全不一样），
+// 断言就会莫名其妙地红 —— 而代码其实是对的。换个只有本次运行在用的类型，
+// 干扰从根上消失，也不必靠"过滤别人的包"来凑。
+const RUN_TAG = `${process.pid.toString(16)}${Math.random().toString(16).slice(2, 6)}`
+const SERVICE_TYPE = `_dshtest${RUN_TAG}._tcp`
+const SERVICE_DOMAIN = `${SERVICE_TYPE}.local`
 const ENUM_DOMAIN = '_services._dns-sd._udp.local'
 
 const HOST_ID = 'testhost0123456789abcdef'
@@ -274,6 +282,7 @@ before(async () => {
     name: 'MacBook Pro Test',
     port: PORT,
     version: VERSION,
+    serviceType: SERVICE_TYPE,
   })
   const started = await advertiser.start()
   if (!started.ok) {
@@ -324,7 +333,7 @@ test('PTR 查询能拿到实例名，并附带 SRV / TXT / A', async (t) => {
 
   const records = allRecords(replies)
   const ptr = records.find((record) => record.type === TYPE_PTR && record.name === SERVICE_DOMAIN)
-  assert.ok(ptr, '应答里应有 _dsh._tcp.local 的 PTR')
+  assert.ok(ptr, `应答里应有 ${SERVICE_DOMAIN} 的 PTR`)
   assert.equal(targetOf(message, ptr), serviceName)
   assert.equal(ptr.klass, 1)
 

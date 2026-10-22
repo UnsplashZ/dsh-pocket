@@ -58,7 +58,7 @@
 2. 装依赖：`pnpm install`。等价的手工做法是 `ln -s` 到 `node_modules/dsh-plugin-uplink`
    —— `link:` 协议生成的就是一个符号链接，两者没有区别。
 
-3. 重启 dsh。终端应当打印：
+3. 重启 dsh。终端应当打印（没有 iroh 二进制时不会有 `iroh` 那一行，这是正常的）：
 
    ```
    [uplink] gateway listening on 0.0.0.0:18788（http）
@@ -75,10 +75,14 @@
 手机要能连上，还得放行入站：macOS 的防火墙如果开着，第一次监听时系统会弹窗问是否允许
 `node` 接受连接 —— 必须允许，否则手机侧表现为"局域网地址一直超时"。
 
-> **iroh 档位的二进制怎么找到**：本插件是用 `link:` 装进 profile 的，Node 解析裸模块名时用
-> **realpath**（仓库路径），所以 profile 的 `node_modules` 不在解析链上。插件会先试平台子包，
-> 再直接去 `$DSH_HOME/profiles/*/node_modules/dsh-tether-host-*/bin/tether-host` 翻一遍。
-> 都找不到就只是 iroh 档不可用，其余档位照常工作；也可以显式配 `tiers.iroh.binaryPath`。
+> **这个插件是完全独立构建的：零依赖。** 不声明 `peerDependencies`/`optionalDependencies`，
+> 也不去解析别人的 `node_modules`（早期版本会去翻 `dsh-tether-host-*`，那等于隐式依赖另一个
+> 插件，已删掉并有回归测试钉住）。
+>
+> 所以 iroh 档位的 sidecar 二进制只有两个来路：随本包发布的 `bin/<platform>-<arch>/tether-host`，
+> 或包内 `target/release|debug/tether-host`（本地 cargo build）。都没有时**只是这一档不可用**，
+> 其余档位照常工作。要临时借一个外部 sidecar，用 `tiers.iroh.binaryPath` 显式指 ——
+> 那是你的选择，不是插件的依赖。
 
 ## 配置
 
@@ -229,7 +233,7 @@ dsh 自己的端口（只有本机可达，用于管理）：
 | 局域网 | ✅ | 首页 61 KB 经网关 p50 **2.0 ms** vs 直连 1.9 ms，正文逐字节一致 |
 | WebSocket | ✅ | `api/remote.mux` 经网关拿到 **101 Switching Protocols** |
 | Bonjour | ✅ | `dns-sd` 能发现、解析 SRV/TXT/A；stop 时发 TTL=0 告别包 |
-| iroh | ✅ | 真 sidecar 起来，endpoint `cc8a1078…`，`openPairing` 拿到 `endpointId#code`（600 s），stop 后无残留 |
+| iroh | ✅ | 真 sidecar 起来，endpoint `cc8a1078…`，`openPairing` 拿到 `endpointId#code`（600 s），stop 后无残留。**注意**：0.3.0 起不再借用外部包，需自带二进制或配 `binaryPath` |
 | 自签 TLS | ✅ | openssl 三档降级链（`-addext` → `-extfile` → `-config`），指纹与 `openssl x509 -fingerprint -sha256` 逐字符一致 |
 | frp | ⚠️ 仅单测 | 本机没装 frpc，managed 模式只能靠注入 `spawnImpl` 验证"活过 1.5 秒"；`status().note` 里已如实标注**未验证连通性** |
 | Tailscale / ZeroTier | ⚠️ 仅单测 | 本机没装（`/usr/local/bin/tailscale` 是个指向已删除 App 的坏 shim），探测逻辑用假命令覆盖 |
@@ -237,7 +241,7 @@ dsh 自己的端口（只有本机可达，用于管理）：
 ## 测试
 
 ```bash
-node --test        # 118 条
+node --test        # 119 条
 ```
 
 | 文件 | 覆盖 |
@@ -264,6 +268,9 @@ node --test        # 118 条
 7. **`utun*` 上的私有地址不自动广播**：它们可能是 WireGuard（有用）也可能是 Docker（无用），
    自动广播只会让手机白等一次超时。需要就把地址填进 `extraAddresses`。
 8. **拿不到 sing-box 的 tailnet IP**：见上面「探测模型」。这是刻意不做的事（那文件含机器密钥）。
+9. **iroh 档位不自带二进制**：包体里没有 18 MB 的平台二进制（也不该塞进 git）。
+   要么自己 cargo build 到 `target/release/`，要么放进 `bin/<platform>-<arch>/`，
+   要么用 `tiers.iroh.binaryPath` 指一个现成的。
 
 ## 改代码前先读这三个坑
 

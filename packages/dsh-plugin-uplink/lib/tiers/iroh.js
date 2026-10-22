@@ -18,7 +18,6 @@
  */
 import { spawn as nodeSpawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
@@ -41,35 +40,36 @@ export const DEFAULT_STOP_TIMEOUT_MS = 2_000
 const hostExecutableName = (platform) => (platform === 'win32' ? 'tether-host.exe' : 'tether-host')
 
 /**
- * 找 sidecar 二进制。顺序与 tether 官方实现一致：
+ * 找 sidecar 二进制。**只看本包自己**，不向任何外部包伸手。
  *
- *   1. 平台子包 `dsh-tether-host-<platform>-<arch>/bin/tether-host` —— npm 发布路径，
- *      子包声明 os/cpu，只装匹配当前平台的那一个；
- *   2. 包内 `target/release|debug/tether-host` —— 从源码 cargo build 的开发路径，
- *      release 优先（debug 版慢一个数量级，只适合调试 sidecar 本身）。
+ * 这是刻意的：本插件是"完全独立构建"的 —— 不声明 peerDependencies、不解析别人的
+ * node_modules、也不假设隔壁装了哪个插件。所以二进制只有两个来路：
  *
- * 返回 undefined 表示"这一档在这台机器上不可用"。**不要**在这里抛异常：兜底档位
- * 缺失是正常状态，调用方会降级到别的档，不该让插件启动失败。
+ *   1. 随本包发布的 `bin/<platform>-<arch>/tether-host`（自包含发布的落点）；
+ *   2. 包内 `target/release|debug/tether-host` —— 本地 cargo build 的开发路径，
+ *      release 优先（debug 版慢一个数量级，只适合调 sidecar 本身）。
  *
- * @param {{requireResolve?: (id: string) => string, platform?: string, arch?: string}} [options]
- *   `requireResolve` 可注入，测试用它模拟"平台子包没装"而不碰真实 node_modules。
+ * 都不在就返回 undefined：这一档不可用而已，**不要**抛 —— 兜底档位缺失是正常状态，
+ * 其余档位照常工作。要临时指一个外部的 sidecar，用配置项 `tiers.iroh.binaryPath`，
+ * 那是用户显式选择，不是插件的隐式依赖。
+ *
+ * @param {{packageRoot?: string, platform?: string, arch?: string}} [options]
  * @returns {string | undefined}
  */
 export function resolveHostBinary({
-  requireResolve,
+  packageRoot = PACKAGE_ROOT,
   platform = process.platform,
   arch = process.arch,
 } = {}) {
   const exe = hostExecutableName(platform)
-  const resolveModule = requireResolve ?? createRequire(import.meta.url)
-  try {
-    const resolved = resolveModule(`dsh-tether-host-${platform}-${arch}/bin/${exe}`)
-    if (typeof resolved === 'string' && resolved !== '') return resolved
-  } catch {
-    // 平台子包未安装（源码使用 / 该平台尚未发布），继续找本地构建产物
-  }
-  for (const profile of ['release', 'debug']) {
-    const candidate = join(PACKAGE_ROOT, 'target', profile, exe)
+  const candidates = [
+    // 自包含发布的落点：一个包，一个二进制，没有任何外部包依赖
+    join(packageRoot, 'bin', `${platform}-${arch}`, exe),
+    join(packageRoot, 'bin', exe),
+    join(packageRoot, 'target', 'release', exe),
+    join(packageRoot, 'target', 'debug', exe),
+  ]
+  for (const candidate of candidates) {
     if (existsSync(candidate)) return candidate
   }
   return undefined

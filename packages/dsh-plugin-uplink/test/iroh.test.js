@@ -7,6 +7,9 @@
  *   · 超时路径要能 60ms 跑完，而不是真的等 8 秒。
  */
 import assert from 'node:assert/strict'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 import test from 'node:test'
@@ -233,18 +236,38 @@ test('没有二进制时 start() 返回 not-installed，不抛异常', async () 
   assert.match(tier.status().lastError, /找不到 sidecar 二进制/)
 })
 
-test('resolveHostBinary：平台子包优先，缺包时只回落到包内 cargo 产物', () => {
+test('resolveHostBinary：只认包内二进制，绝不向外部包伸手', () => {
   const exe = process.platform === 'win32' ? 'tether-host.exe' : 'tether-host'
-  const moduleId = `dsh-tether-host-${process.platform}-${process.arch}/bin/${exe}`
+  const root = mkdtempSync(join(tmpdir(), 'uplink-bin-'))
+  try {
+    // 空包：什么都没有 → undefined（这一档不可用，而不是抛）
+    assert.equal(resolveHostBinary({ packageRoot: root }), undefined)
 
-  const fromPackage = resolveHostBinary({ requireResolve: (id) => `/fake/node_modules/${id}` })
-  assert.equal(fromPackage, `/fake/node_modules/${moduleId}`)
+    // 自包含发布的落点：bin/<platform>-<arch>/tether-host
+    const selfContained = join(root, 'bin', `${process.platform}-${process.arch}`, exe)
+    mkdirSync(dirname(selfContained), { recursive: true })
+    writeFileSync(selfContained, '')
+    assert.equal(resolveHostBinary({ packageRoot: root }), selfContained)
 
-  // 平台子包没装：这个包内也没有 target/ 产物，所以应该是 undefined
-  const fallback = resolveHostBinary({
-    requireResolve: () => {
-      throw Object.assign(new Error(`Cannot find module '${moduleId}'`), { code: 'MODULE_NOT_FOUND' })
-    },
-  })
-  assert.ok(fallback === undefined || fallback.includes('target'), '回落只允许指向包内 cargo 产物')
+    // 源码开发路径：target/release 优先于 target/debug
+    const debug = join(root, 'target', 'debug', exe)
+    mkdirSync(dirname(debug), { recursive: true })
+    writeFileSync(debug, '')
+    const release = join(root, 'target', 'release', exe)
+    mkdirSync(dirname(release), { recursive: true })
+    writeFileSync(release, '')
+    rmSync(selfContained)
+    assert.equal(resolveHostBinary({ packageRoot: root }), release, 'release 必须优先于 debug')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })
+
+test('resolveHostBinary：签名里没有任何"外部包解析"的入口', () => {
+  // 这条是防回归：曾经这里用 createRequire().resolve('dsh-tether-host-*') 去翻
+  // 别人的 node_modules，那等于隐式依赖另一个插件。插件要能独立构建/独立发布。
+  const source = readFileSync(new URL('../lib/tiers/iroh.js', import.meta.url), 'utf8')
+  assert.equal(source.includes('createRequire'), false, '不该再出现 createRequire')
+  assert.equal(source.includes('dsh-tether-host-'), false, '不该再引用 tether 的平台子包')
+})
+
