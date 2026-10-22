@@ -102,6 +102,8 @@ async function boot(options = {}) {
       lan: { enabled: true },
       tailscale: { enabled: false },
       zerotier: { enabled: false },
+      // overlay 默认关：测试不该依赖跑测机器上有没有 TUN 网卡
+      overlay: { enabled: false },
       frp: { enabled: false },
       iroh: { enabled: false },
       ...(options.tiers ?? {}),
@@ -231,7 +233,7 @@ test('state 里能看出每一档的真实状态（而不是只回配置）', as
     assert.equal(env.state.scheme, 'http')
     assert.equal(env.state.tls, null)
     assert.deepEqual(env.state.enabled, {
-      lan: true, tailscale: false, zerotier: false, frp: false, iroh: false,
+      lan: true, tailscale: false, zerotier: false, overlay: false, frp: false, iroh: false,
     })
     // Bonjour 广播的状态要能单独看见：它失败不该让整档不可用
     assert.equal(typeof env.state.bonjour.running, 'boolean')
@@ -290,7 +292,7 @@ test('配对响应里带档位名，手机不用靠地址段猜', async () => {
     assert.ok(Array.isArray(paired.json.tiers))
     assert.ok(paired.json.tiers.length >= 1)
     for (const tier of paired.json.tiers) {
-      assert.ok(['lan', 'tailscale', 'zerotier', 'frp'].includes(tier.kind))
+      assert.ok(['lan', 'tailscale', 'zerotier', 'overlay', 'frp'].includes(tier.kind))
       assert.match(tier.url, /^https?:\/\//)
     }
     // tiers 与 urls 必须一一对应（同一个地址不能一边有一边没有）
@@ -351,6 +353,26 @@ test('手填地址的非法项被静默丢弃，不会让插件起不来', async
     const tailscale = env.state.tiers.filter((item) => item.kind === 'tailscale')
     assert.equal(tailscale.length, 1, '只有合法的那一条能进来')
     assert.equal(tailscale[0].address, '100.1.2.3')
+  } finally {
+    env.disposeAll()
+  }
+})
+
+
+test('虚拟组网（overlay）：TUN 上的私有地址会进清单，来源标出网卡名', async () => {
+  const env = await boot({
+    tiers: { overlay: { enabled: true, addresses: ['10.99.0.7'] } },
+  })
+  try {
+    const manual = env.state.tiers.find((item) => item.kind === 'overlay' && item.address === '10.99.0.7')
+    assert.ok(manual, '手填的 overlay 地址必须进清单')
+    assert.equal(manual.source, 'manual')
+    // 本机若真有 TUN 网卡（开发机常见：sing-box / WireGuard），自动探测的那条也要在
+    const detected = env.state.tiers.filter((item) => item.kind === 'overlay' && item.source?.startsWith('tunnel:'))
+    for (const tier of detected) {
+      assert.match(tier.source, /^tunnel:\w+/)
+      assert.match(tier.url, /^http:\/\/\d+\.\d+\.\d+\.\d+:\d+$/)
+    }
   } finally {
     env.disposeAll()
   }

@@ -54,6 +54,11 @@ async function harness({ cookie = { cookie: 'session=abc123', authority: '127.0.
     identity: { hostId: 'testhost', name: 'Test Mac', version: '0.1.0' },
     logger: { info: () => {}, warn: () => {} },
     tierOfAddress: () => 'lan',
+    openIrohPairing: async () => ({
+      endpointId: 'a'.repeat(64),
+      pairingString: `${'a'.repeat(64)}#123456`,
+      expiresInSec: 600,
+    }),
     descriptor: async () => ({
       v: 1,
       hostId: 'testhost',
@@ -396,3 +401,67 @@ test('清单算不出来时给 500，而不是把网关拖挂', async () => {
   }
 })
 
+
+
+test('iroh 配对码：没票 401、GET 405、有票拿到 endpointId#code', async () => {
+  const env = await harness()
+  try {
+    assert.equal((await fetch(`${env.base}/uplink/iroh-pairing`, { method: 'POST' })).status, 401)
+
+    const device = await pair(env.store)
+    const auth = await authenticate(env.base, device)
+
+    const wrongMethod = await fetch(`${env.base}/uplink/iroh-pairing`, {
+      headers: { authorization: `Bearer ${auth.body.ticket}` },
+    })
+    assert.equal(wrongMethod.status, 405)
+
+    const response = await fetch(`${env.base}/uplink/iroh-pairing`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${auth.body.ticket}` },
+    })
+    assert.equal(response.status, 200)
+    const body = await response.json()
+    assert.equal(body.ok, true)
+    assert.equal(body.endpointId, 'a'.repeat(64))
+    assert.equal(body.pairingString, `${'a'.repeat(64)}#123456`)
+    assert.equal(body.expiresInSec, 600)
+    // 这条不该被当成普通请求转给 dsh
+    assert.equal(env.seen.length, 0)
+  } finally {
+    await env.close()
+  }
+})
+
+test('iroh 不可用时给 503，而不是让手机拿着空配对码去试', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'uplink-gw-'))
+  const store = new DeviceStore(join(dir, 'state.json'))
+  await store.load()
+  const gateway = createGateway({
+    target: { host: '127.0.0.1', port: 1 },
+    store,
+    cookie: { get: () => ({ cookie: 'session=x', authority: '127.0.0.1:1' }) },
+    identity: { hostId: 'h', name: 'n', version: '0' },
+    logger: { info: () => {}, warn: () => {} },
+    openIrohPairing: async () => null,
+  })
+  const bound = await gateway.listen({ port: 0, bind: '127.0.0.1' })
+  try {
+    const device = await store.createDevice('手机')
+    const ts = Date.now()
+    const nonce = `n-${Math.random().toString(16).slice(2)}`
+    const proof = DeviceStore.proofFor({ secret: device.secret, deviceId: device.deviceId, ts, nonce })
+    const auth = await (await fetch(`http://127.0.0.1:${bound.port}/uplink/auth`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ deviceId: device.deviceId, ts, nonce, proof }),
+    })).json()
+    const response = await fetch(`http://127.0.0.1:${bound.port}/uplink/iroh-pairing`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${auth.ticket}` },
+    })
+    assert.equal(response.status, 503)
+    assert.equal((await response.json()).reason, 'iroh-unavailable')
+  } finally {
+    await gateway.close()
+  }
+})

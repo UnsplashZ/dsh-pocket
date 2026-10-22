@@ -15,7 +15,7 @@
  */
 import http from 'node:http'
 import https from 'node:https'
-import { AUTH_PATH, DESCRIPTOR_PATH, PUBLIC_PATHS } from './constants.js'
+import { AUTH_PATH, DESCRIPTOR_PATH, IROH_PAIRING_PATH, PUBLIC_PATHS } from './constants.js'
 import { publicIdentity } from './descriptor.js'
 
 /** hop-by-hop 头不能透传（RFC 7230 §6.1），否则连接语义会错乱。 */
@@ -118,6 +118,11 @@ export function createGateway({
   tierOfAddress = () => 'unknown',
   /** 现算清单（`() => descriptor`）。要票：地址清单本身也是信息，不该给未配对的人看。 */
   descriptor = null,
+  /**
+   * 现开一个 iroh 配对窗口（`() => {endpointId, pairingString, expiresInSec}`）。
+   * 要票：配对码等于"把我加成一台受信设备"，只能给已配对的手机。
+   */
+  openIrohPairing = null,
   /**
    * 可选的自签 TLS。传 `{key, cert}`（PEM 内容，不是路径）就起 https，
    * 否则起明文 http —— 局域网默认明文是刻意的：ATS 不挡 IP 字面量，
@@ -256,6 +261,26 @@ export function createGateway({
       if (!authorized.ok) {
         stats.unauthorized += 1
         json(res, 401, { ok: false, reason: authorized.reason })
+        return
+      }
+
+      // iroh 配对码：手机用票据换一次 sidecar 的配对窗口，自动完成 iroh 档位的配对
+      if (path === IROH_PAIRING_PATH && openIrohPairing !== null) {
+        if (req.method !== 'POST') {
+          json(res, 405, { ok: false, reason: 'method' })
+          return
+        }
+        try {
+          const opened = await openIrohPairing()
+          if (opened === null) {
+            json(res, 503, { ok: false, reason: 'iroh-unavailable' })
+            return
+          }
+          json(res, 200, { ok: true, ...opened })
+        } catch (error) {
+          stats.lastError = `iroh-pairing: ${error?.message ?? error}`
+          json(res, 500, { ok: false, reason: 'iroh-pairing-failed' })
+        }
         return
       }
 

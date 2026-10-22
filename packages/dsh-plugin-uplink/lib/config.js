@@ -17,6 +17,9 @@ export const DEFAULTS = Object.freeze({
     lan: { enabled: true, bonjour: true, tls: false },
     tailscale: { enabled: true, addresses: [] },
     zerotier: { enabled: true, addresses: [] },
+    // 其它虚拟组网：WireGuard / sing-box 的 system_interface / n2n 之类，
+    // 它们只表现为一个 utun 上的私有地址，没有 CLI 可问。
+    overlay: { enabled: true, addresses: [] },
     frp: {
       enabled: false,
       mode: 'managed',
@@ -108,6 +111,7 @@ export function normalizeConfig(input = {}) {
   const lan = tierOf('lan')
   const tailscale = tierOf('tailscale')
   const zerotier = tierOf('zerotier')
+  const overlay = tierOf('overlay')
   const frp = tierOf('frp')
   const iroh = tierOf('iroh')
 
@@ -146,6 +150,10 @@ export function normalizeConfig(input = {}) {
       zerotier: {
         enabled: bool(zerotier.enabled, true),
         addresses: addressList(zerotier.addresses),
+      },
+      overlay: {
+        enabled: bool(overlay.enabled, true),
+        addresses: addressList(overlay.addresses),
       },
       frp: {
         enabled: bool(frp.enabled, false),
@@ -203,6 +211,9 @@ export const TIER_PRIORITY = Object.freeze({
   lan: 10,
   tailscale: 20,
   zerotier: 30,
+  // 其它虚拟组网排在 ZeroTier 之后、自建中转之前：它同样可能很快，
+  // 但识别度低（只是一个 utun 地址），所以先让更确定的档位被优先尝试。
+  overlay: 35,
   frp: 40,
   iroh: 50,
 })

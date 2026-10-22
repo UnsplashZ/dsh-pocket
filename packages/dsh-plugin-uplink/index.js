@@ -183,6 +183,7 @@ function apply(ctx, rawConfig = {}) {
     lan: config.tiers.lan.enabled,
     tailscale: config.tiers.tailscale.enabled,
     zerotier: config.tiers.zerotier.enabled,
+    overlay: config.tiers.overlay.enabled,
     frp: config.tiers.frp.enabled,
     iroh: config.tiers.iroh.enabled,
   }
@@ -246,6 +247,15 @@ function apply(ctx, rawConfig = {}) {
         ? env.zerotier.addresses.map((address) => ({ address, source: 'zerotier-cli' }))
         : []
       collect('zerotier', detected, config.tiers.zerotier.addresses)
+    }
+    if (enabled.overlay) {
+      // TUN 上的私有地址：WireGuard、sing-box 的 system_interface、n2n……
+      // 没有 CLI 可问，只能按网卡认。**这类地址可能只有装了对应客户端的设备可达**，
+      // 所以排在 ZeroTier 之后；但它也是"手机能打到的唯一一条路"时的救命档。
+      const detected = (env.candidates ?? [])
+        .filter((candidate) => candidate.kind === 'tunnel')
+        .map((candidate) => ({ address: candidate.address, source: `tunnel:${candidate.iface}` }))
+      collect('overlay', detected, config.tiers.overlay.addresses)
     }
     if (enabled.frp) {
       const status = frpTier?.status()
@@ -322,6 +332,10 @@ function apply(ctx, rawConfig = {}) {
       authenticatedUrl: () => connCtx.connection.authenticatedUrl(`http://${authority}/`),
       authority,
       logger,
+      // iroh sidecar 也需要这份 cookie（它替手机逐请求注入），而且必须跟着续期一起更新
+      onRefresh: (auth) => {
+        irohTier?.setProxyAuth(auth)
+      },
     })
     void cookie.start().then((result) => {
       if (result === null) return
@@ -383,6 +397,18 @@ function apply(ctx, rawConfig = {}) {
       })
     }
     const result = await irohTier.start()
+    // sidecar 起来之后立刻把当前 cookie 递过去：晚一步的话第一波请求就是 401
+    if (result.ok) {
+      const auth = cookie?.get()
+      if (auth !== null && auth !== undefined) {
+        irohTier.setProxyAuth(auth)
+      } else {
+        logger.warn(`[uplink] ${tt(
+          'iroh 已就绪，但浏览器 cookie 还没拿到 —— 手机此时连上会看到 401，cookie 一到会自动补发',
+          'iroh is ready but the browser cookie is not available yet — the phone would see 401 until the cookie arrives, which is pushed as soon as it does',
+        )}`)
+      }
+    }
     if (result.ok) {
       // 打出用的是哪个二进制：内置的、自己 build 的、还是用户显式指的 —— 排障第一问
       logger.info(`[uplink] iroh 兜底档已就绪：${result.endpointId.slice(0, 16)}…（sidecar: ${irohBinaryPath}）`)
@@ -462,6 +488,18 @@ function apply(ctx, rawConfig = {}) {
           port: actualPort,
           tiers,
         })
+      },
+      // 手机用票据换一次 iroh 配对窗口：配对码 600 秒就过期，不能塞进配对串里
+      openIrohPairing: async () => {
+        if (irohTier === null || irohTier.status().running !== true) return null
+        const opened = await irohTier.openPairing()
+        if (opened.ok === false) return null
+        const status = irohTier.status()
+        return {
+          endpointId: status.endpointId,
+          pairingString: opened.pairingString,
+          expiresInSec: opened.expiresInSec,
+        }
       },
     })
 

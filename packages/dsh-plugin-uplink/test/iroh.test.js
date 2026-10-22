@@ -271,3 +271,34 @@ test('resolveHostBinary：签名里没有任何"外部包解析"的入口', () =
   assert.equal(source.includes('dsh-tether-host-'), false, '不该再引用 tether 的平台子包')
 })
 
+
+test('setProxyAuth：把 cookie 递给 sidecar（漏了它 iroh 连上也只会 401）', async () => {
+  const { tier, child } = harness()
+  const starting = tier.start()
+  child.stdout.write(readyLine())
+  await starting
+  // 起来之前发不出去，也不该抛
+  assert.equal(tier.setProxyAuth({ cookie: '', authority: '127.0.0.1:1' }), false)
+  assert.equal(tier.setProxyAuth({ cookie: 'a=b', authority: '' }), false)
+
+  const sent = tier.setProxyAuth({ cookie: 'dsh-auth-x=y', authority: '127.0.0.1:63978' })
+  assert.equal(sent, true)
+  const line = child.stdin.writes.find((chunk) => chunk.includes('proxy-auth'))
+  assert.ok(line, '应当往 stdin 写一行 proxy-auth')
+  const message = JSON.parse(line)
+  assert.equal(message.type, 'proxy-auth')
+  assert.equal(message.cookie, 'dsh-auth-x=y')
+  assert.equal(message.authority, '127.0.0.1:63978')
+  await tier.stop()
+})
+
+test('setProxyAuth：sidecar 停了之后不再往 stdin 写', async () => {
+  const { tier, child } = harness()
+  const starting = tier.start()
+  child.stdout.write(readyLine())
+  await starting
+  await tier.stop()
+  const before = child.stdin.writes.length
+  assert.equal(tier.setProxyAuth({ cookie: 'a=b', authority: 'h:1' }), false)
+  assert.equal(child.stdin.writes.length, before)
+})

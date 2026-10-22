@@ -21,6 +21,17 @@ export const AUTH_PATH = '/uplink/auth'
  */
 export const DESCRIPTOR_PATH = '/uplink/descriptor'
 
+/**
+ * iroh 配对码路由（**要票**）：手机拿它自动完成 iroh 档位的配对。
+ *
+ * 为什么必须单独一条：配对**码**只有 600 秒有效期，不能塞进长期保存的配对串里
+ * （那会变成一颗过期的雷）。而 iroh 的配对是 sidecar 维护的**独立白名单** ——
+ * 和 uplink 的设备密钥是两套东西。所以手机在需要走 iroh 时，现场来要一次码：
+ * 用 uplink 票据换 sidecar 的 `endpointId#code`，然后交给 TetherKit 完成配对。
+ * 全程零手工。
+ */
+export const IROH_PAIRING_PATH = '/uplink/iroh-pairing'
+
 /** 管理路由（挂在 dsh 自己的 webServer 上，仅回环可达）。 */
 export const ADMIN_PATHS = Object.freeze({
   state: '/uplink/state',

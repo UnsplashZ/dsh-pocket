@@ -29,6 +29,8 @@ export function createCookieSource({
   fetchImpl = globalThis.fetch,
   logger,
   refreshMs = DEFAULT_COOKIE_TTL_MS,
+  /** 每次兑换成功后回调 —— 用来把新 cookie 同步给需要它的下游（例如 iroh sidecar）。 */
+  onRefresh = null,
 }) {
   let current = null
   let lastError = null
@@ -53,6 +55,12 @@ export function createCookieSource({
     current = { cookie, authority }
     lastError = null
     lastSuccessAt = Date.now()
+    try {
+      onRefresh?.(current)
+    } catch (error) {
+      // 下游同步失败不该影响兑换本身：cookie 已经拿到了，下一次续期会再试
+      logger?.warn?.(`[uplink] cookie 同步给下游失败：${error?.message ?? error}`)
+    }
     return current
   }
 

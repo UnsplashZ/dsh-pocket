@@ -489,5 +489,23 @@ export function createIrohTier({
     })
   }
 
-  return { start, stop, status, openPairing }
+  /**
+   * 把浏览器 cookie 交给 sidecar，让它在**每条代理流上逐请求注入**。
+   *
+   * 这一步漏掉的后果很隐蔽：iroh 能连上、控制流正常、本地代理也起得来，
+   * 但手机拿到的每一个页面都是 **401** —— 因为 dsh 的浏览器认证只认 cookie，
+   * 而 sidecar 自己拿不到它（它只负责转发字节，cookie 由插件经 stdin 递进来）。
+   * 实测就是这么发现的：端到端跑通后 GET / 返回 401，68 字节。
+   *
+   * @param {{cookie: string, authority: string}} auth `cookie` 形如 `name=value`
+   * @returns {boolean} 是否真的发出去了（没在跑就返回 false，不抛）
+   */
+  function setProxyAuth({ cookie, authority } = {}) {
+    if (running !== true || typeof cookie !== 'string' || cookie === '') return false
+    if (typeof authority !== 'string' || authority === '') return false
+    send({ type: 'proxy-auth', cookie, authority })
+    return true
+  }
+
+  return { start, stop, status, openPairing, setProxyAuth }
 }
