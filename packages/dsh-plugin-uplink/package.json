@@ -1,0 +1,42 @@
+{
+  "name": "dsh-plugin-uplink",
+  "version": "0.1.0",
+  "description": "Multi-path access for DeepSeek Harness: expose the local dsh to your phone over LAN, Tailscale/ZeroTier, a self-hosted frp relay, or iroh — user-pickable tiers, one gateway, one pairing",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "remote",
+    "lan",
+    "tailscale",
+    "zerotier",
+    "frp",
+    "iroh"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "lib/",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-host-webserver": "*"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-host-webserver": {
+      "optional": true
+    }
+  }
+}
