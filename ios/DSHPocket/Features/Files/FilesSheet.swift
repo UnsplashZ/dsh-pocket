@@ -138,13 +138,26 @@ struct FilesSheet: View {
     }
 
     private func open(_ entry: WorkspaceFileEntry) {
-        guard let entryPath = entry.path else { return }
+        // **宿主的 `workspaceFiles/list` 不返回 `path`**（实测：只有 name / type / size），
+        // 所以路径必须自己用"当前目录 + 名字"拼出来。
+        //
+        // 以前这里写的是 `guard let entryPath = entry.path else { return }` ——
+        // 于是**每一个文件、每一个子目录都点不动**，表现就是"工作区里文件无法点开预览"。
+        // （`stat` / `read` 都接受工作区相对路径，实测相对路径也能解析出绝对路径，
+        //  所以拼相对路径就够，不需要先问宿主。）
+        let entryPath = entry.path ?? Self.join(path, entry.name)
         if entry.isDirectory {
             path = entryPath
             Task { await load() }
             return
         }
         previewing = PreviewTarget(path: entryPath)
+    }
+
+    /// 拼工作区相对路径。根目录（`""`）时不要以 `/` 开头 —— 宿主的相对路径就是这个形状。
+    static func join(_ base: String, _ name: String) -> String {
+        let trimmed = base.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return trimmed.isEmpty ? name : "\(trimmed)/\(name)"
     }
 
     private func goUp() {

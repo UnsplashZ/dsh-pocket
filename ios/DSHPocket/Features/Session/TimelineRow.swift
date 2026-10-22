@@ -1197,27 +1197,17 @@ struct ImagePreview: View {
     let image: UIImage
     let onClose: () -> Void
 
-    @State private var scale: CGFloat = 1
-    @State private var offset: CGSize = .zero
-
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFit()
-                .scaleEffect(scale)
-                .offset(offset)
-                .gesture(
-                    MagnificationGesture()
-                        .onChanged { scale = max(1, $0) }
-                        .onEnded { _ in if scale <= 1 { offset = .zero } }
-                )
-                .gesture(
-                    DragGesture()
-                        .onChanged { offset = $0.translation }
-                        .onEnded { _ in if scale <= 1 { offset = .zero } }
-                )
+            // **缩放/拖动交给 `ZoomableImageView`（UIScrollView）。**
+            //
+            // 原来这里是 `Image` + `MagnificationGesture` + `DragGesture` 两个 `.gesture`：
+            // 后挂的拖动会抢走识别，捏合基本不响应 —— 用户报的就是"PNG 附件无法缩放"。
+            // 换成 UIScrollView 之后捏合、双击、边界回弹都是系统行为。
+            ZoomableImageView(image: image)
+                .ignoresSafeArea()
+                .accessibilityLabel(Text("图片预览"))
             VStack {
                 HStack {
                     Spacer()

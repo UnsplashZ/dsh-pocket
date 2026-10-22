@@ -309,30 +309,15 @@ struct FilePreviewScreen: View {
 private struct ZoomableImage: View {
     let url: URL
 
-    @State private var scale: CGFloat = 1
-    @State private var committed: CGFloat = 1
-
     var body: some View {
-        GeometryReader { proxy in
+        Group {
             if let image = UIImage(contentsOfFile: url.path) {
-                ScrollView([.horizontal, .vertical], showsIndicators: false) {
-                    Image(uiImage: image)
-                        .resizable()
-                        .interpolation(.high)
-                        .scaledToFit()
-                        .frame(width: proxy.size.width * scale, height: proxy.size.height * scale)
-                }
-                .gesture(
-                    MagnifyGesture()
-                        .onChanged { value in
-                            scale = min(max(committed * value.magnification, 1), 8)
-                        }
-                        .onEnded { _ in committed = scale }
-                )
-                .onTapGesture(count: 2) {
-                    withAnimation(.snappy) { scale = 1; committed = 1 }
-                }
-                .accessibilityLabel(Text("图片预览"))
+                // 与聊天附件预览共用同一份实现（UIScrollView 捏合/拖动/双击）。
+                //
+                // 原来这里是 `ScrollView` + `MagnifyGesture`：手势挂在 ScrollView 上，
+                // 会被它自己的滚动手势抢走，真机上**捏合不放大**。
+                ZoomableImageView(image: image)
+                    .accessibilityLabel(Text("图片预览"))
             } else {
                 ContentUnavailableView {
                     Label("这个图片打不开", systemImage: "photo.badge.exclamationmark")

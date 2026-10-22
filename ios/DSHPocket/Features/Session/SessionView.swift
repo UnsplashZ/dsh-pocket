@@ -776,27 +776,33 @@ struct SessionView: View {
                         Label("切换模型", systemImage: "cpu")
                     }
                     Divider()
+                    // **这三个必须是并列的 Button，不能互相嵌套。**
+                    //
+                    // 之前「工作区文件」那个 Button 的 label 里套着「后台任务」和
+                    // 「目标」两个 Button —— SwiftUI 会把 label 里的按钮照常画出来，
+                    // 但点击事件归**外层**那个：于是点「后台任务」实际打开的是
+                    // 工作区文件（用户："后台任务点进去是工作区"）。
+                    Button {
+                        showJobs = true
+                    } label: {
+                        Label(
+                            session.jobs.contains(where: \.isRunning)
+                                ? String(format: String(localized: "后台任务（%lld 个运行中）"), session.jobs.filter(\.isRunning).count)
+                                : "后台任务",
+                            systemImage: "clock.arrow.circlepath"
+                        )
+                    }
+                    Button {
+                        showGoal = true
+                    } label: {
+                        Label(
+                            session.goal?.isActive == true ? "目标（进行中）" : "目标",
+                            systemImage: "target"
+                        )
+                    }
                     Button {
                         showFiles = true
                     } label: {
-                        Button {
-                            showJobs = true
-                        } label: {
-                            Label(
-                                session.jobs.contains(where: \.isRunning)
-                                    ? String(format: String(localized: "后台任务（%lld 个运行中）"), session.jobs.filter(\.isRunning).count)
-                                    : "后台任务",
-                                systemImage: "clock.arrow.circlepath"
-                            )
-                        }
-                        Button {
-                            showGoal = true
-                        } label: {
-                            Label(
-                                session.goal?.isActive == true ? "目标（进行中）" : "目标",
-                                systemImage: "target"
-                            )
-                        }
                         Label("工作区文件", systemImage: "folder")
                     }
                     Button {
