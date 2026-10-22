@@ -729,6 +729,26 @@ final class AppLogicTests: XCTestCase {
     }
 }
 
+/// 图片取回的"取消"识别。
+///
+/// 真机日志（2026-10-22 09:04）里同一张 PNG 报了 4 次「取图片失败：…请求已取消」——
+/// 那不是失败，是视图走了。取消有三种长相，必须都认出来，否则日志里全是假警报。
+final class ImageFetchCancellationTests: XCTestCase {
+    func testPlainCancellationError() {
+        XCTAssertTrue(SessionModel.isCancellation(CancellationError()))
+    }
+
+    func testURLSessionCancellation() {
+        XCTAssertTrue(SessionModel.isCancellation(URLError(.cancelled)))
+        XCTAssertFalse(SessionModel.isCancellation(URLError(.timedOut)))
+    }
+
+    func testTransportLayerCancellation() {
+        XCTAssertTrue(SessionModel.isCancellation(DSHClientError.transport(.cancelled)))
+        XCTAssertFalse(SessionModel.isCancellation(DSHClientError.transport(.notConnected)))
+    }
+}
+
 /// 与 DSHKit 测试同款的 JSON 构造助手（这里只需要最简的一个）。
 enum Fixture {
     static func workspace(

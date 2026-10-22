@@ -956,6 +956,46 @@ public final class SessionModel {
         case failed
     }
 
+    /// 同一个附件正在取的那一份请求。
+    ///
+    /// 真机日志（2026-10-22 09:04）：进会话时同一张 PNG **并发发了两条**
+    /// `session/attachment`，1~2 毫秒后双双取消，紧接着第三条成功 —— 一张图下载三遍，
+    /// 还刷了两条「取图片失败」的假警告。视图重建（缓存 → 快照切换）时同一行会被
+    /// 短暂地渲染两次、各自起 `.task`，所以必须在这里合并。
+    private var imageRequests: [String: Task<Data, any Error>] = [:]
+
+    /// 取一张图，**同一附件只发一条请求**；后来的调用方共享同一个结果。
+    ///
+    /// 共享的 Task 不会跟着某个调用方被取消 —— 一个视图走了，另一个还在等，
+    /// 这才是我们要的语义（顺手还填了 `imageCache`）。
+    private func fetchImage(attachmentId: String) async throws -> Data {
+        if let inflight = imageRequests[attachmentId] { return try await inflight.value }
+        let task = Task { [weak self] () throws -> Data in
+            defer { self?.imageRequests[attachmentId] = nil }
+            guard let self else { throw CancellationError() }
+            return try await self.client.attachment(sessionId: self.sessionId, attachmentId: attachmentId).data
+        }
+        imageRequests[attachmentId] = task
+        return try await task.value
+    }
+
+    /// 这次错误是不是"取消"。
+    ///
+    /// 取消有三种长相：`CancellationError`、URLSession 的 `URLError(.cancelled)`
+    /// （描述就是"请求已取消"）、以及被传输层包成 `DSHClientError.transport(.cancelled)`。
+    /// 三种都不是故障 —— 只是调用方的视图走了。以前只认第一种，于是后两种
+    /// 在日志里全是「取图片失败」，排障时极误导。
+    nonisolated static func isCancellation(_ error: any Error) -> Bool {
+        if error is CancellationError { return true }
+        if let urlError = error as? URLError, urlError.code == .cancelled { return true }
+        if let clientError = error as? DSHClientError,
+           case .transport(let transport) = clientError,
+           case .cancelled = transport {
+            return true
+        }
+        return false
+    }
+
     func imageResult(for reference: TimelineItem.ImageRef) async -> ImageFetchResult {
         if let cached = imageCache[reference.attachmentId] { return .success(cached) }
         if reference.attachmentId.hasPrefix("pending-") {
@@ -965,12 +1005,11 @@ public final class SessionModel {
             return .failed
         }
         do {
-            let result = try await client.attachment(sessionId: sessionId, attachmentId: reference.attachmentId)
-            imageCache[reference.attachmentId] = result.data
-            return .success(result.data)
-        } catch is CancellationError {
-            return .cancelled
+            let data = try await fetchImage(attachmentId: reference.attachmentId)
+            imageCache[reference.attachmentId] = data
+            return .success(data)
         } catch {
+            if Self.isCancellation(error) { return .cancelled }
             logs.log(.warning, "取图片失败：\(reference.attachmentId)：\(error.localizedDescription)")
             return .failed
         }
@@ -982,9 +1021,9 @@ public final class SessionModel {
             return attachments.first { "pending-\($0.id)" == reference.attachmentId }?.data
         }
         do {
-            let result = try await client.attachment(sessionId: sessionId, attachmentId: reference.attachmentId)
-            imageCache[reference.attachmentId] = result.data
-            return result.data
+            let data = try await fetchImage(attachmentId: reference.attachmentId)
+            imageCache[reference.attachmentId] = data
+            return data
         } catch is CancellationError {
             // **被取消不是失败。**
             //
@@ -996,6 +1035,7 @@ public final class SessionModel {
             // 排查时非常误导：看起来像图片坏了，其实只是没人等了。
             return nil
         } catch {
+            if Self.isCancellation(error) { return nil }
             logs.log(.warning, "取图片失败：\(reference.attachmentId)：\(error.localizedDescription)")
             return nil
         }

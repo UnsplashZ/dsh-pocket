@@ -38,6 +38,18 @@ public actor MuxClient {
     private var closedReason: String?
     /// 正在建的那条 socket（单飞，见 `ensureSocket`）。并发开流时共用它，避免建出两条。
     private var socketCreation: Task<URLSessionWebSocketTask, any Error>?
+    /// 断线重连的退避状态。
+    ///
+    /// 真机日志（2026-10-21 21:38~21:39）：mux 每 5~10 秒断一次、连断 13 次，
+    /// 而每一次断开后**三条流立刻重订阅**，其中 `session/follow` 会重新下一份
+    /// 50 条消息的快照（约 800 KB）并做一次全量重建（298~324 条事件）——
+    /// 抖动被自己的重订阅放大了，两分钟里重建了 13 次。
+    /// 这里给"重新建 socket"加一道指数退避（0.5s → 8s），
+    /// 连接稳定 30 秒以上才把计数清零。
+    private var reconnectAttempt = 0
+    private var socketOpenedAt: Date?
+    private var nextSocketAllowedAt: Date = .distantPast
+
     /// 我们自己调了 `close()`。
     ///
     /// 主动关闭会让 `receiveLoop` 抛「Socket未连接」，那**不是**故障 ——
@@ -184,6 +196,16 @@ public actor MuxClient {
         // 是"这条 socket 已经被判死"的直接证据。
         if let socket, socket.state == .running, closedReason == nil { return socket }
         if let inflight = socketCreation { return try await inflight.value }
+        // 退避：连不上时别让三条流各自立刻重试（见 `reconnectAttempt` 的说明）。
+        let wait = nextSocketAllowedAt.timeIntervalSinceNow
+        if wait > 0 {
+            try? await Task.sleep(for: .seconds(wait))
+            if Task.isCancelled { throw CancellationError() }
+            // **睡醒之后必须再查一次单飞**：睡之前两个调用方都通过了上面那道
+            // `socketCreation` 检查，睡醒后各自建一条就又把 socket 建成两条了。
+            if let socket, socket.state == .running, closedReason == nil { return socket }
+            if let inflight = socketCreation { return try await inflight.value }
+        }
         let creation = Task { try await self.createSocket() }
         socketCreation = creation
         do {
@@ -213,6 +235,7 @@ public actor MuxClient {
         task.maximumMessageSize = 64 * 1024 * 1024   // 单会话快照实测 ~1 MB，给足余量
         socket = task
         closedReason = nil
+        socketOpenedAt = Date()
         task.resume()
         // 建 socket 期间被 `close()` 了（退到后台）：这条已经没人要，别把循环挂上去。
         if isClosing {
@@ -353,7 +376,16 @@ public actor MuxClient {
             return
         }
         guard !continuations.isEmpty || state != .disconnected(reason: reason) else { return }
-        logger?.log(.warning, "mux 断开：\(reason)")
+        // 记下"连了多久、当时几条流" —— 上一轮排查这两个数字最有用（区分
+        // "刚连上就被掐"和"跑了一阵才断"），而以前只有一句错误文案。
+        let uptime = socketOpenedAt.map { Date().timeIntervalSince($0) } ?? 0
+        // 稳定过一阵的断开重新计数；否则按指数退避。
+        reconnectAttempt = uptime > 30 ? 0 : reconnectAttempt + 1
+        let delay = min(0.5 * pow(2, Double(max(reconnectAttempt - 1, 0))), 8)
+        nextSocketAllowedAt = Date().addingTimeInterval(delay)
+        let uptimeText = String(format: "%.1f", uptime)
+        let delayText = String(format: "%.1f", delay)
+        logger?.log(.warning, "mux 断开（连了 \(uptimeText)s，\(continuations.count) 条流，\(delayText)s 后重建）：\(reason)")
         socket = nil
         receiveLoop = nil
         pingLoop?.cancel()
@@ -369,6 +401,9 @@ public actor MuxClient {
 
     public func close() {
         isClosing = true
+        reconnectAttempt = 0
+        nextSocketAllowedAt = .distantPast
+        socketOpenedAt = nil
         socketCreation?.cancel()
         socketCreation = nil
         socket?.cancel(with: .normalClosure, reason: nil)

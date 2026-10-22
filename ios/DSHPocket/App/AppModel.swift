@@ -628,6 +628,23 @@ public final class AppModel {
             reconnectAttempt = 0
             consecutiveTransportFailures = 0
             stoppedByTerminalFailure = false
+            // **状态可能是过时的。**
+            //
+            // 传输层订阅时会重放"当前状态"，退到后台再回来时尤其容易拿到一条
+            // 上一代连接留下的 `.connected`。真机日志（2026-10-21 21:37:49）：
+            // 打了一条「传输就绪」，而同一毫秒的 RPC 全是「尚未连接到电脑」——
+            // 真正的就绪要到 6 秒后。那次白跑了一遍 `activateClient`，还顺带
+            // 刷了 4 条失败日志（拉会话列表/插件清单/插件包/preset）。
+            //
+            // 以事实为准：先问传输层健不健康；给它 300ms 的宽限（刚 setState 的
+            // 那一瞬间本地代理可能还没就绪），仍然不健康就跳过这次，等真正的广播。
+            if !(await tether.isTransportHealthy()) {
+                try? await Task.sleep(for: .milliseconds(300))
+                guard await tether.isTransportHealthy() else {
+                    logs.log(.debug, "收到 .connected 但传输并不健康（多半是重放的旧状态），跳过")
+                    return
+                }
+            }
             guard let url = URL(string: baseURL) else { return }
             coordinator.setRemoteBaseURL(url)
             settings.activeHostId = hostId
