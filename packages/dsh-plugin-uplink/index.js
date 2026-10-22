@@ -383,7 +383,8 @@ function apply(ctx, rawConfig = {}) {
     }
     const result = await irohTier.start()
     if (result.ok) {
-      logger.info(`[uplink] iroh 兜底档已就绪：${result.endpointId.slice(0, 16)}…`)
+      // 打出用的是哪个二进制：内置的、自己 build 的、还是用户显式指的 —— 排障第一问
+      logger.info(`[uplink] iroh 兜底档已就绪：${result.endpointId.slice(0, 16)}…（sidecar: ${binaryPath}）`)
     } else {
       logger.warn(`[uplink] ${tt(`iroh 档位不可用（${result.reason}）`, `the iroh tier is unavailable (${result.reason})`)}`)
     }
