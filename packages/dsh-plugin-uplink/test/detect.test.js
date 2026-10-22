@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   classifyInterface,
   collectCandidates,
+  detectSingBox,
   detectTailscale,
   detectZeroTier,
   fingerprint,
@@ -158,4 +159,81 @@ test('指纹：地址或 SSID 变了就变，顺序无关', () => {
     fingerprint({ candidates: a, ssid: 'home', defaultInterface: 'en0' }),
     fingerprint({ candidates: [{ kind: 'lan', address: '10.8.54.222' }], ssid: 'home', defaultInterface: 'en0' }),
   )
+})
+
+// ── sing-box 的 Tailscale endpoint ────────────────────────────────────────────
+
+function fakeFetch(handler) {
+  const calls = []
+  const impl = async (url, init) => {
+    calls.push({ url, init })
+    return handler(url, init)
+  }
+  impl.calls = calls
+  return impl
+}
+
+test('sing-box：Clash API 里 type=Tailscale 的 endpoint 能被认出来', async () => {
+  const fetchImpl = fakeFetch(async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({ proxies: { 手动选择: { type: 'Selector' }, 'ts-ep': { type: 'Tailscale' } } }),
+  }))
+  const result = await detectSingBox({
+    run: fakeRun({ 'pgrep -f sing-box': '364\n' }),
+    apiUrl: 'http://127.0.0.1:19090',
+    apiSecret: 's3cret',
+    fetchImpl,
+  })
+  assert.equal(result.running, true)
+  assert.equal(result.via, 'api')
+  assert.equal(result.tailscaleEndpoint, 'ts-ep')
+  // 关键：**必须承认拿不到 IP**，而不是编一个
+  assert.equal(result.reason, 'ip-not-exposed')
+  assert.match(result.note, /tailnet IP 不出现在网卡上/)
+  assert.equal(fetchImpl.calls.length, 1)
+  assert.match(fetchImpl.calls[0].url, /\/proxies$/)
+  assert.equal(fetchImpl.calls[0].init.headers.authorization, 'Bearer s3cret')
+})
+
+test('sing-box：在跑但没配 API → 明确说"看不到"', async () => {
+  const result = await detectSingBox({ run: fakeRun({ 'pgrep -f sing-box': '364\n' }) })
+  assert.equal(result.running, true)
+  assert.equal(result.reason, 'no-api')
+  assert.match(result.note, /Clash API/)
+})
+
+test('sing-box：没在跑也没配 API → not-running，且不去碰网络', async () => {
+  const fetchImpl = fakeFetch(async () => { throw new Error('不该被调用') })
+  const result = await detectSingBox({ run: fakeRun({}), fetchImpl })
+  assert.equal(result.running, false)
+  assert.equal(result.reason, 'not-running')
+  assert.equal(fetchImpl.calls.length, 0)
+})
+
+test('sing-box：API 里没有 tailscale endpoint', async () => {
+  const fetchImpl = fakeFetch(async () => ({
+    ok: true, status: 200, json: async () => ({ proxies: { 直连: { type: 'Direct' } } }),
+  }))
+  const result = await detectSingBox({ run: fakeRun({}), apiUrl: 'http://127.0.0.1:19090', apiSecret: 'k', fetchImpl })
+  assert.equal(result.running, false)
+  assert.equal(result.reason, 'no-tailscale-endpoint')
+})
+
+test('sing-box：API 连不上 / 超时都要有可读原因，不能抛', async () => {
+  const unreachable = await detectSingBox({
+    run: fakeRun({}),
+    apiUrl: 'http://127.0.0.1:1',
+    apiSecret: 'k',
+    fetchImpl: async () => { throw new Error('ECONNREFUSED') },
+  })
+  assert.equal(unreachable.reason, 'api-unreachable')
+
+  const timeout = await detectSingBox({
+    run: fakeRun({}),
+    apiUrl: 'http://127.0.0.1:1',
+    apiSecret: 'k',
+    fetchImpl: async () => { const e = new Error('aborted'); e.name = 'AbortError'; throw e },
+  })
+  assert.equal(timeout.reason, 'api-timeout')
 })

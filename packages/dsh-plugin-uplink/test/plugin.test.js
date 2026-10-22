@@ -104,7 +104,9 @@ async function boot(options = {}) {
       zerotier: { enabled: false },
       frp: { enabled: false },
       iroh: { enabled: false },
+      ...(options.tiers ?? {}),
     },
+    ...(options.extraAddresses ? { extraAddresses: options.extraAddresses } : {}),
   })
   const state = await waitForGateway(routes)
   return { routes, state, disposeAll, dir }
@@ -296,6 +298,59 @@ test('配对响应里带档位名，手机不用靠地址段猜', async () => {
     // 配对串里也要带上
     const decoded = decodePairingPayload(paired.json.pairingString)
     assert.deepEqual(decoded.payload.tiers, paired.json.tiers)
+  } finally {
+    env.disposeAll()
+  }
+})
+
+test('手填 tailnet 地址会进清单，并标出来源是 manual', async () => {
+  // 这是 sing-box 那种情况的解：tailnet IP 不出现在网卡上，自动探测原理上看不到
+  const env = await boot({
+    tiers: { tailscale: { enabled: true, addresses: ['100.101.2.3'] } },
+  })
+  try {
+    const tier = env.state.tiers.find((item) => item.kind === 'tailscale')
+    assert.ok(tier, '手填的 tailscale 地址必须出现在清单里')
+    assert.match(tier.url, /^http:\/\/100\.101\.2\.3:\d+$/)
+    assert.equal(tier.source, 'manual')
+    assert.equal(tier.address, '100.101.2.3')
+    // 局域网档仍然在，且来源标成 interface
+    const lan = env.state.tiers.find((item) => item.kind === 'lan')
+    assert.equal(lan.source, 'interface')
+  } finally {
+    env.disposeAll()
+  }
+})
+
+test('extraAddresses 支持完整 URL，档位按地址段猜', async () => {
+  const env = await boot({
+    extraAddresses: ['https://dsh.example.com', '100.88.1.2', 'http://192.168.1.9:18788'],
+  })
+  try {
+    const frp = env.state.tiers.find((item) => item.url === 'https://dsh.example.com')
+    assert.ok(frp, '完整 URL 要原样保留')
+    assert.equal(frp.kind, 'frp')
+    assert.equal(frp.source, 'manual')
+
+    const ts = env.state.tiers.find((item) => item.url.startsWith('http://100.88.1.2:'))
+    assert.equal(ts.kind, 'tailscale', '100.64/10 猜成 tailscale')
+
+    const lan = env.state.tiers.find((item) => item.url === 'http://192.168.1.9:18788')
+    assert.equal(lan.kind, 'lan')
+  } finally {
+    env.disposeAll()
+  }
+})
+
+test('手填地址的非法项被静默丢弃，不会让插件起不来', async () => {
+  const env = await boot({
+    tiers: { tailscale: { enabled: true, addresses: ['不是IP', '100.1.2.3', '999.1.2.3'] } },
+    extraAddresses: ['', '   ', '::not-a-url::'],
+  })
+  try {
+    const tailscale = env.state.tiers.filter((item) => item.kind === 'tailscale')
+    assert.equal(tailscale.length, 1, '只有合法的那一条能进来')
+    assert.equal(tailscale[0].address, '100.1.2.3')
   } finally {
     env.disposeAll()
   }

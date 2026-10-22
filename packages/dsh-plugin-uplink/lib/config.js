@@ -15,8 +15,8 @@ export const DEFAULTS = Object.freeze({
   name: '',
   tiers: {
     lan: { enabled: true, bonjour: true, tls: false },
-    tailscale: { enabled: true },
-    zerotier: { enabled: true },
+    tailscale: { enabled: true, addresses: [] },
+    zerotier: { enabled: true, addresses: [] },
     frp: {
       enabled: false,
       mode: 'managed',
@@ -36,6 +36,10 @@ export const DEFAULTS = Object.freeze({
       dataDir: '',
     },
   },
+  /** 额外地址：自动探测漏掉的（例如 sing-box 的 ts endpoint 只走用户态，网卡上看不到）。 */
+  extraAddresses: [],
+  /** sing-box 的 Clash API（可选）：用来回答"ts endpoint 在不在"，不读它的 root 状态文件。 */
+  singbox: { apiUrl: '', apiSecret: '' },
 })
 
 const bool = (value, fallback) => (typeof value === 'boolean' ? value : fallback)
@@ -44,6 +48,39 @@ const int = (value, fallback, min, max) => {
   const number = typeof value === 'number' ? value : Number.parseInt(value, 10)
   if (!Number.isFinite(number) || number < min || number > max) return fallback
   return Math.trunc(number)
+}
+
+/**
+ * 只收 IPv4 字面量（也允许 `ip:port` 之外的纯地址）。
+ *
+ * 刻意**不**接受域名：这一栏的用途是"自动探测漏掉的地址"，填域名属于
+ * "我知道一个能到的地址"，那应该用 `extraAddresses`（它可以带 scheme）。
+ * 收窄能少一类"填错了却静默不生效"的困惑。
+ */
+function addressList(value) {
+  if (!Array.isArray(value)) return []
+  const out = []
+  for (const item of value) {
+    if (typeof item !== 'string') continue
+    const trimmed = item.trim()
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(trimmed) && trimmed.split('.').every((part) => Number(part) <= 255)) {
+      if (!out.includes(trimmed)) out.push(trimmed)
+    }
+  }
+  return out
+}
+
+/** `extraAddresses` 允许完整 URL（自建反代之类），非法项直接丢。 */
+function extraAddressList(value) {
+  if (!Array.isArray(value)) return []
+  const out = []
+  for (const item of value) {
+    if (typeof item !== 'string') continue
+    const trimmed = item.trim()
+    if (trimmed === '') continue
+    if (!out.includes(trimmed)) out.push(trimmed)
+  }
+  return out
 }
 
 /** 端口 0 表示"随便给一个"，但绝不接受越界值 —— 静默回退比启动失败更难查。 */
@@ -99,8 +136,17 @@ export function normalizeConfig(input = {}) {
         // 自签 TLS：局域网也能加密（手机侧用 Network 框架固定指纹，绕开 ATS）
         tls: bool(lan.tls, false),
       },
-      tailscale: { enabled: bool(tailscale.enabled, true) },
-      zerotier: { enabled: bool(zerotier.enabled, true) },
+      tailscale: {
+        enabled: bool(tailscale.enabled, true),
+        // 手动填的 tailnet 地址。为什么需要：sing-box 的 tailscale endpoint 走用户态，
+        // tailnet IP **不出现在任何网卡上**，而它又躺在 root 0600 的状态文件里
+        // （那文件含机器密钥，不该为了探测去放开权限）。填一次永久有效。
+        addresses: addressList(tailscale.addresses),
+      },
+      zerotier: {
+        enabled: bool(zerotier.enabled, true),
+        addresses: addressList(zerotier.addresses),
+      },
       frp: {
         enabled: bool(frp.enabled, false),
         mode: frp.mode === 'byo' ? 'byo' : 'managed',
@@ -119,6 +165,11 @@ export function normalizeConfig(input = {}) {
         binaryPath: str(iroh.binaryPath, '').trim(),
         dataDir: str(iroh.dataDir, '').trim(),
       },
+    },
+    extraAddresses: extraAddressList(raw.extraAddresses),
+    singbox: {
+      apiUrl: str(raw.singbox?.apiUrl, '').trim(),
+      apiSecret: str(raw.singbox?.apiSecret, ''),
     },
   }
 

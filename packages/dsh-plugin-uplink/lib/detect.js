@@ -251,6 +251,95 @@ export async function detectFrpc({ run, candidates = FRPC_CANDIDATES } = {}) {
   return command === null ? { available: false, reason: 'not-installed' } : { available: true, command }
 }
 
+/**
+ * 探测 sing-box 的 Tailscale endpoint。
+ *
+ * 为什么单独有这一条：sing-box 1.11+ 自带 `tailscale` endpoint（用户态 tsnet），
+ * 它**不把 tailnet IP 绑到任何网卡上** —— 于是"看网卡找 100.x"和
+ * "问 tailscale CLI"两条路同时失效（官方 CLI 可能根本没装，装了的也可能是个
+ * 指向已删除 App 的坏 shim）。
+ *
+ * 能回答什么、不能回答什么，必须说清楚：
+ *   ✅ 有没有在跑（进程 / Clash API 里有没有 `type: Tailscale` 的 endpoint）；
+ *   ✅ endpoint 的 tag（例如 `ts-ep`），供人核对；
+ *   ❌ **拿不到 tailnet IP**。它在 `<state_directory>/tailscaled.state` 里，
+ *      那是 root 0600 且**含机器密钥**的文件 —— 为了探测去放开权限是本末倒置。
+ *
+ * 所以拿到 tailnet IP 的正路只有两条：子网路由（用局域网地址走 tailnet），
+ * 或者用户在 `tiers.tailscale.addresses` 里填一次（tailnet IP 是稳定的）。
+ */
+export async function detectSingBox({
+  run,
+  apiUrl = '',
+  apiSecret = '',
+  fetchImpl = globalThis.fetch,
+  timeoutMs = 800,
+} = {}) {
+  const result = {
+    running: false,
+    via: null,
+    tag: null,
+    tailscaleEndpoint: null,
+    reason: null,
+    note: null,
+  }
+
+  // 进程探测：只要能看到 sing-box 在跑，就说明"这台机器可能有 ts"，值得往下问
+  if (typeof run === 'function') {
+    const process = await run('pgrep', ['-f', 'sing-box'])
+    if (process.ok && process.stdout.trim() !== '') {
+      result.running = true
+      result.via = 'process'
+    }
+  }
+
+  if (apiUrl === '' || apiSecret === '') {
+    result.reason = result.running ? 'no-api' : 'not-running'
+    result.note = result.running
+      ? 'sing-box 在跑，但没配 Clash API（uplink.singbox.apiUrl/apiSecret），看不到它有没有 tailscale endpoint'
+      : null
+    return result
+  }
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await fetchImpl(`${apiUrl.replace(/\/+$/, '')}/proxies`, {
+      headers: { authorization: `Bearer ${apiSecret}` },
+      signal: controller.signal,
+    })
+    if (!response.ok) {
+      result.reason = `api-http-${response.status}`
+      return result
+    }
+    const body = await response.json()
+    const proxies = body?.proxies ?? {}
+    for (const [tag, info] of Object.entries(proxies)) {
+      const type = String(info?.type ?? '')
+      if (!/tailscale/i.test(type)) continue
+      result.running = true
+      result.via = 'api'
+      result.tailscaleEndpoint = tag
+      result.tag = tag
+      break
+    }
+    if (result.tailscaleEndpoint === null) {
+      result.reason = 'no-tailscale-endpoint'
+      result.note = 'sing-box 在跑，但没有 tailscale endpoint —— 换网络环境时这一档不会有地址'
+    } else {
+      result.reason = 'ip-not-exposed'
+      result.note = `sing-box 的 tailscale endpoint 是 ${result.tailscaleEndpoint}；tailnet IP 不出现在网卡上，`
+        + '请用子网路由（advertise_routes）或填 tiers.tailscale.addresses'
+    }
+    return result
+  } catch (error) {
+    result.reason = error?.name === 'AbortError' ? 'api-timeout' : 'api-unreachable'
+    return result
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 /** 默认路由走哪张网卡 —— 用来判断"是不是换网了"。 */
 export async function detectDefaultInterface({ run } = {}) {
   const result = await run('route', ['-n', 'get', 'default'])
@@ -295,11 +384,12 @@ export function fingerprint({ candidates = [], ssid = '', defaultInterface = '' 
  * 一次性把环境探清楚。结果缓存 30 秒（见 index.js）—— 探测要 fork 三四个进程，
  * 不能每次请求都跑。
  */
-export async function detectEnvironment({ run, candidates, ssid = true } = {}) {
-  const [tailscale, zerotier, defaultInterface] = await Promise.all([
+export async function detectEnvironment({ run, candidates, ssid = true, singbox = {} } = {}) {
+  const [tailscale, zerotier, defaultInterface, singBox] = await Promise.all([
     detectTailscale({ run }),
     detectZeroTier({ run }),
     detectDefaultInterface({ run }),
+    detectSingBox({ run, ...singbox }),
   ])
   const ssidValue = ssid ? await detectSsid({ run, iface: defaultInterface || 'en0' }) : ''
   const list = candidates ?? collectCandidates()
@@ -307,6 +397,7 @@ export async function detectEnvironment({ run, candidates, ssid = true } = {}) {
     candidates: list,
     tailscale,
     zerotier,
+    singBox,
     defaultInterface,
     ssid: ssidValue,
     fingerprint: fingerprint({ candidates: list, ssid: ssidValue, defaultInterface }),

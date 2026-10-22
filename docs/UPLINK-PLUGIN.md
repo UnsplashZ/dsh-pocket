@@ -173,6 +173,37 @@ fingerprint = sha256( sorted(本机所有私有 IPv4) + "|" + wifiSsid? + "|" + 
 macOS 取 SSID 用 `networksetup -getairportnetwork <dev>`（失败就只用地址）。
 指纹变化 → 清空 lastGood、立刻重新探测、重置降级粘滞。
 
+### 5.4 一个反例：sing-box 提供的 tailnet
+
+实测机型（2026-10-22）上，Tailscale 不是官方客户端，而是 **sing-box 1.14 的 `tailscale` endpoint**
+（tag `ts-ep`，状态目录 `tailscale-sfm-mix/`）。这打破了 §5.1/§5.2 的两个前提：
+
+- 整机**没有任何 `100.x` 地址**（`tsnet` 是用户态，不建网卡）→ 网段规则永不命中；
+- `/usr/local/bin/tailscale` 与 `/opt/homebrew/bin/tailscale` 都是指向**已删除**
+  `Tailscale.app` 的 shim → 命令探测必然失败（这正是 §5.2 那条教训的来源）。
+
+能问到的：Clash API（`127.0.0.1:19090`）的 `/proxies` 里有 `{ "ts-ep": { "type": "Tailscale" } }`
+—— 足以确认"ts 在跑"，但**给不出 tailnet IP**，因为 IP 在 root 0600 的
+`tailscaled.state` 里，而那个文件**含机器密钥**，不该为探测去放开权限。
+
+由此定下一条原则，比"多写几个探测分支"重要得多：
+
+> **宿主只负责"别漏"，可达性由手机判定。** 宿主永远无法知道手机的路由表，
+> 所以它的任务是枚举候选 + 标明来源与置信度，而不是判断哪个地址"是"哪一档。
+
+具体三条落地：
+
+1. **手填**：`tiers.tailscale.addresses` / `tiers.zerotier.addresses`（只收 IPv4 字面量）
+   与 `extraAddresses`（完整 URL 或 `ip[:port]`），与自动探测结果**并集去重**；
+   每个档位在 `/uplink/state` 里带 `source`（`interface` / `tailscale-cli` / `manual` / `frp`），
+   排障时第一个要问的就是"这个地址哪来的"。
+2. **`tunnel` 类候选不再当成垃圾**：`utun*` 上的私有地址（WireGuard 之类）留在
+   `state.environment.candidates` 里可见，但不自动进清单 —— 大多数时候那是 Docker，
+   自动广播只会让手机白等一次 800ms。
+3. **给出两条正路而不是硬猜**：子网路由（`advertise_routes`，uplink 零配置、局域网档直接覆盖
+   出门场景）或手填 tailnet IP。`system_interface: true` 则会让 sing-box 建真实 TUN，
+   那时 §5.1 的规则自然命中。
+
 ---
 
 ## 6. 清单（descriptor）与下发

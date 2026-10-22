@@ -111,8 +111,60 @@ uplink:
       dataDir: ""                    # 默认 $DSH_HOME/uplink/iroh
 ```
 
+```yaml
+  # 自动探测漏掉的地址可以手填（见下面「探测模型」）
+  tiers:
+    tailscale: { addresses: ["100.101.2.3"] }   # 只收 IPv4 字面量，填一次永久有效
+    zerotier:  { addresses: [] }
+  extraAddresses: ["https://dsh.example.com"]   # 完整 URL 或 ip[:port]，档位按地址段猜
+  singbox:                                      # 可选：只用来回答"ts endpoint 在不在"
+    apiUrl: "http://127.0.0.1:19090"
+    apiSecret: ""
+```
+
 **配置只描述"允许哪些档位"，不描述地址。** 地址永远在运行时算出来 —— 换 Wi-Fi、
 Tailscale 重新分配地址、笔记本换网段，配置文件都不用改。
+
+## 探测模型：宿主只负责"别漏"，手机才是权威
+
+宿主**永远无法判断"这个地址手机能不能到"** —— 路由表在手机上。所以探测分两层：
+
+**第一层：宿主枚举候选**（四个来源，各回答不同问题）
+
+| 来源 | 能回答 | 代价 |
+|---|---|---|
+| 网卡枚举 | 真的绑在接口上的地址（`lan` / `tailscale` / `zerotier` / `tunnel`） | 免费 |
+| `tailscale status --json` | 官方客户端的 tailnet IP 与 `BackendState` | 需要官方 App 真的在跑（**执行验证**，不看文件是否存在） |
+| sing-box Clash API `/proxies` | **有没有 tailscale endpoint、叫什么 tag** | 免费，不需要 root |
+| 手填 `addresses` / `extraAddresses` | 用户知道、但探测原理上看不到的地址 | 一次手工 |
+
+**第二层：手机并行探测**（`GET /uplink/ping`，800ms 上限，先通者胜）。只有这一层能确认可达。
+
+### sing-box 的 Tailscale endpoint 是个特例
+
+sing-box 1.11+ 自带 `tailscale` endpoint（用户态 tsnet），**不把 tailnet IP 绑到任何网卡上**。
+于是两条老路同时失效：看网卡找不到 `100.x`，官方 CLI 也可能根本没装（装了的还可能是
+一个指向已删除 App 的坏 shim —— 本机就是这样）。
+
+插件能做的、和**不做**的：
+
+- ✅ 通过 Clash API 确认 `type: Tailscale` 的 endpoint 存在（本机实测认出 `ts-ep`），
+  并在 `reason: 'ip-not-exposed'` 里如实说明"拿不到 IP"；
+- ❌ **不去读 `<state_directory>/tailscaled.state`**。那文件是 root 0600 且**含机器密钥**，
+  为了探测去放开权限是本末倒置。
+
+拿到"手机能连的 ts 地址"只有两条正路：
+
+1. **子网路由（推荐，uplink 零配置）** —— 让 Mac 的 endpoint 广播局域网段：
+   `advertise_routes: ["10.8.54.0/22"]`（[sing-box 文档](https://core-tutorial.argsment.com/singbox/tailscale)），
+   在 Tailscale 后台批准后，手机在 4G 下直接打 `http://10.8.54.221:18788` 就能通 ——
+   **局域网档自动覆盖出门场景**，不需要单独的 Tailscale 档。
+2. **手填 tailnet IP** —— `tiers.tailscale.addresses: ["100.x.y.z"]`。
+   前提是该节点接受入站（sing-box 的 endpoint 是出站语义，通常不监听自己的 tailnet IP，
+   所以更常见的是第 1 条）。
+
+`system_interface: true` 会让 sing-box 建一个真实 TUN 并持有 tailnet IP，
+那时网卡枚举就能自动发现它 —— 这条不需要任何手工配置。
 
 运行时也可以用 `POST /uplink/tiers` 临时开关某一档（设置页的勾选框走这条）；
 但它**不落盘**，重启后回到配置文件的值 —— 配置文件才是唯一事实来源。
@@ -185,7 +237,7 @@ dsh 自己的端口（只有本机可达，用于管理）：
 ## 测试
 
 ```bash
-node --test        # 106 条
+node --test        # 118 条
 ```
 
 | 文件 | 覆盖 |
@@ -209,6 +261,9 @@ node --test        # 106 条
 5. **iroh 的 relay 字段拿不到**：当前 sidecar 的 `ready` 消息不带 relay，所以 `status().relay` 恒为 null。
    手机侧仍能从 iroh DNS TXT 记录里解析出 relay，功能不受影响。
 6. **运行时开关不落盘**，重启回到配置文件的值。
+7. **`utun*` 上的私有地址不自动广播**：它们可能是 WireGuard（有用）也可能是 Docker（无用），
+   自动广播只会让手机白等一次超时。需要就把地址填进 `extraAddresses`。
+8. **拿不到 sing-box 的 tailnet IP**：见上面「探测模型」。这是刻意不做的事（那文件含机器密钥）。
 
 ## 改代码前先读这三个坑
 

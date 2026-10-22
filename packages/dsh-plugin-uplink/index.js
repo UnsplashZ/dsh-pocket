@@ -196,7 +196,7 @@ function apply(ctx, rawConfig = {}) {
     const now = Date.now()
     if (!force && envCache.value !== null && now - envCache.at < DETECT_CACHE_MS) return envCache.value
     if (envInFlight !== null) return envInFlight
-    envInFlight = detectEnvironment({ run })
+    envInFlight = detectEnvironment({ run, singbox: config.singbox })
       .then((value) => {
         envCache = { at: Date.now(), value }
         return value
@@ -251,22 +251,63 @@ function apply(ctx, rawConfig = {}) {
     if (enabled.lan) {
       for (const candidate of env.candidates ?? []) {
         if (candidate.kind !== 'lan') continue
-        push({ kind: 'lan', url: `${scheme()}://${candidate.address}:${port}`, address: candidate.address, iface: candidate.iface, ...withTls() })
+        push({
+          kind: 'lan',
+          url: `${scheme()}://${candidate.address}:${port}`,
+          address: candidate.address,
+          iface: candidate.iface,
+          source: 'interface',
+          ...withTls(),
+        })
       }
     }
-    if (enabled.tailscale && env.tailscale?.available === true) {
-      for (const address of env.tailscale.addresses) {
-        push({ kind: 'tailscale', url: `${scheme()}://${address}:${port}`, address, ...withTls() })
+    // 每档 = 自动探测到的地址 ∪ 用户手填的地址。
+    // 手填这条不是"兜底凑数"：sing-box 的 tailscale endpoint 走用户态，
+    // tailnet IP 根本不出现在网卡上，自动探测**原理上**看不到它。
+    const collect = (kind, detected, manual) => {
+      const seen = new Set()
+      for (const entry of detected) {
+        if (seen.has(entry.address)) continue
+        seen.add(entry.address)
+        push({ kind, url: `${scheme()}://${entry.address}:${port}`, address: entry.address, source: entry.source, ...withTls() })
+      }
+      for (const address of manual) {
+        if (seen.has(address)) continue
+        seen.add(address)
+        push({ kind, url: `${scheme()}://${address}:${port}`, address, source: 'manual', ...withTls() })
       }
     }
-    if (enabled.zerotier && env.zerotier?.available === true) {
-      for (const address of env.zerotier.addresses) {
-        push({ kind: 'zerotier', url: `${scheme()}://${address}:${port}`, address, ...withTls() })
-      }
+
+    if (enabled.tailscale) {
+      const detected = env.tailscale?.available === true
+        ? env.tailscale.addresses.map((address) => ({ address, source: 'tailscale-cli' }))
+        : []
+      collect('tailscale', detected, config.tiers.tailscale.addresses)
+    }
+    if (enabled.zerotier) {
+      const detected = env.zerotier?.available === true
+        ? env.zerotier.addresses.map((address) => ({ address, source: 'zerotier-cli' }))
+        : []
+      collect('zerotier', detected, config.tiers.zerotier.addresses)
     }
     if (enabled.frp) {
       const status = frpTier?.status()
-      if (status?.url) push({ kind: 'frp', url: status.url })
+      if (status?.url) push({ kind: 'frp', url: status.url, source: 'frp' })
+    }
+    // 额外地址：完整 URL 原样用；只写 `ip` 或 `ip:port` 的补上 scheme 与网关端口。
+    // 档位按地址段猜 —— 用户自己填的，猜错也只是优先级不同，不影响能不能连。
+    for (const entry of config.extraAddresses) {
+      const url = /^https?:\/\//i.test(entry)
+        ? entry
+        : `${scheme()}://${entry}${/:\d+$/.test(entry) ? '' : `:${port}`}`
+      let host = ''
+      try {
+        host = new URL(url).hostname
+      } catch {
+        logger.warn(`[uplink] extraAddresses 里这一项不是合法地址，已跳过：${entry}`)
+        continue
+      }
+      push({ kind: guessKind(host), url, source: 'manual' })
     }
     if (enabled.iroh && irohTier !== null) {
       const status = irohTier.status()
@@ -275,6 +316,18 @@ function apply(ctx, rawConfig = {}) {
       }
     }
     return tiers
+  }
+
+  /** 给手填的额外地址猜一个档位（只影响优先级与 UI 分组，不影响能不能连）。 */
+  function guessKind(host) {
+    const octets = host.split('.').map(Number)
+    if (octets.length === 4 && octets.every((value) => Number.isFinite(value))) {
+      if (octets[0] === 100 && octets[1] >= 64 && octets[1] <= 127) return 'tailscale'
+      if (octets[0] === 10 || (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31)
+        || (octets[0] === 192 && octets[1] === 168)) return 'lan'
+      if (octets[0] === 127) return 'lan'
+    }
+    return 'frp'
   }
 
   /** 从"手机连进来时命中的本地地址"反推它走的是哪一档，只用于日志与诊断。 */
@@ -512,8 +565,12 @@ function apply(ctx, rawConfig = {}) {
           candidates: env.candidates ?? [],
           tailscale: env.tailscale ?? { available: false },
           zerotier: env.zerotier ?? { available: false },
+          singBox: env.singBox ?? null,
         },
-        tiers: tiers.map(({ kind, url, prio, endpointId }) => ({ kind, url, prio, endpointId })),
+        // source 很重要：排障时第一个要问的就是"这个地址哪来的"
+        tiers: tiers.map(({ kind, url, prio, endpointId, source, address }) => ({
+          kind, url, prio, endpointId, source, address,
+        })),
         bonjour: advertiser?.state() ?? { running: false, serviceName: null, lastError: null },
         frp: frpTier?.status() ?? null,
         iroh: irohTier?.status() ?? null,
