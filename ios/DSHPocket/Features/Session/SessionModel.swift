@@ -702,15 +702,34 @@ public final class SessionModel {
         reconnectTask = Task { [weak self] in
             try? await Task.sleep(for: wait)
             guard !Task.isCancelled, let self else { return }
-            // 睡醒先看传输层到底好了没有。传输没就绪时重订阅必然失败，
-            // 只会又排一条更长的退避 —— 空转，而且把界面钉在「正在重连」。
-            let connected = await self.appModel.isTransportConnected
-            guard connected else {
-                self.logs.log(.debug, "退避醒来时传输仍未就绪，等传输层恢复的通知")
+            await self.resubscribeWhenTransportReady(sawSnapshot: sawSnapshot)
+        }
+    }
+
+    /// 等传输就绪再重订阅。**等不到就一直等，不要收工。**
+    ///
+    /// 以前这里是"睡醒看一眼传输层，没就绪就 `return`"，赌"传输层恢复时会通知我"。
+    /// 但那条通知（`observeTransportGeneration`）只在**传输世代**变化时才发 ——
+    /// 传输一直好着、只是 mux 断了又自己重连上，世代根本不变，通知永远不来。
+    /// 结果就是会话永久停在「连接断了，正在重连 / 尚未连接到电脑」，而首页的
+    /// 绿点一直是连着的（用户 2026-10-22 截图："会话内提示断开，返回首页连接正常"）。
+    ///
+    /// 现在改成自己轮询：每 1.5 秒看一次，直到传输就绪再订阅。
+    /// 这条路径是"等"，不是"又断了一次" —— 所以**不动** `reconnectAttempt`，
+    /// 也不刷 WARN（只在第一次记一条 debug）。
+    private func resubscribeWhenTransportReady(sawSnapshot: Bool) async {
+        var logged = false
+        while !Task.isCancelled {
+            if await appModel.isTransportConnected {
+                phase = sawSnapshot ? .live : .loading
+                await subscribe()
                 return
             }
-            self.phase = sawSnapshot ? .live : .loading
-            await self.subscribe()
+            if !logged {
+                logs.log(.debug, "传输仍未就绪，先等着（每 1.5s 复查一次，不再放弃）")
+                logged = true
+            }
+            try? await Task.sleep(for: .milliseconds(1500))
         }
     }
 

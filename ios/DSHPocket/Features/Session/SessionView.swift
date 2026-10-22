@@ -26,6 +26,14 @@ struct SessionView: View {
     @State private var showShadowed = false
     @FocusState private var composerFocused: Bool
     @State private var isFollowingBottom = true
+    /// 时间线视口的高度。
+    ///
+    /// 判"在不在底部"必须拿哨兵的位置**和视口高度**一起比 —— 哨兵报的是
+    /// 它在视口坐标系里的 `maxY`：贴底时约等于视口高度，往上翻才会变大。
+    /// 以前直接写 `bottom < 200`，等于把"贴着视口**顶边**"当成了贴底，
+    /// 于是只要内容一变，`isFollowingBottom` 就被判成 false：既不再跟随新内容，
+    /// 「跳到最新」也会一直挂在那儿（用户 2026-10-22："我已经在最底部了，还展示出来"）。
+    @State private var timelineViewportHeight: CGFloat = 0
     /// 用户**手动**接管了滚动位置（往上拖过）。
     ///
     /// 跟 `isFollowingBottom` 不是一回事，也不能拿它代替：`isFollowingBottom` 是
@@ -458,6 +466,18 @@ struct SessionView: View {
                 }
                 #endif
             }
+            .background(
+                // 视口高度：哨兵坐标是"相对视口"的，判贴底必须知道视口多高。
+                GeometryReader { geometry in
+                    Color.clear.preference(
+                        key: TimelineViewportHeightKey.self,
+                        value: geometry.size.height
+                    )
+                }
+            )
+            .onPreferenceChange(TimelineViewportHeightKey.self) { height in
+                timelineViewportHeight = height
+            }
             .coordinateSpace(name: Self.timelineSpace)
             .onPreferenceChange(TimelineBottomOffsetKey.self) { bottom in
                 // 视口高度拿不到精确值，用一个宽松阈值：哨兵下端还在
@@ -475,7 +495,9 @@ struct SessionView: View {
                 // "锚点参数变化 → 布局变化 → preference 再报 → 又改状态"
                 // 会自激抖动（`defaultScrollAnchor` 的 `.sizeChanges` 角色最怕这个）。
                 guard canAutoLoadHistory else { return }
-                let nearBottom = bottom < Self.bottomProximityThreshold
+                // 贴底 ⟺ 哨兵下端还在"视口底边 + 200pt"以内。
+                // 视口高度还没量出来时退回旧口径（只会短暂发生）。
+                let nearBottom = bottom < timelineViewportHeight + Self.bottomProximityThreshold
                 if isFollowingBottom != nearBottom {
                     isFollowingBottom = nearBottom
                     // **离开底部就立刻放弃自动跟随。**
@@ -831,6 +853,14 @@ struct SessionView: View {
 ///
 /// 用来判断"用户此刻是不是停在最新消息处"。内容增长时只有真的停在尾部
 /// 才自动跟随 —— 否则读历史/看思考过程时会被不断拽回底部。
+/// 时间线视口的高度（像素）。判"在不在底部"要用它和哨兵坐标一起算。
+private struct TimelineViewportHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 private struct TimelineBottomOffsetKey: PreferenceKey {
     static let defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
