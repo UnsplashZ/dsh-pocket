@@ -28,10 +28,15 @@ export function buildDescriptor({ hostId, name = '', port, tiers = [], now = Dat
   const sorted = [...tiers]
     .map((tier) => ({
       kind: tier.kind,
-      url: tier.url,
+      // iroh 档位没有 url（它是 QUIC + endpointId），所以 url 是可选的 ——
+      // 但 lan/tailscale/zerotier/frp 必须有，缺了就是配置错误，宁可少一档也别发个点不开的地址
+      ...(tier.url ? { url: tier.url } : {}),
       prio: tier.prio ?? priorityOf(tier.kind),
       ...(tier.tls ? { tls: tier.tls } : {}),
+      ...(tier.endpointId ? { endpointId: tier.endpointId } : {}),
+      ...(tier.relay ? { relay: tier.relay } : {}),
     }))
+    .filter((tier) => tier.kind === 'iroh' || typeof tier.url === 'string')
     .sort((a, b) => a.prio - b.prio)
   return {
     v: DESCRIPTOR_VERSION,
@@ -67,6 +72,7 @@ export function encodePairingPayload({
   deviceId,
   secret,
   urls = [],
+  iroh = null,
   now = Date.now(),
 }) {
   const payload = {
@@ -77,6 +83,9 @@ export function encodePairingPayload({
     deviceId,
     secret,
     urls,
+    // iroh 兜底档的寻址信息：endpointId + relay。配对**码**不放在这里 ——
+    // 它只有几分钟有效期，塞进长期保存的配对串里只会变成一个过期的坑。
+    ...(iroh ? { iroh } : {}),
     issuedAt: now,
   }
   return `${PAIRING_SCHEME}${Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url')}`
@@ -102,6 +111,12 @@ export function decodePairingPayload(text) {
     return { ok: false, reason: 'bad-secret' }
   }
   const urls = Array.isArray(parsed.urls) ? parsed.urls.filter((url) => typeof url === 'string') : []
+  const iroh = parsed.iroh && typeof parsed.iroh === 'object' && typeof parsed.iroh.endpointId === 'string'
+    ? {
+      endpointId: parsed.iroh.endpointId,
+      relay: typeof parsed.iroh.relay === 'string' ? parsed.iroh.relay : null,
+    }
+    : null
   return {
     ok: true,
     payload: {
@@ -111,6 +126,7 @@ export function decodePairingPayload(text) {
       deviceId: parsed.deviceId,
       secret: parsed.secret,
       urls,
+      iroh,
       issuedAt: Number.isInteger(parsed.issuedAt) ? parsed.issuedAt : 0,
     },
   }

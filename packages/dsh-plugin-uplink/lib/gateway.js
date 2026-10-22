@@ -14,6 +14,7 @@
  *   3. 认证失败按 IP 限流（见 lib/auth.js），防止拿网关当 HMAC 预言机。
  */
 import http from 'node:http'
+import https from 'node:https'
 import { AUTH_PATH, PUBLIC_PATHS } from './constants.js'
 import { publicIdentity } from './descriptor.js'
 
@@ -115,8 +116,14 @@ export function createGateway({
   identity,
   logger,
   tierOfAddress = () => 'unknown',
+  /**
+   * 可选的自签 TLS。传 `{key, cert}`（PEM 内容，不是路径）就起 https，
+   * 否则起明文 http —— 局域网默认明文是刻意的：ATS 不挡 IP 字面量，
+   * 加 TLS 要手机侧固定指纹，属于"可选加固"而不是默认拦路。
+   */
+  tls = null,
 }) {
-  const server = http.createServer()
+  const server = tls ? https.createServer({ key: tls.key, cert: tls.cert }) : http.createServer()
   /**
    * 升级过的 socket 必须自己记账。
    *

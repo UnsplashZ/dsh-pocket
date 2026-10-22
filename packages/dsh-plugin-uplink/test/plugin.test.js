@@ -222,3 +222,61 @@ test('卸载插件会把网关关掉（不留监听端口）', async () => {
     },
   )
 })
+
+test('state 里能看出每一档的真实状态（而不是只回配置）', async () => {
+  const env = await boot()
+  try {
+    assert.equal(env.state.scheme, 'http')
+    assert.equal(env.state.tls, null)
+    assert.deepEqual(env.state.enabled, {
+      lan: true, tailscale: false, zerotier: false, frp: false, iroh: false,
+    })
+    // Bonjour 广播的状态要能单独看见：它失败不该让整档不可用
+    assert.equal(typeof env.state.bonjour.running, 'boolean')
+    // frp / iroh 没启用时是 null，不是 {}，前端好判断
+    assert.equal(env.state.frp, null)
+    assert.equal(env.state.iroh, null)
+    assert.ok(Array.isArray(env.state.warnings))
+  } finally {
+    env.disposeAll()
+  }
+})
+
+test('运行时勾选/取消档位：只动受影响的组件，并如实回报', async () => {
+  const env = await boot()
+  try {
+    // 关掉局域网：Bonjour 广播要跟着停
+    const off = await call(env.routes.get('/uplink/tiers'), { method: 'POST', body: { enabled: { lan: false } } })
+    assert.equal(off.status, 200)
+    assert.deepEqual(off.json.changes, { lan: false })
+    assert.equal(off.json.enabled.lan, false)
+    const after = await call(env.routes.get('/uplink/state'))
+    assert.equal(after.json.enabled.lan, false)
+    assert.equal(after.json.bonjour.running, false)
+    // 关掉之后清单里不该再有局域网档
+    assert.equal(after.json.tiers.some((tier) => tier.kind === 'lan'), false)
+
+    // 再打开
+    const on = await call(env.routes.get('/uplink/tiers'), { method: 'POST', body: { lan: true } })
+    assert.deepEqual(on.json.changes, { lan: true })
+    const back = await call(env.routes.get('/uplink/state'))
+    assert.ok(back.json.tiers.some((tier) => tier.kind === 'lan'))
+  } finally {
+    env.disposeAll()
+  }
+})
+
+test('档位开关：没有变化时不重启任何组件，非 POST 直接 405', async () => {
+  const env = await boot()
+  try {
+    const noop = await call(env.routes.get('/uplink/tiers'), { method: 'POST', body: { enabled: { lan: true } } })
+    assert.equal(noop.status, 200)
+    assert.deepEqual(noop.json.changes, {})
+    assert.deepEqual(noop.json.applied, undefined)
+
+    const wrongMethod = await call(env.routes.get('/uplink/tiers'), { method: 'GET' })
+    assert.equal(wrongMethod.status, 405)
+  } finally {
+    env.disposeAll()
+  }
+})

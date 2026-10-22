@@ -19,4 +19,5 @@ export const ADMIN_PATHS = Object.freeze({
   devices: '/uplink/devices',
   rotate: '/uplink/rotate',
   probe: '/uplink/probe',
+  tiers: '/uplink/tiers',
 })

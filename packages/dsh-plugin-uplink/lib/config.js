@@ -14,7 +14,7 @@ export const DEFAULTS = Object.freeze({
   bind: '0.0.0.0',
   name: '',
   tiers: {
-    lan: { enabled: true },
+    lan: { enabled: true, bonjour: true, tls: false },
     tailscale: { enabled: true },
     zerotier: { enabled: true },
     frp: {
@@ -26,8 +26,15 @@ export const DEFAULTS = Object.freeze({
       token: '',
       tls: false,
       publicUrl: '',
+      frpcPath: '',
     },
-    iroh: { enabled: true, relay: 'n0', customRelay: '' },
+    iroh: {
+      enabled: true,
+      relay: 'n0',
+      customRelay: '',
+      binaryPath: '',
+      dataDir: '',
+    },
   },
 })
 
@@ -85,7 +92,13 @@ export function normalizeConfig(input = {}) {
     bind: str(raw.bind, DEFAULTS.bind).trim() || DEFAULTS.bind,
     name: str(raw.name, '').trim(),
     tiers: {
-      lan: { enabled: bool(lan.enabled, true) },
+      lan: {
+        enabled: bool(lan.enabled, true),
+        // Bonjour 广播让手机零配置发现；关掉之后只能靠配对串里的地址
+        bonjour: bool(lan.bonjour, true),
+        // 自签 TLS：局域网也能加密（手机侧用 Network 框架固定指纹，绕开 ATS）
+        tls: bool(lan.tls, false),
+      },
       tailscale: { enabled: bool(tailscale.enabled, true) },
       zerotier: { enabled: bool(zerotier.enabled, true) },
       frp: {
@@ -97,11 +110,14 @@ export function normalizeConfig(input = {}) {
         token: str(frp.token, ''),
         tls: bool(frp.tls, false),
         publicUrl: str(frp.publicUrl, '').trim(),
+        frpcPath: str(frp.frpcPath, '').trim(),
       },
       iroh: {
         enabled: bool(iroh.enabled, true),
         relay: iroh.relay === 'custom' ? 'custom' : 'n0',
         customRelay: str(iroh.customRelay, '').trim(),
+        binaryPath: str(iroh.binaryPath, '').trim(),
+        dataDir: str(iroh.dataDir, '').trim(),
       },
     },
   }
@@ -114,6 +130,13 @@ export function normalizeConfig(input = {}) {
     // 只说"要 TLS"但没给 https 地址：仍然允许，公网 URL 由 serverAddr:remotePort 拼出，
     // 但那条是明文 —— 必须让用户知道，不能假装加密了。
     warnings.push('tiers.frp.tls=true 但 publicUrl 不是 https://，实际连接仍是明文')
+  }
+  if (config.tiers.lan.tls && config.tiers.lan.enabled) {
+    // 自签证书靠 openssl 生成；没有就只能退回明文，别让用户以为开了加密
+    warnings.push('tiers.lan.tls=true：需要本机有 openssl，生成失败时会自动退回明文并在日志里说明')
+  }
+  if (config.tiers.iroh.enabled && config.tiers.frp.enabled && config.tiers.frp.mode === 'managed') {
+    warnings.push('iroh 与 frp 同时启用：两条外网通路会并行常驻，按需关掉一条可省资源')
   }
 
   return { config, warnings }

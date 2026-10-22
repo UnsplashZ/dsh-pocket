@@ -2,17 +2,18 @@
  * dsh-plugin-uplink · 多路接入
  *
  * 把「手机怎么连上电脑」从**一种协议**变成**一份可勾选的地址清单**：
- * 电脑侧起一个带鉴权的网关，把 dsh 同时暴露在局域网 / 虚拟组网 / 自建中转上；
+ * 电脑侧起一个带鉴权的网关，把 dsh 同时暴露在局域网 / 虚拟组网 / 自建中转 / iroh 上；
  * 手机侧并行探一下，谁快用谁。
  *
  * 设计见仓库 `docs/UPLINK-PLUGIN.md`，决策见 `docs/DECISIONS.md` ADR-0029。
  *
- * 这个文件只做装配：读配置 → 起网关 → 算清单 → 挂管理路由。
+ * 这个文件只做装配：读配置 → 起网关 → 起各档 → 算清单 → 挂管理路由。
  * 真正的逻辑都在 lib/ 下，每个模块单独可测。
  */
-import { homedir } from 'node:os'
-import { hostname } from 'node:os'
-import { join } from 'node:path'
+import { constants as fsConstants } from 'node:fs'
+import { access, mkdir, readdir, readFile } from 'node:fs/promises'
+import { homedir, hostname } from 'node:os'
+import { dirname, join } from 'node:path'
 
 import { normalizeConfig, priorityOf } from './lib/config.js'
 import { DeviceStore } from './lib/auth.js'
@@ -21,24 +22,22 @@ import { createGateway } from './lib/gateway.js'
 import { ADMIN_PATHS, DETECT_CACHE_MS } from './lib/constants.js'
 import { buildDescriptor, encodePairingPayload, publicIdentity } from './lib/descriptor.js'
 import { createRunner, detectEnvironment, detectFrpc } from './lib/detect.js'
+import { createAdvertiser } from './lib/publish.js'
+import { ensureCertificate } from './lib/tls.js'
+import { createFrpTier } from './lib/tiers/frp.js'
+import { createIrohTier, resolveHostBinary } from './lib/tiers/iroh.js'
 
 const name = 'dsh-plugin-uplink'
 /** `connection` 动态 inject：老版本 dsh 没有这个服务，缺了也不该让插件起不来。 */
 const inject = ['webServer']
 
-const VERSION = '0.1.0'
+const VERSION = '0.2.0'
 
 /** 终端文案跟随系统语言；插件打在 dsh 的同一个终端上，不能一半中文一半英文。 */
 const terminalZh = /^zh/i.test(
   process.env.LC_ALL || process.env.LANG || Intl.DateTimeFormat().resolvedOptions().locale || '',
 )
 const tt = (zh, en) => (terminalZh ? zh : en)
-
-/** 请求方声明的语言（手机侧会带 Accept-Language），决定路由报错用哪种语言。 */
-const tr = (req, zh, en) => {
-  const declared = req.headers['accept-language'] || ''
-  return /(^|[\s,])zh/i.test(declared) ? zh : en
-}
 
 /** dsh 的回环判定（localhost / ::1 / 整个 127/8）。 */
 function isLoopbackHostname(value) {
@@ -109,6 +108,49 @@ async function readJson(req, limit = 8192) {
   })
 }
 
+/**
+ * 兜底找 tether sidecar。
+ *
+ * 为什么需要这一步：本插件是通过 `link:` 装进 profile 的，Node 解析裸模块名时用的是
+ * **realpath**（仓库路径），所以 profile 自己的 `node_modules` 不在解析链上 ——
+ * `resolveHostBinary()` 的 `createRequire().resolve()` 必然落空，而 sidecar 恰恰只装在
+ * profile 里。这里直接去 profile 目录翻一遍，避免用户为了一个可选档位手工填路径。
+ *
+ * 找不到就返回 null，iroh 档位不可用而已，其余档位照常工作。
+ */
+async function findSidecarInProfiles() {
+  const home = process.env.DSH_HOME && process.env.DSH_HOME !== '' ? process.env.DSH_HOME : join(homedir(), '.dsh')
+  const profiles = join(home, 'profiles')
+  const exe = process.platform === 'win32' ? 'tether-host.exe' : 'tether-host'
+  let entries
+  try {
+    entries = await readdir(profiles, { withFileTypes: true })
+  } catch {
+    return null
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    const modules = join(profiles, entry.name, 'node_modules')
+    let packages
+    try {
+      packages = await readdir(modules)
+    } catch {
+      continue
+    }
+    for (const pkg of packages) {
+      if (!pkg.startsWith('dsh-tether-host-')) continue
+      const candidate = join(modules, pkg, 'bin', exe)
+      try {
+        await access(candidate, fsConstants.X_OK)
+        return candidate
+      } catch {
+        // 该平台的子包没装（npm 只装匹配当前平台的），继续翻下一个
+      }
+    }
+  }
+  return null
+}
+
 /** 状态文件默认落在 dsh 的 home 下，跟其它插件的数据放一起。 */
 function defaultStatePath() {
   const home = process.env.DSH_HOME && process.env.DSH_HOME !== '' ? process.env.DSH_HOME : join(homedir(), '.dsh')
@@ -123,7 +165,7 @@ function apply(ctx, rawConfig = {}) {
   const { config, warnings } = normalizeConfig(rawConfig)
   for (const warning of warnings) console.warn(`[uplink] ${warning}`)
 
-  // 网关只能转明文 HTTP：代理流要改写请求头，对着 HTTPS 监听器只会让手机白屏。
+  // 网关只能转明文 HTTP 到上游：代理流要改写请求头，对着 HTTPS 监听器只会让手机白屏。
   if ((ctx.webServer.protocol ?? 'http:') !== 'http:') {
     throw new Error(
       `[uplink] ${tt(
@@ -142,7 +184,9 @@ function apply(ctx, rawConfig = {}) {
     warn: (message) => console.warn(message),
   }
 
-  const store = new DeviceStore(rawConfig.statePath ?? defaultStatePath(), { logger })
+  const statePath = rawConfig.statePath ?? defaultStatePath()
+  const stateDir = dirname(statePath)
+  const store = new DeviceStore(statePath, { logger })
   const run = createRunner()
 
   /** 环境探测结果缓存：探测要 fork 三四个进程，不能每个请求都跑。 */
@@ -167,11 +211,31 @@ function apply(ctx, rawConfig = {}) {
     return envInFlight
   }
 
+  // ── 各档的运行时状态 ───────────────────────────────────────────────────
   let cookie = null
   let gateway = null
+  let advertiser = null
+  let frpTier = null
+  let irohTier = null
+  let tlsInfo = null
   let actualPort = config.port
   let hostId = ''
   let started = false
+  /** 运行时开关（设置页的勾选框用）；重启后回到配置文件的值 —— 配置文件才是唯一事实来源。 */
+  const enabled = {
+    lan: config.tiers.lan.enabled,
+    tailscale: config.tiers.tailscale.enabled,
+    zerotier: config.tiers.zerotier.enabled,
+    frp: config.tiers.frp.enabled,
+    iroh: config.tiers.iroh.enabled,
+  }
+
+  const scheme = () => (tlsInfo !== null ? 'https' : 'http')
+
+  /** 本机所有可用于局域网档的地址（自签证书的 SAN 也要用）。 */
+  function lanAddresses(env) {
+    return (env.candidates ?? []).filter((item) => item.kind === 'lan').map((item) => item.address)
+  }
 
   /**
    * 把配置 + 环境折成"这台电脑现在能从哪几个地址到达"。
@@ -181,48 +245,47 @@ function apply(ctx, rawConfig = {}) {
    */
   async function buildTiers({ port, env }) {
     const tiers = []
-    const push = (kind, url, extra = {}) => {
-      tiers.push({ kind, url, prio: priorityOf(kind), ...extra })
-    }
+    const push = (tier) => tiers.push({ ...tier, prio: priorityOf(tier.kind) })
+    const withTls = () => (tlsInfo === null ? {} : { tls: { sha256: tlsInfo.fingerprint256 } })
 
-    if (config.tiers.lan.enabled) {
+    if (enabled.lan) {
       for (const candidate of env.candidates ?? []) {
         if (candidate.kind !== 'lan') continue
-        push('lan', `http://${candidate.address}:${port}`, { address: candidate.address, iface: candidate.iface })
+        push({ kind: 'lan', url: `${scheme()}://${candidate.address}:${port}`, address: candidate.address, iface: candidate.iface, ...withTls() })
       }
     }
-    if (config.tiers.tailscale.enabled && env.tailscale?.available === true) {
+    if (enabled.tailscale && env.tailscale?.available === true) {
       for (const address of env.tailscale.addresses) {
-        push('tailscale', `http://${address}:${port}`, { address })
+        push({ kind: 'tailscale', url: `${scheme()}://${address}:${port}`, address, ...withTls() })
       }
     }
-    if (config.tiers.zerotier.enabled && env.zerotier?.available === true) {
+    if (enabled.zerotier && env.zerotier?.available === true) {
       for (const address of env.zerotier.addresses) {
-        push('zerotier', `http://${address}:${port}`, { address })
+        push({ kind: 'zerotier', url: `${scheme()}://${address}:${port}`, address, ...withTls() })
       }
     }
-    if (config.tiers.frp.enabled) {
-      if (config.tiers.frp.publicUrl !== '') {
-        push('frp', config.tiers.frp.publicUrl)
-      } else if (config.tiers.frp.serverAddr !== '') {
-        const scheme = config.tiers.frp.tls ? 'https' : 'http'
-        push('frp', `${scheme}://${config.tiers.frp.serverAddr}:${config.tiers.frp.remotePort}`)
+    if (enabled.frp) {
+      const status = frpTier?.status()
+      if (status?.url) push({ kind: 'frp', url: status.url })
+    }
+    if (enabled.iroh && irohTier !== null) {
+      const status = irohTier.status()
+      if (status.running && status.endpointId) {
+        push({ kind: 'iroh', endpointId: status.endpointId, relay: status.relay ?? undefined })
       }
     }
-    // iroh 档位由 sidecar 提供，M0 还没接入 —— 显式说出来，别让人以为它生效了。
     return tiers
   }
 
   /** 从"手机连进来时命中的本地地址"反推它走的是哪一档，只用于日志与诊断。 */
   function tierOfAddress(address) {
     if (typeof address !== 'string' || address === '') return 'unknown'
-    if (address === '::1' || address === '127.0.0.1' || address.startsWith('127.')) return 'loopback'
+    if (address === '::1' || address.startsWith('127.')) return 'loopback'
     const octets = address.split('.').map(Number)
     if (octets.length === 4 && octets.every((value) => Number.isFinite(value))) {
       if (octets[0] === 100 && octets[1] >= 64 && octets[1] <= 127) return 'tailscale'
     }
-    const env = envCache.value
-    for (const candidate of env?.candidates ?? []) {
+    for (const candidate of envCache.value?.candidates ?? []) {
       if (candidate.address === address) return candidate.kind
     }
     return 'lan'
@@ -230,6 +293,9 @@ function apply(ctx, rawConfig = {}) {
 
   ctx.effect(() => () => {
     cookie?.stop()
+    void advertiser?.stop()
+    void frpTier?.stop()
+    void irohTier?.stop()
     void gateway?.close()
   })
 
@@ -254,10 +320,115 @@ function apply(ctx, rawConfig = {}) {
     connCtx.effect(() => () => cookie?.stop())
   })
 
-  // 主装配：探测环境 → 起网关 → 算清单
+  /** 起/停自建中转。返回给管理路由用的一句话结果。 */
+  async function syncFrp() {
+    if (!enabled.frp) {
+      await frpTier?.stop()
+      return { state: 'off' }
+    }
+    if (frpTier === null) {
+      frpTier = createFrpTier({
+        config,
+        gatewayPort: actualPort,
+        hostId,
+        stateDir,
+        run,
+        logger,
+        frpcPath: config.tiers.frp.frpcPath !== '' ? config.tiers.frp.frpcPath : undefined,
+      })
+    }
+    const result = await frpTier.start()
+    if (result.ok) logger.info(`[uplink] 自建中转已就绪：${result.url}`)
+    else logger.warn(`[uplink] ${tt(`自建中转不可用（${result.reason}）`, `the self-hosted relay is unavailable (${result.reason})`)}`)
+    return result
+  }
+
+  /** 起/停 iroh 兜底档。 */
+  async function syncIroh() {
+    if (!enabled.iroh) {
+      await irohTier?.stop()
+      return { ok: false, reason: 'disabled' }
+    }
+    if (irohTier === null) {
+      const binaryPath = config.tiers.iroh.binaryPath !== ''
+        ? config.tiers.iroh.binaryPath
+        : (resolveHostBinary() ?? await findSidecarInProfiles())
+      if (!binaryPath) {
+        logger.warn(`[uplink] ${tt(
+          '找不到 tether sidecar 二进制，iroh 档位不可用（其余档位照常工作）。装 dsh-plugin-tether 或配 tiers.iroh.binaryPath',
+          'the tether sidecar binary was not found, so the iroh tier is unavailable (other tiers still work). Install dsh-plugin-tether or set tiers.iroh.binaryPath',
+        )}`)
+        return { ok: false, reason: 'not-installed' }
+      }
+      const dataDir = config.tiers.iroh.dataDir !== '' ? config.tiers.iroh.dataDir : join(stateDir, 'iroh')
+      await mkdir(dataDir, { recursive: true })
+      irohTier = createIrohTier({
+        binaryPath,
+        proxyTarget: authority,
+        dataDir,
+        lang: terminalZh ? 'zh' : 'en',
+        logger,
+      })
+    }
+    const result = await irohTier.start()
+    if (result.ok) {
+      logger.info(`[uplink] iroh 兜底档已就绪：${result.endpointId.slice(0, 16)}…`)
+    } else {
+      logger.warn(`[uplink] ${tt(`iroh 档位不可用（${result.reason}）`, `the iroh tier is unavailable (${result.reason})`)}`)
+    }
+    return result
+  }
+
+  /** Bonjour 广播：让手机零配置发现这台电脑。失败不影响任何数据通路。 */
+  async function syncAdvertiser() {
+    const want = enabled.lan && config.tiers.lan.bonjour && started
+    if (!want) {
+      await advertiser?.stop()
+      return { ok: false, reason: 'disabled' }
+    }
+    if (advertiser === null) {
+      advertiser = createAdvertiser({
+        hostId,
+        name: config.name !== '' ? config.name : hostname(),
+        port: actualPort,
+        version: VERSION,
+        logger,
+      })
+    }
+    const result = await advertiser.start()
+    if (!result.ok) logger.warn(`[uplink] ${tt(`Bonjour 广播失败（${result.reason}），手机需手工填配对串`, `Bonjour advertising failed (${result.reason}); the phone must use a pasted pairing string`)}`)
+    return result
+  }
+
+  // ── 主装配 ─────────────────────────────────────────────────────────────
   void (async () => {
     hostId = await store.hostId()
     const displayName = config.name !== '' ? config.name : hostname()
+
+    // 自签 TLS（可选）：局域网也能加密。手机侧用 Network 框架固定指纹，绕开 ATS。
+    if (config.tiers.lan.enabled && config.tiers.lan.tls) {
+      const env = await environment({ force: true })
+      const certificate = await ensureCertificate({
+        dir: join(stateDir, 'tls'),
+        hostnames: [`${hostId}.local`, hostname()],
+        ips: lanAddresses(env),
+        run,
+      })
+      if (certificate.ok) {
+        try {
+          const [key, cert] = await Promise.all([
+            readFile(certificate.keyPath, 'utf8'),
+            readFile(certificate.certPath, 'utf8'),
+          ])
+          tlsInfo = { key, cert, fingerprint256: certificate.fingerprint256 }
+          logger.info(`[uplink] 自签 TLS 已启用，指纹 ${certificate.fingerprint256}`)
+        } catch (error) {
+          logger.warn(`[uplink] 自签证书读取失败，退回明文：${error?.message ?? error}`)
+        }
+      } else {
+        logger.warn(`[uplink] ${tt(`自签证书不可用（${certificate.reason}），退回明文`, `self-signed TLS unavailable (${certificate.reason}); falling back to plain HTTP`)}`)
+      }
+    }
 
     gateway = createGateway({
       target,
@@ -267,6 +438,7 @@ function apply(ctx, rawConfig = {}) {
       identity: { hostId, name: displayName, version: VERSION },
       logger,
       tierOfAddress,
+      tls: tlsInfo,
     })
 
     try {
@@ -283,27 +455,26 @@ function apply(ctx, rawConfig = {}) {
     }
 
     const env = await environment({ force: true })
+    logger.info(`[uplink] ${tt('网关已监听', 'gateway listening on')} ${config.bind}:${actualPort}（${scheme()}）`)
+
+    // 两档外网通路并行起，谁失败都不影响内网
+    await Promise.all([syncFrp(), syncIroh()])
+    await syncAdvertiser()
+
     const tiers = await buildTiers({ port: actualPort, env })
-    logger.info(`[uplink] ${tt('网关已监听', 'gateway listening on')} ${config.bind}:${actualPort}`)
     if (tiers.length === 0) {
       logger.warn(`[uplink] ${tt(
-        '当前没有任何可用档位（局域网地址、Tailscale/ZeroTier、自建中转都没启用或探测不到），手机将无法连接',
-        'no tier is available (no LAN address, no Tailscale/ZeroTier, no self-hosted relay); the phone cannot connect',
+        '当前没有任何可用档位（局域网地址、Tailscale/ZeroTier、自建中转、iroh 都没启用或探测不到），手机将无法连接',
+        'no tier is available (no LAN address, no Tailscale/ZeroTier, no self-hosted relay, no iroh); the phone cannot connect',
       )}`)
     }
     for (const tier of tiers) {
-      logger.info(`[uplink]   ${tier.kind.padEnd(9)} ${tier.url}`)
+      logger.info(`[uplink]   ${tier.kind.padEnd(9)} ${tier.url ?? `endpoint ${String(tier.endpointId).slice(0, 16)}…`}`)
     }
     if (env.tailscale && env.tailscale.available === false && env.tailscale.reason !== 'not-installed') {
       logger.info(`[uplink] ${tt(
         `Tailscale 不可用（${env.tailscale.reason}）：装了但没登录/没连上时这一档会被跳过`,
         `Tailscale unavailable (${env.tailscale.reason}); the tier is skipped while it is installed but not logged in or not connected`,
-      )}`)
-    }
-    if (config.tiers.iroh.enabled) {
-      logger.info(`[uplink] ${tt(
-        'iroh 档位尚未接入（M0 只做局域网），清单里不会有它',
-        'the iroh tier is not wired up yet (M0 is LAN only), so it is absent from the descriptor',
       )}`)
     }
   })()
@@ -327,10 +498,13 @@ function apply(ctx, rawConfig = {}) {
         hostId,
         name: config.name !== '' ? config.name : hostname(),
         started,
+        scheme: scheme(),
         bind: config.bind,
         port: actualPort,
         configuredPort: config.port,
+        tls: tlsInfo === null ? null : { fingerprint256: tlsInfo.fingerprint256 },
         cookie: cookie?.status() ?? { ready: false, reason: 'no-connection-service' },
+        enabled,
         environment: {
           fingerprint: env.fingerprint,
           defaultInterface: env.defaultInterface ?? '',
@@ -339,7 +513,10 @@ function apply(ctx, rawConfig = {}) {
           tailscale: env.tailscale ?? { available: false },
           zerotier: env.zerotier ?? { available: false },
         },
-        tiers: tiers.map(({ kind, url, prio }) => ({ kind, url, prio })),
+        tiers: tiers.map(({ kind, url, prio, endpointId }) => ({ kind, url, prio, endpointId })),
+        bonjour: advertiser?.state() ?? { running: false, serviceName: null, lastError: null },
+        frp: frpTier?.status() ?? null,
+        iroh: irohTier?.status() ?? null,
         devices: devices.map(({ deviceId, name, createdAt, lastSeen, revoked }) => ({
           deviceId, name, createdAt, lastSeen, revoked,
         })),
@@ -362,7 +539,48 @@ function apply(ctx, rawConfig = {}) {
       const frpc = config.tiers.frp.enabled && config.tiers.frp.mode === 'managed'
         ? await detectFrpc({ run })
         : null
-      json(res, 200, { environment: env, frpc })
+      json(res, 200, { environment: env, frpc, tiers: started ? await buildTiers({ port: actualPort, env }) : [] })
+    },
+  }))
+
+  /** 运行时勾选/取消档位。只影响本次进程 —— 配置文件才是唯一事实来源。 */
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'exact',
+    path: ADMIN_PATHS.tiers,
+    handler: async (req, res) => {
+      if (!isTrustedRequest(req)) {
+        res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' })
+        res.end('forbidden')
+        return
+      }
+      if (req.method !== 'POST') {
+        json(res, 405, { ok: false, reason: 'method' })
+        return
+      }
+      const body = await readJson(req)
+      if (body === undefined || typeof body !== 'object') {
+        json(res, 400, { ok: false, reason: 'bad-body' })
+        return
+      }
+      const next = body.enabled && typeof body.enabled === 'object' ? body.enabled : body
+      const changes = {}
+      for (const key of Object.keys(enabled)) {
+        if (typeof next[key] !== 'boolean') continue
+        if (next[key] === enabled[key]) continue
+        enabled[key] = next[key]
+        changes[key] = next[key]
+      }
+      if (Object.keys(changes).length === 0) {
+        json(res, 200, { ok: true, enabled, changes: {} })
+        return
+      }
+      // 只重启受影响的组件：勾选局域网不该把 iroh 拉起来
+      const applied = {}
+      if ('frp' in changes) applied.frp = await syncFrp()
+      if ('iroh' in changes) applied.iroh = await syncIroh()
+      if ('lan' in changes) applied.bonjour = await syncAdvertiser()
+      logger.info(`[uplink] 档位开关变更：${Object.entries(changes).map(([key, value]) => `${key}=${value ? 'on' : 'off'}`).join('、')}`)
+      json(res, 200, { ok: true, enabled, changes, applied })
     },
   }))
 
@@ -387,7 +605,11 @@ function apply(ctx, rawConfig = {}) {
       const env = await environment({ force: true })
       const tiers = await buildTiers({ port: actualPort, env })
       const device = await store.createDevice(body.name)
-      const urls = tiers.map((tier) => tier.url)
+      const urls = tiers.filter((tier) => typeof tier.url === 'string').map((tier) => tier.url)
+      const irohTierEntry = tiers.find((tier) => tier.kind === 'iroh') ?? null
+      const iroh = irohTierEntry === null
+        ? null
+        : { endpointId: irohTierEntry.endpointId, relay: irohTierEntry.relay ?? null }
       const pairingString = encodePairingPayload({
         hostId,
         name: config.name !== '' ? config.name : hostname(),
@@ -395,9 +617,25 @@ function apply(ctx, rawConfig = {}) {
         deviceId: device.deviceId,
         secret: device.secret,
         urls,
+        iroh,
       })
+      // iroh 的配对**码**只有几分钟有效期，不能塞进长期保存的配对串里，
+      // 所以单独回一份，手机拿到就要立刻用掉。
+      let irohPairing = null
+      if (irohTier !== null && irohTier.status().running) {
+        const opened = await irohTier.openPairing()
+        if (opened.ok !== false) irohPairing = { pairingString: opened.pairingString, expiresInSec: opened.expiresInSec }
+      }
       logger.info(`[uplink] ${tt('新设备已配对：', 'device paired: ')}${device.name}（${device.deviceId}）`)
-      json(res, 200, { ok: true, deviceId: device.deviceId, name: device.name, pairingString, urls })
+      json(res, 200, {
+        ok: true,
+        deviceId: device.deviceId,
+        name: device.name,
+        pairingString,
+        urls,
+        iroh,
+        irohPairing,
+      })
     },
   }))
 

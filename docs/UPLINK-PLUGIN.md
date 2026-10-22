@@ -359,11 +359,15 @@ ATS 不适用于 `Network` 框架，所以这条路绕开整个问题。**M2 再
 
 M0 结束就能拿到 §12 前两行指标 —— 也就是说**最高频场景的收益在第一阶段就到手**。
 
-> **实现进度**：电脑侧 M0 已落地在 [`packages/dsh-plugin-uplink/`](../packages/dsh-plugin-uplink/)，
-> 对真 dsh 跑通（首页 61 KB 经网关 p50 **2.0 ms** vs 直连 1.9 ms，正文逐字节一致；
-> WebSocket `api/remote.mux` 101；未带票 401 且到不了 dsh；50 条单测）。
-> 两处与本文的偏差：**Bonjour 推迟到 M1**（M0 靠配对串携带地址，够用且少一个依赖）；
-> **iroh 档位在 M0 尚未接线**，清单里不会有它，配置项保留。
+> **实现进度**：电脑侧 **M0 + M1 + M2** 已落地在 [`packages/dsh-plugin-uplink/`](../packages/dsh-plugin-uplink/)
+> （约 3900 行、106 条测试），对真 dsh 跑通：首页 61 KB 经网关 p50 **2.0 ms** vs 直连 1.9 ms、
+> 正文逐字节一致；WebSocket `api/remote.mux` 101；未带票 401 且到不了 dsh；
+> Bonjour 用 `dns-sd` 验证可发现；iroh 档位用真 sidecar 跑通 `endpointId#code`；
+> 自签 TLS 的指纹与 `openssl x509 -fingerprint -sha256` 逐字符一致。
+>
+> 仍与本文有偏差的两处：**手机侧 UI（M3）在另一条线上推进**；**frp 与 Tailscale/ZeroTier
+> 只有单测覆盖**（本机没装 frpc，`tailscale` 是个指向已删除 App 的坏 shim），
+> 真连通要等真机验证。
 
 ---
 

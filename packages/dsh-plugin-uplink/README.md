@@ -1,7 +1,7 @@
 # dsh-plugin-uplink · 多路接入
 
 把「手机怎么连上电脑」从**一种协议**变成**一份可勾选的地址清单**：电脑侧起一个带鉴权的网关，
-把 dsh 同时暴露在局域网 / 虚拟组网 / 自建中转上；手机侧并行探一下，谁快用谁。
+把 dsh 同时暴露在局域网 / 虚拟组网 / 自建中转 / iroh 上；手机侧并行探一下，谁快用谁。
 
 设计见 [`docs/UPLINK-PLUGIN.md`](../../docs/UPLINK-PLUGIN.md)，决策见
 [`docs/DECISIONS.md`](../../docs/DECISIONS.md) ADR-0029。
@@ -40,7 +40,7 @@
 - 局域网 / Tailscale / ZeroTier 是**同一个监听**的不同地址（绑 `0.0.0.0` 就都有了），
   新增一档的成本是「枚举地址 + 写进清单」，不是「再实现一套传输」；
 - frp 只是把这个端口从公网映射进来，网关一行不改；
-- iroh 走 sidecar 的代理流，与本网关无关。
+- iroh 走 sidecar 的代理流，与本网关无关 —— 它是**唯一**需要额外进程的一档，可整档关掉。
 
 ## 装进 dsh
 
@@ -61,14 +61,24 @@
 3. 重启 dsh。终端应当打印：
 
    ```
-   [uplink] gateway listening on 0.0.0.0:18788
+   [uplink] gateway listening on 0.0.0.0:18788（http）
+   [uplink] iroh 兜底档已就绪：cc8a107833d13213…
+   [uplink] Bonjour 广播已启动：MMacBook-Pro-local._dsh._tcp.local → …:18788
    [uplink]   lan       http://10.8.54.221:18788
+   [uplink]   iroh      endpoint cc8a107833d13213…
    ```
 
-4. 状态、设备与签名密钥在 `$DSH_HOME/uplink/state.json`（0600）。
+4. 状态、设备与签名密钥在 `$DSH_HOME/uplink/state.json`（0600）；自签证书在
+   `$DSH_HOME/uplink/tls/`；iroh 身份在 `$DSH_HOME/uplink/iroh/`；frpc 配置在
+   `$DSH_HOME/uplink/frpc.toml`（含明文 token，0600）。
 
 手机要能连上，还得放行入站：macOS 的防火墙如果开着，第一次监听时系统会弹窗问是否允许
 `node` 接受连接 —— 必须允许，否则手机侧表现为"局域网地址一直超时"。
+
+> **iroh 档位的二进制怎么找到**：本插件是用 `link:` 装进 profile 的，Node 解析裸模块名时用
+> **realpath**（仓库路径），所以 profile 的 `node_modules` 不在解析链上。插件会先试平台子包，
+> 再直接去 `$DSH_HOME/profiles/*/node_modules/dsh-tether-host-*/bin/tether-host` 翻一遍。
+> 都找不到就只是 iroh 档不可用，其余档位照常工作；也可以显式配 `tiers.iroh.binaryPath`。
 
 ## 配置
 
@@ -77,7 +87,10 @@ uplink:
   port: 18788            # 默认 18788；被占用自动顺延（真实端口随清单下发）
   bind: 0.0.0.0
   tiers:
-    lan:       { enabled: true }
+    lan:
+      enabled: true
+      bonjour: true      # 广播 _dsh._tcp，手机零配置发现
+      tls: false         # 自签 TLS：局域网也加密（手机侧用 Network 框架固定指纹）
     tailscale: { enabled: true }     # 自动检测，检测不到自动跳过
     zerotier:  { enabled: true }
     frp:
@@ -89,11 +102,20 @@ uplink:
       token: ""
       tls: false
       publicUrl: ""                  # byo 模式填 https://dsh.example.com
-    iroh:      { enabled: true, relay: n0, customRelay: "" }
+      frpcPath: ""                   # 可选：显式指定 frpc
+    iroh:
+      enabled: true
+      relay: n0                      # n0 | custom（自建 iroh-relay）
+      customRelay: ""
+      binaryPath: ""                 # 可选：显式指定 tether-host
+      dataDir: ""                    # 默认 $DSH_HOME/uplink/iroh
 ```
 
 **配置只描述"允许哪些档位"，不描述地址。** 地址永远在运行时算出来 —— 换 Wi-Fi、
 Tailscale 重新分配地址、笔记本换网段，配置文件都不用改。
+
+运行时也可以用 `POST /uplink/tiers` 临时开关某一档（设置页的勾选框走这条）；
+但它**不落盘**，重启后回到配置文件的值 —— 配置文件才是唯一事实来源。
 
 ## 鉴权：长期密钥不上明文网络
 
@@ -128,53 +150,67 @@ dsh 自己的端口（只有本机可达，用于管理）：
 
 | 路径 | 说明 |
 |---|---|
-| `GET /uplink/state` | 端口、档位、环境探测、设备列表、统计 |
-| `POST /uplink/pair` | 开一个配对窗口，返回配对串 |
+| `GET /uplink/state` | 端口、scheme、TLS 指纹、各档真实状态、环境探测、设备列表、统计、warnings |
+| `POST /uplink/pair` | 开一个配对窗口：`{pairingString, urls, iroh, irohPairing}` |
+| `POST /uplink/tiers` | 运行时开关档位 `{enabled:{lan:false,…}}`，只重启受影响的组件 |
 | `GET/POST /uplink/devices` | 列设备 / 撤销设备 |
 | `POST /uplink/rotate` | 轮换签名密钥（踢掉所有在途票据，设备不必重配） |
 | `GET /uplink/probe` | 立刻重新探测网络环境 |
+
+`/uplink/pair` 同时回两样东西，因为它们的生命周期完全不同：
+
+- `pairingString`（`dshuplink://…`）：**长期**凭据，含 deviceId + secret + 地址清单 + iroh endpointId；
+- `irohPairing`：**一次性**配对码（默认 600 秒），手机拿到就要立刻用掉，不能存起来。
 
 ## 安全边界
 
 - 只转发到**回环上的 dsh**，不做通用正向代理 —— 不是跳板；
 - 未配对请求一律 401；`/uplink/hello` 只回公开信息；
+- Bonjour 的 TXT 只有 `id` / `port` / `v`，**不含地址、不含密钥**；
 - 公网档必须 TLS；局域网可选自签 TLS（指纹随清单下发）；
-- 撤销设备立即生效。
+- 撤销设备立即生效；`/uplink/rotate` 一次踢掉所有在途票据。
 
-## 现状
+## 各档实测
 
-| 阶段 | 内容 | 状态 |
+| 档位 | 状态 | 实测 |
 |---|---|---|
-| M0 | 网关 + 鉴权 + 清单 + 局域网单档 | ✅ 已完成 |
-| M1 | TS/ZT 自动检测 + 并行竞速 + 粘滞 + Bonjour 广播 | 🚧 进行中 |
-| M2 | frp 托管 + 自签 TLS | ⬜ |
-| M3 | 手机 UI + 二维码兜底 | ⬜ |
-| M4 | 迁移、文档、指标回收 | ⬜ |
-| M5 | 自建 iroh-relay（可选） | ⬜ |
-
-M0 的实测结果（对真 dsh 跑通）：
-
-| 指标 | 结果 |
-|---|---|
-| 首页 61 KB 经网关 vs 直连 | p50 **2.0 ms vs 1.9 ms**（网关开销 ≈0.1 ms） |
-| 正文逐字节一致 | ✅ 61477 bytes 完全相同 |
-| WebSocket `api/remote.mux` | ✅ 101 Switching Protocols |
-| 未带票访问 | ✅ 401，且请求到不了 dsh |
-| cookie 拿不到 | ✅ 502 + 一句人话（不是静默 401） |
-
-尚未做：Bonjour 广播（M1）、iroh 档位接线（M1）、frp 托管（M2）、手机侧 UI（M3）。
+| 局域网 | ✅ | 首页 61 KB 经网关 p50 **2.0 ms** vs 直连 1.9 ms，正文逐字节一致 |
+| WebSocket | ✅ | `api/remote.mux` 经网关拿到 **101 Switching Protocols** |
+| Bonjour | ✅ | `dns-sd` 能发现、解析 SRV/TXT/A；stop 时发 TTL=0 告别包 |
+| iroh | ✅ | 真 sidecar 起来，endpoint `cc8a1078…`，`openPairing` 拿到 `endpointId#code`（600 s），stop 后无残留 |
+| 自签 TLS | ✅ | openssl 三档降级链（`-addext` → `-extfile` → `-config`），指纹与 `openssl x509 -fingerprint -sha256` 逐字符一致 |
+| frp | ⚠️ 仅单测 | 本机没装 frpc，managed 模式只能靠注入 `spawnImpl` 验证"活过 1.5 秒"；`status().note` 里已如实标注**未验证连通性** |
+| Tailscale / ZeroTier | ⚠️ 仅单测 | 本机没装（`/usr/local/bin/tailscale` 是个指向已删除 App 的坏 shim），探测逻辑用假命令覆盖 |
 
 ## 测试
 
 ```bash
-node --test        # 50 条：配置归一化 / 网卡归类 / Tailscale·ZeroTier 探测 / 鉴权 / 网关集成
+node --test        # 106 条
 ```
 
-网关集成测试是真的起一个假 dsh + 真网关，覆盖：免票路由、未认证拦截、换票、
-cookie 注入与 Host 改写、撤销即时生效、大响应透传、WebSocket 升级（带票 / 不带票）、
-端口被占用时顺延。
+| 文件 | 覆盖 |
+|---|---|
+| `config.test.js` | 配置归一化、非法值回退、优先级顺序、新档位字段 |
+| `detect.test.js` | 网卡归类、坏 shim 淘汰、TS/ZT 命令解析、网络指纹 |
+| `auth.test.js` | 0600 权限、HMAC 应答、重放、时钟偏差、撤销、票据过期、密钥轮换、限流 |
+| `descriptor.test.js` | 清单排序、公开身份不泄露、配对串往返与非法输入 |
+| `gateway.test.js` | 免票路由、未认证拦截、换票、cookie 注入与 Host 改写、大响应透传、WS 升级、端口顺延 |
+| `publish.test.js` | PTR/SRV/TXT/A/ANY、`_services._dns-sd._udp`、无关查询不应答、stop 后不再应答 |
+| `iroh.test.js` | ready/pairing 解析、超时、stop 清理、无二进制 |
+| `frp.test.js` / `tls.test.js` | toml 生成、byo/managed 分支、证书指纹与幂等、openssl 不支持时的降级 |
+| `plugin.test.js` | 装配与卸载、管理路由信任栅栏、档位开关、state 真实性 |
 
-## 已知坑（改代码前先读）
+## 已知限制
+
+1. **mDNS 不做名字冲突探测**（RFC 6762 §9）。同网段有两台同名实例时会出现两个同名条目。
+2. **A 记录会带上 docker bridge 之类的虚拟网卡地址**（它们是私有网段）；换网后要 stop/start 才刷新。
+3. **只发 IPv4，无 AAAA**。
+4. **frp managed 的 `up` 只是"没立刻退出"**，不代表已连通 —— 真连通要等手机打过来。
+5. **iroh 的 relay 字段拿不到**：当前 sidecar 的 `ready` 消息不带 relay，所以 `status().relay` 恒为 null。
+   手机侧仍能从 iroh DNS TXT 记录里解析出 relay，功能不受影响。
+6. **运行时开关不落盘**，重启回到配置文件的值。
+
+## 改代码前先读这三个坑
 
 1. **`existsSync` 判 CLI 会误判**。开发机上 `/usr/local/bin/tailscale` 存在，但它是
    `exec /Applications/Tailscale.app/...` 的 shim，而那个 App 已被删除。探测一律
@@ -184,3 +220,5 @@ cookie 注入与 Host 改写、撤销即时生效、大响应透传、WebSocket 
 3. **Node 不会为升级过的连接递减 `server._connections`**。`closeAllConnections()` 清不掉
    它们，`server.close()` 的回调永远不来 —— 插件卸载会把宿主卡在退出路上。
    所以网关自己记账 `upgradedSockets`，`close()` 时显式销毁。
+4. **`openssl req` 不认 `-extfile`**（那是 `openssl x509` 的选项），OpenSSL 3.x 与 LibreSSL
+   都不认。真正的兜底是 `-config` 临时配置文件 + `-extensions`。
