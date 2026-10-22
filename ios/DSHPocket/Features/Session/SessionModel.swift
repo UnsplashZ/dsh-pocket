@@ -159,6 +159,9 @@ public final class SessionModel {
     private(set) var loadingSince: Date?
     /// 已经为"快照太浅"补过一次历史。重连后快照会重放，不能每次都再补一遍。
     private var didBackfillShallowSnapshot = false
+    /// 是否已经处理过第一份快照。只有第一份才需要"滚到底" ——
+    /// 之后的重连续拉如果也滚，会把正在翻历史的用户拽回底部。
+    private var hasAppliedFirstSnapshot = false
     private var backgroundObserver: (any NSObjectProtocol)?
     /// 流式更新合帧用的待发任务。见 `scheduleStreamPublish`。
     private var pendingStreamPublish: Task<Void, Never>?
@@ -302,6 +305,18 @@ public final class SessionModel {
 
     private func runFollow(resumeAfter: Double) async {
         var sawSnapshot = false
+        // **重连时只拉一个小窗口。**
+        //
+        // 实测（2026-10-22 14:43，宿主直连对比 + 手机日志）：
+        //   · 一次 50 条消息的 `session/follow` 快照是 **866 KB**，在 iroh 中继上要传
+        //     14~22 秒（约 40 KB/s）；
+        //   · 而这 866 KB 传完的那一刻，mux 的 WebSocket **必然被掐**
+        //     （日志里 5 次都是「快照到达」与「mux 断开」同一毫秒）。
+        //     于是每次重连都会重新下一份 866 KB、再被掐一次 —— 20 秒一轮的死循环。
+        // 我们已经有内容了，重连只需要"补上缺的那几条事件"，所以窗口降到 8 条（210 KB）。
+        // 第一次打开（时间线还空着）仍然要 50 条，否则屏幕上什么都没有。
+        let window = builder.items.isEmpty ? 50 : 8
+        logs.log(.debug, "会话流窗口：\(window) 条（\(builder.items.isEmpty ? "首屏" : "重连续拉")）")
         // 从"开流"到"快照到手"的耗时：这是"点进会话一片骨架"的唯一可靠度量。
         //
         // 真机实测（2026-10-21）：宿主产快照要 2~14 秒（一个 300+ 条的会话，
@@ -309,7 +324,7 @@ public final class SessionModel {
         // 只能靠"折叠完成"的时间戳去反推。现在直接打出来。
         let waitStartedAt = Date()
         do {
-            for try await frame in client.follow(sessionId: sessionId, assistantStream: true) {
+            for try await frame in client.follow(sessionId: sessionId, assistantStream: true, maxMessages: window) {
                 if Task.isCancelled { return }
                 switch frame {
                 case .snapshot(let snapshot):
@@ -362,7 +377,20 @@ public final class SessionModel {
         // 命中缓存时走**增量续拉**：快照只带最近 N 条消息，而我们手里有更早的。
         // 整体重建会把用户已经翻过的历史丢掉，也会白等一次全量折叠。
         var resumeOK = false
-        if restoredFromCache, builder.beginResume(with: snapshot) {
+        // **"手上已经有内容"就续拉，不只是缓存恢复那一种。**
+        //
+        // `beginResume` 本来就是通用的：它只把 `seq > lastSeq` 的事件应用上去，
+        // 旧内容原样保留。以前只给"从磁盘缓存恢复"开这个口子，于是**重连**时
+        // 只能整份重建 —— 配合上面的小窗口，那会把时间线缩成 8 条消息。
+        // 现在重连也走续拉，小窗口就安全了。
+        if !builder.isEmpty {
+            guard builder.beginResume(with: snapshot) else {
+                // 快照比手上的还旧（`cursor < lastSeq`）：**忽略它，别拿来重建**。
+                // 小窗口重连时尤其要挡住 —— 用一份 8 条消息的旧快照整份重建，
+                // 时间线会当场缩水。
+                logs.log(.debug, "快照比手上的还旧（cursor \(snapshot.cursor) < lastSeq \(Int(lastSeq))），忽略")
+                return
+            }
             resumeOK = true
             // **分片喂，别一口气塞。**
             //
@@ -393,7 +421,7 @@ public final class SessionModel {
             }
             builder.finishResume(with: snapshot)
         }
-        if restoredFromCache, resumeOK {
+        if resumeOK {
             restoredFromCache = false
             applyProjections(snapshot.projections)
             hasMoreHistory = snapshot.hasMore
@@ -415,7 +443,11 @@ public final class SessionModel {
             //
             // 这条路径原来漏了它（滚动请求只写在冷启动分支的末尾），
             // 于是"缓存与宿主差异越大，越是一片空白"。
-            requestScrollToBottom()
+            //
+            // **但重连续拉不能滚**：用户可能正翻着历史，一重连就被拽回底部。
+            // 只有"打开会话后的第一份快照"才贴底。
+            if !hasAppliedFirstSnapshot { requestScrollToBottom() }
+            hasAppliedFirstSnapshot = true
             saveToCache()
             return
         }
@@ -509,6 +541,7 @@ public final class SessionModel {
         isTurnRunning = builder.hasTurnBoundary ? builder.isTurnOpen : (builder.isTurnOpen || summaryIsRunning)
         syncTurnTimer()
         publish()
+        hasAppliedFirstSnapshot = true
         // 快照分完了：这时候布局才稳定，明确要求滚到底一次。
         requestScrollToBottom()
         saveToCache()
