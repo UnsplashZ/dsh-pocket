@@ -162,6 +162,12 @@ public final class SessionModel {
     /// 是否已经处理过第一份快照。只有第一份才需要"滚到底" ——
     /// 之后的重连续拉如果也滚，会把正在翻历史的用户拽回底部。
     private var hasAppliedFirstSnapshot = false
+    /// 打开会话后还没收到第一份快照（此刻屏幕上是本机缓存，可能是旧的）。
+    ///
+    /// 用户报过"连接成功、显示运行中，但看不到消息" —— 其实就是这一段时间：
+    /// 缓存先铺出来、快照还在路上（大会话要十几秒），界面上没有任何提示，
+    /// 看起来像"卡在旧内容上"。有它就能在顶栏挂一条"正在同步最新内容"。
+    private(set) var isAwaitingFirstSnapshot = false
     private var backgroundObserver: (any NSObjectProtocol)?
     /// 流式更新合帧用的待发任务。见 `scheduleStreamPublish`。
     private var pendingStreamPublish: Task<Void, Never>?
@@ -199,6 +205,7 @@ public final class SessionModel {
         guard followTask == nil else { return }
         phase = .loading
         loadingSince = Date()
+        isAwaitingFirstSnapshot = true
 
         // 先用缓存把内容铺出来 —— 这一步是"切换会话不用等"的全部意义。
         if let cached = await appModel.sessionCache.session(for: sessionId),
@@ -314,9 +321,16 @@ public final class SessionModel {
         //     （日志里 5 次都是「快照到达」与「mux 断开」同一毫秒）。
         //     于是每次重连都会重新下一份 866 KB、再被掐一次 —— 20 秒一轮的死循环。
         // 我们已经有内容了，重连只需要"补上缺的那几条事件"，所以窗口降到 8 条（210 KB）。
-        // 第一次打开（时间线还空着）仍然要 50 条，否则屏幕上什么都没有。
-        let window = builder.items.isEmpty ? 50 : 8
-        logs.log(.debug, "会话流窗口：\(window) 条（\(builder.items.isEmpty ? "首屏" : "重连续拉")）")
+        //
+        // **但不能一律用小窗口**：续拉只应用 `seq > lastSeq` 的事件，如果缓存比宿主
+        // 落后很多，8 条消息的窗口盖不住那段差距，时间线中间会**留一个洞**
+        //（不报错，就是少了一截消息 —— 用户会觉得"看不到消息"）。
+        // 所以按"缓存离宿主多远"来选：差得少用小窗口（快），差得多还得要大窗口（准）。
+        let hostSeq = appModel.sessions.first { $0.sessionId == sessionId }?.asOfSeq ?? -1
+        let gap = hostSeq > 0 ? hostSeq - Int(max(lastSeq, 0)) : Int.max
+        let window = (builder.items.isEmpty || gap > 120) ? 50 : 8
+        let reason = builder.items.isEmpty ? "首屏" : (gap > 120 ? "重连续拉（落后 \(gap) 条，用大窗口）" : "重连续拉（只差 \(gap) 条）")
+        logs.log(.debug, "会话流窗口：\(window) 条（\(reason)）")
         // 从"开流"到"快照到手"的耗时：这是"点进会话一片骨架"的唯一可靠度量。
         //
         // 真机实测（2026-10-21）：宿主产快照要 2~14 秒（一个 300+ 条的会话，
@@ -392,6 +406,7 @@ public final class SessionModel {
                 return
             }
             resumeOK = true
+            let beforeSeq = lastSeq
             // **分片喂，别一口气塞。**
             //
             // 缓存很旧时这里要折几百条事件，内容高度实测能从 3206 涨到 13867。
@@ -420,6 +435,11 @@ public final class SessionModel {
                 await Task.yield()
             }
             builder.finishResume(with: snapshot)
+            // 诊断：续拉有没有漏掉一段（窗口小于差距时会发生）。
+            let firstNew = snapshot.events.first(where: { $0.seq > beforeSeq })?.seq
+            if let firstNew, firstNew - beforeSeq > 1 {
+                logs.log(.warning, "续拉可能有空洞：本地到 \(Int(beforeSeq))，快照里第一条新事件是 \(Int(firstNew))")
+            }
         }
         if resumeOK {
             restoredFromCache = false
@@ -448,6 +468,7 @@ public final class SessionModel {
             // 只有"打开会话后的第一份快照"才贴底。
             if !hasAppliedFirstSnapshot { requestScrollToBottom() }
             hasAppliedFirstSnapshot = true
+            isAwaitingFirstSnapshot = false
             saveToCache()
             return
         }
@@ -542,6 +563,7 @@ public final class SessionModel {
         syncTurnTimer()
         publish()
         hasAppliedFirstSnapshot = true
+        isAwaitingFirstSnapshot = false
         // 快照分完了：这时候布局才稳定，明确要求滚到底一次。
         requestScrollToBottom()
         saveToCache()

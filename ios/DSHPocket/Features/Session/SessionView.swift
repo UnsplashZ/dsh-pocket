@@ -675,6 +675,15 @@ struct SessionView: View {
                 detail: message,
                 action: (String(localized: "重试"), { Task { await session.open() } })
             )
+        } else if session.isAwaitingFirstSnapshot {
+            // 缓存已经铺在屏幕上了，但最新那份快照还在路上（大会话要十几秒）。
+            // 不给提示的话，用户看到的是"连接成功、显示运行中，但消息停在旧的地方"。
+            statusStrip(
+                symbol: "arrow.triangle.2.circlepath",
+                tone: .info,
+                title: String(localized: "正在同步最新内容"),
+                detail: String(localized: "屏幕上先显示本机缓存，最新几条还在从电脑上取")
+            )
         } else if let failure = session.failureMessage {
             statusStrip(
                 symbol: "exclamationmark.circle.fill",

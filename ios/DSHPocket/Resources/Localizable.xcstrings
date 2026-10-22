@@ -2460,6 +2460,17 @@
         }
       }
     },
+    "屏幕上先显示本机缓存，最新几条还在从电脑上取": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Showing cached content first — the newest messages are still coming from your computer"
+          }
+        }
+      }
+    },
     "展开全部": {
       "extractionState": "manual",
       "localizations": {
@@ -4473,6 +4484,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Writing a reply"
+          }
+        }
+      }
+    },
+    "正在同步最新内容": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Syncing the latest content"
           }
         }
       }
@@ -7207,6 +7229,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "Reconnect to computer"
+          }
+        }
+      }
+    },
+    "重连续拉（只差 %@ 条）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reconnect resume (only %@ events behind)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重连续拉（只差 %@ 条）"
+          }
+        }
+      }
+    },
+    "重连续拉（落后 %@ 条，用大窗口）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reconnect resume (%@ events behind — using a larger window)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重连续拉（落后 %@ 条，用大窗口）"
           }
         }
       }

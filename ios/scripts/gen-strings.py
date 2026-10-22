@@ -116,6 +116,8 @@ for _diagnostic in (
     "\\(hint.addresses.count) 条直连", "\\(outcome.server) · \\(elapsed)ms · 记录存在但没有任何地址",
     "socket() 失败", "发送失败（\\(sent)）", "\\(server) 没有回应",
     "连接失败：", "与电脑的连接已断开：", "与电脑的连接断了：", "超时",
+    # 会话流窗口选择的诊断文案（只进日志）
+    "首屏",
 ):
     NOT_LOCALIZED.setdefault(_diagnostic, "诊断/匹配用字面量（只进日志），不是界面文案")
 
@@ -694,6 +696,11 @@ EN: dict[str, str] = {
     "正在思考": "Reasoning",
     "传输层：%@": "Transport: %@",
     "健康": "healthy",
+    # 会话正在等第一份快照（屏幕上先显示缓存）
+    "正在同步最新内容": "Syncing the latest content",
+    "重连续拉（只差 %@ 条）": "Reconnect resume (only %@ events behind)",
+    "重连续拉（落后 %@ 条，用大窗口）": "Reconnect resume (%@ events behind — using a larger window)",
+    "屏幕上先显示本机缓存，最新几条还在从电脑上取": "Showing cached content first — the newest messages are still coming from your computer",
     # 会话加载骨架（慢的时候要能看见"还在动"）
     "正在读取会话内容…": "Loading this conversation…",
     "正在读取会话内容…已等 %@ 秒": "Loading this conversation… %@s so far",
