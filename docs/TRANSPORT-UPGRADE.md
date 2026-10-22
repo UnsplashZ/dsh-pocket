@@ -3,6 +3,10 @@
 > 调研日期：2026-10-22。依据：10-19 至今的真机日志（`scripts/pull-logs.sh`，4569 行）、
 > 本机直连宿主的对照实验、`dsh-plugin-tether` 与 `iroh-ffi` 的实际 API 面。
 > 结论先行：**"连不上/看不到消息/老断开"里绝大部分是网络，不是 App 逻辑。**
+>
+> **本文只负责"为什么"与"选哪条路"。具体落地设计已独立成稿：[UPLINK-PLUGIN.md](UPLINK-PLUGIN.md)**
+> —— 新插件 `dsh-plugin-uplink`（一个网关 + N 个发布面），决策记录见
+> [DECISIONS.md](DECISIONS.md) ADR-0029。本文 §5–§6 的架构与阶段划分以那份设计稿为准。
 
 ## 1. 网络到底占多大比重
 
