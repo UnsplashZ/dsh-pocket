@@ -606,6 +606,9 @@ function apply(ctx, rawConfig = {}) {
       const tiers = await buildTiers({ port: actualPort, env })
       const device = await store.createDevice(body.name)
       const urls = tiers.filter((tier) => typeof tier.url === 'string').map((tier) => tier.url)
+      const tierHints = tiers
+        .filter((tier) => typeof tier.url === 'string')
+        .map((tier) => ({ kind: tier.kind, url: tier.url }))
       const irohTierEntry = tiers.find((tier) => tier.kind === 'iroh') ?? null
       const iroh = irohTierEntry === null
         ? null
@@ -617,6 +620,7 @@ function apply(ctx, rawConfig = {}) {
         deviceId: device.deviceId,
         secret: device.secret,
         urls,
+        tiers: tierHints,
         iroh,
       })
       // iroh 的配对**码**只有几分钟有效期，不能塞进长期保存的配对串里，
@@ -633,6 +637,7 @@ function apply(ctx, rawConfig = {}) {
         name: device.name,
         pairingString,
         urls,
+        tiers: tierHints,
         iroh,
         irohPairing,
       })

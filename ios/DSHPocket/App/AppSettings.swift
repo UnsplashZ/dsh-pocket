@@ -48,8 +48,12 @@ public struct NotificationPreferences: Sendable, Equatable {
 
 /// 连接方式。
 ///
-/// **不在设置页里暴露** —— 产品上默认且只用 iroh（`.remote`）：它公网可用、
-/// 打洞成功时不经第三方、回退中转只见密文，已经覆盖了全部真实场景。
+/// 默认仍然是 iroh（`.remote`）：它公网可用、打洞成功时不经第三方、
+/// 回退中转只见密文，覆盖了全部真实场景。
+///
+/// `.uplink`（多路接入）是 0.5.0 起**给用户的第二个选项**：先并行探一遍
+/// 电脑端给出的地址清单（局域网 / Tailscale / ZeroTier / 自建中转），
+/// 谁先通就用谁；一条都不通才降级回 iroh。它不是"开发模式"，所以在设置页里可见。
 ///
 /// 另外两种是**开发者模式**，只在 DEBUG 构建里通过 `UserDefaults` 打开：
 /// ```bash
@@ -66,6 +70,9 @@ public enum TransportMode: String, CaseIterable, Identifiable, Sendable {
     case devDirect
     /// 直连网关（Tailscale / 局域网 / 反向代理）：填一个手机能路由到的地址 + 令牌。
     case directGateway
+    /// 多路接入：按配对串里的地址清单并行探测，走电脑端的 uplink 网关；
+    /// 一条都不通时自动降级回 iroh。
+    case uplink
 
     public var id: String { rawValue }
 
@@ -74,6 +81,7 @@ public enum TransportMode: String, CaseIterable, Identifiable, Sendable {
         case .remote: return "远端连接（iroh）"
         case .devDirect: return "开发直连（本机）"
         case .directGateway: return "直连网关（Tailscale / 局域网）"
+        case .uplink: return "多路接入"
         }
     }
 
@@ -82,6 +90,7 @@ public enum TransportMode: String, CaseIterable, Identifiable, Sendable {
         case .remote: return "point.3.connected.trianglepath.dotted"
         case .devDirect: return "laptopcomputer"
         case .directGateway: return "network"
+        case .uplink: return "arrow.triangle.branch"
         }
     }
 
@@ -95,6 +104,7 @@ public enum TransportMode: String, CaseIterable, Identifiable, Sendable {
         case .remote: return String(localized: "远端连接（iroh）")
         case .devDirect: return String(localized: "开发直连（本机）")
         case .directGateway: return String(localized: "直连网关（Tailscale / 局域网）")
+        case .uplink: return String(localized: "多路接入")
         }
     }
 }
@@ -146,9 +156,16 @@ public final class AppSettings {
         static let activeHost = "settings.activeHost"
         static let hasOnboarded = "settings.hasOnboarded"
         static let fontScale = "settings.fontScale"
+        // 多路接入：用户允许用哪几档（kind 的 rawValue 集合）。
+        static let uplinkEnabledTiers = "settings.uplink.enabledTiers"
+        // 粘滞窗口：这段时间内重连优先回到上次通的档位（见 UplinkSession.stickyWindow）。
+        static let uplinkStickyUntil = "settings.uplink.stickyUntil"
+        static let uplinkLastGoodTier = "settings.uplink.lastGoodTier"
     }
 
-    private let defaults: UserDefaults
+    /// 注入的 `UserDefaults`。对子系统（`UplinkCredentialStore`）可见，
+    /// 这样单测用独立 suite 时配对材料也跟着隔离 —— 但**写入口仍然只有这个类**。
+    let defaults: UserDefaults
 
     public var appearance: AppearancePreference {
         didSet { defaults.set(appearance.rawValue, forKey: Key.appearance) }
@@ -212,6 +229,38 @@ public final class AppSettings {
         didSet { defaults.set(devDirectBaseURL, forKey: Key.devDirectURL) }
     }
 
+    /// 多路接入允许使用的档位（`UplinkTierKind.rawValue` 集合）。
+    ///
+    /// **空集合表示"还没设置过"，语义是"全开"** —— 新装用户不该看到一个
+    /// 什么都没勾的界面，然后连不上又不知道为什么。
+    public var uplinkEnabledTiers: Set<String> {
+        didSet {
+            defaults.set(uplinkEnabledTiers.sorted(), forKey: Key.uplinkEnabledTiers)
+        }
+    }
+
+    /// 粘滞窗口的截止时间。在此之前重连优先回到 `uplinkLastGoodTier`。
+    public var uplinkStickyUntil: Date? {
+        didSet {
+            if let uplinkStickyUntil {
+                defaults.set(uplinkStickyUntil.timeIntervalSince1970, forKey: Key.uplinkStickyUntil)
+            } else {
+                defaults.removeObject(forKey: Key.uplinkStickyUntil)
+            }
+        }
+    }
+
+    /// 上一次连通的档位（kind 的 rawValue）。只用于粘滞与诊断。
+    public var uplinkLastGoodTier: String? {
+        didSet {
+            if let uplinkLastGoodTier {
+                defaults.set(uplinkLastGoodTier, forKey: Key.uplinkLastGoodTier)
+            } else {
+                defaults.removeObject(forKey: Key.uplinkLastGoodTier)
+            }
+        }
+    }
+
     public var activeHostId: String? {
         didSet { defaults.set(activeHostId, forKey: Key.activeHost) }
     }
@@ -243,6 +292,15 @@ public final class AppSettings {
         self.gatewayURL = defaults.string(forKey: Key.gatewayURL) ?? ""
         self.gatewayToken = defaults.string(forKey: Key.gatewayToken) ?? ""
         self.devDirectBaseURL = defaults.string(forKey: Key.devDirectURL) ?? "http://127.0.0.1:8788"
+        self.uplinkEnabledTiers = Set(defaults.stringArray(forKey: Key.uplinkEnabledTiers) ?? [])
+        // 0 = 没存过。`object(forKey:)` 而不是 `double(forKey:)`：
+        // 后者对缺失的键返回 0，和"1970 年就过期了"分不开，语义上没错但会写出误导的代码。
+        if let stamp = defaults.object(forKey: Key.uplinkStickyUntil) as? Double, stamp > 0 {
+            self.uplinkStickyUntil = Date(timeIntervalSince1970: stamp)
+        } else {
+            self.uplinkStickyUntil = nil
+        }
+        self.uplinkLastGoodTier = defaults.string(forKey: Key.uplinkLastGoodTier)
         self.activeHostId = defaults.string(forKey: Key.activeHost)
         self.hasOnboarded = defaults.bool(forKey: Key.hasOnboarded)
     }

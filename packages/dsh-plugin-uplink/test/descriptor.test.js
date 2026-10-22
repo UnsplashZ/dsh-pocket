@@ -83,3 +83,51 @@ test('各种非法输入都返回 ok:false，不抛', () => {
   })).toString('base64url')}`
   assert.equal(decodePairingPayload(badSecret).reason, 'bad-secret')
 })
+
+test('配对串带档位名：urls 之外还有 tiers，手机才能逐档开关', () => {
+  const text = encodePairingPayload({
+    hostId: 'abcd1234',
+    port: 18788,
+    deviceId: 'd1',
+    secret: 'c'.repeat(64),
+    urls: ['http://10.8.54.221:18788', 'http://10.147.20.5:18788', 'https://dsh.example.com'],
+    tiers: [
+      { kind: 'lan', url: 'http://10.8.54.221:18788' },
+      { kind: 'zerotier', url: 'http://10.147.20.5:18788' },
+      { kind: 'frp', url: 'https://dsh.example.com' },
+    ],
+  })
+  const decoded = decodePairingPayload(text)
+  assert.equal(decoded.ok, true)
+  assert.deepEqual(decoded.payload.tiers, [
+    { kind: 'lan', url: 'http://10.8.54.221:18788' },
+    { kind: 'zerotier', url: 'http://10.147.20.5:18788' },
+    { kind: 'frp', url: 'https://dsh.example.com' },
+  ])
+  // urls 仍然在（兼容只认地址的旧客户端）
+  assert.equal(decoded.payload.urls.length, 3)
+})
+
+test('配对串里的非法档位名会被丢掉，不会让整串解析失败', () => {
+  const text = encodePairingPayload({
+    hostId: 'abcd1234', port: 1, deviceId: 'd', secret: 'e'.repeat(64),
+    urls: ['http://10.0.0.1:1'],
+    tiers: [
+      { kind: 'lan', url: 'http://10.0.0.1:1' },
+      { kind: 'evil', url: 'http://10.0.0.2:1' },
+      { kind: 'lan' },
+    ],
+  })
+  const decoded = decodePairingPayload(text)
+  assert.deepEqual(decoded.payload.tiers, [{ kind: 'lan', url: 'http://10.0.0.1:1' }])
+})
+
+test('没带 tiers 的老配对串仍能解析，tiers 退化成空数组', () => {
+  const text = `${PAIRING_SCHEME}${Buffer.from(JSON.stringify({
+    v: 1, hostId: 'h', deviceId: 'd', secret: 'f'.repeat(64), urls: ['http://10.0.0.1:1'],
+  })).toString('base64url')}`
+  const decoded = decodePairingPayload(text)
+  assert.equal(decoded.ok, true)
+  assert.deepEqual(decoded.payload.tiers, [])
+  assert.deepEqual(decoded.payload.urls, ['http://10.0.0.1:1'])
+})

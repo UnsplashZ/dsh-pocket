@@ -280,3 +280,23 @@ test('档位开关：没有变化时不重启任何组件，非 POST 直接 405'
     env.disposeAll()
   }
 })
+
+test('配对响应里带档位名，手机不用靠地址段猜', async () => {
+  const env = await boot()
+  try {
+    const paired = await call(env.routes.get('/uplink/pair'), { method: 'POST', body: { name: '手机' } })
+    assert.ok(Array.isArray(paired.json.tiers))
+    assert.ok(paired.json.tiers.length >= 1)
+    for (const tier of paired.json.tiers) {
+      assert.ok(['lan', 'tailscale', 'zerotier', 'frp'].includes(tier.kind))
+      assert.match(tier.url, /^https?:\/\//)
+    }
+    // tiers 与 urls 必须一一对应（同一个地址不能一边有一边没有）
+    assert.deepEqual(paired.json.tiers.map((tier) => tier.url), paired.json.urls)
+    // 配对串里也要带上
+    const decoded = decodePairingPayload(paired.json.pairingString)
+    assert.deepEqual(decoded.payload.tiers, paired.json.tiers)
+  } finally {
+    env.disposeAll()
+  }
+})

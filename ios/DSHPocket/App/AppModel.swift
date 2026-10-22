@@ -18,6 +18,11 @@ public final class AppModel {
     let logs: MemoryLogSink
 
     private let tether: TetherSession
+    /// 多路接入：配对串 + 并行探测 + 换票。`HostCoordinator` 从它拿基址与鉴权头。
+    let uplink: UplinkSession
+    /// 已配对的多路接入主机。**单独存一份**而不是每次读 `uplink.pairing`：
+    /// 后者是 UserDefaults 的实时读取，`@Observable` 追踪不到，界面不会刷新。
+    private(set) var uplinkPairing: UplinkPairing?
     /// 会话内容的磁盘缓存。切换会话时先用它铺内容，再跟 `session/follow` 对齐。
     let sessionCache: SessionCache
     private let coordinator: HostCoordinator
@@ -251,7 +256,19 @@ public final class AppModel {
             logger: TetherLogAdapter(sink: logs)
         )
         self.tether = tether
-        self.coordinator = HostCoordinator(settings: settings, session: tether)
+        let uplink = UplinkSession(
+            store: UplinkCredentialStore(
+                secrets: Self.makeUplinkSecretStore(),
+                // 与 AppSettings 共用同一个 UserDefaults：单测用独立 suite 时
+                // 配对材料也跟着隔离，不会串到别的用例里。
+                defaults: settings.defaults
+            ),
+            settings: settings,
+            logger: logs
+        )
+        self.uplink = uplink
+        self.uplinkPairing = uplink.pairing
+        self.coordinator = HostCoordinator(settings: settings, session: tether, uplink: uplink)
         self.client = DSHClient(provider: coordinator, logger: logs)
     }
 
@@ -261,6 +278,19 @@ public final class AppModel {
         return FileSecretStore()
         #else
         return KeychainSecretStore()
+        #endif
+    }
+
+    /// 多路接入的 deviceId/secret。
+    ///
+    /// 用**独立的 Keychain service**：它和 iroh 的设备身份是两套东西
+    /// （一个是隧道公钥，一个是换票用的 HMAC secret），混在一个 service 里
+    /// 以后想单独撤销某一套就得靠键名前缀猜，容易出错。
+    private static func makeUplinkSecretStore() -> any TetherSecretStore {
+        #if targetEnvironment(simulator)
+        return FileSecretStore()
+        #else
+        return KeychainSecretStore(service: "cc.unsplashz.dshpocket.uplink")
         #endif
     }
 
@@ -285,9 +315,15 @@ public final class AppModel {
         startTransportSupervisor()
         startConnectionWatchdog()
 
-        if settings.transportMode != .remote {
+        if !needsConnect {
             // 直连网关：不需要 iroh，直接就能用。
             await activateClient(modeLabel: coordinator.mode.label)
+        } else if settings.transportMode == .uplink {
+            // 多路接入不看 activeHostId（hostId 在配对串里）：配过对就探一次，
+            // 没配过就什么都不做 —— 等用户去设置里粘贴配对串。
+            if uplink.isPaired {
+                await connectUplink(hostId: settings.activeHostId ?? "", silent: true)
+            }
         } else if let hostId = settings.activeHostId, !hostId.isEmpty {
             await connect(hostId: hostId, pairingCode: nil, silent: true)
         }
@@ -301,9 +337,19 @@ public final class AppModel {
         consecutiveTransportFailures = 0
         reconnectAttempt = 0
         stoppedByTerminalFailure = false
-        guard settings.transportMode == .remote else {
+        guard needsConnect else {
             // 直连网关没有 iroh 连接要恢复，只要 client 还在就继续用。
             if !connection.isConnected { await activateClient(modeLabel: coordinator.mode.label) }
+            return
+        }
+        if settings.transportMode == .uplink {
+            // 多路接入没有隧道要恢复。只在**真的断开**时重探 —— 连着就继续用，
+            // 否则每次回前台都重建一遍 client（事件流、会话流全部重订阅）。
+            // TODO(0.5.x)：网络切换（Wi-Fi → 蜂窝）后旧地址会静默失效，
+            // 理想做法是回前台时后台复探一次当前档位，失败再切；这次先不做。
+            if !connection.isConnected {
+                await connectUplink(hostId: settings.activeHostId ?? "", silent: true)
+            }
             return
         }
         guard let hostId = settings.activeHostId, !hostId.isEmpty else { return }
@@ -377,8 +423,11 @@ public final class AppModel {
         await client.closeTransport()
         await tether.disconnect()
         coordinator.setRemoteBaseURL(nil)
+        coordinator.setUplinkBaseURL(nil)
+        // 基址作废、票据留着（15 分钟内回前台能省一次换票往返）。
+        uplink.suspend()
         // 后台不保留"已连接"的外观：宁可显示未连接，也不做"假在线"。
-        if settings.transportMode == .remote { setConnection(.idle) }
+        if needsConnect { setConnection(.idle) }
     }
 
     // MARK: 连接
@@ -391,6 +440,17 @@ public final class AppModel {
     /// `pair`，被电脑端判成协议错误。
     @discardableResult
     func connect(hostId: String, pairingCode: String?, silent: Bool = false) async -> String? {
+        // 多路接入走另一条路（探测 → 换票 → 复用 .remote 的激活流程）。
+        // `pairingCode` 非空说明是"新配一台电脑"，那条路只能是 iroh，别拦。
+        if settings.transportMode == .uplink, pairingCode == nil {
+            return await connectUplink(hostId: hostId, silent: silent)
+        }
+        return await connectIroh(hostId: hostId, pairingCode: pairingCode, silent: silent)
+    }
+
+    /// iroh 建连（原来的 `connect`，逻辑一行没改）。
+    @discardableResult
+    private func connectIroh(hostId: String, pairingCode: String?, silent: Bool) async -> String? {
         // 重入保护：一次只允许一条连接在建立。电脑端同一身份只接受一条连接，
         // 并发建连会把彼此顶掉。
         guard !isConnecting else { return String(localized: "上一次连接还在进行中") }
@@ -495,6 +555,63 @@ public final class AppModel {
         }
     }
 
+    /// 多路接入的建连流程：探测 → 换票 → 把基址交给 `HostCoordinator` → 复用 `activateClient`。
+    ///
+    /// **不重写状态机**是这次改动的关键取舍：探测成功之后与 `.remote` 就完全一样了
+    /// （同一个 `activateClient`、同一条事件流、同一套重连），
+    /// 唯一的差别是"基址从哪来"。协议层与界面因此一行都不用动。
+    @discardableResult
+    private func connectUplink(hostId: String, silent: Bool) async -> String? {
+        guard !isConnecting else { return String(localized: "上一次连接还在进行中") }
+        isConnecting = true
+        // 已经退到后台就不要再起连接（理由同 `connectIroh`）。
+        if isBackgrounded {
+            isConnecting = false
+            logs.log(.debug, "已在后台，跳过多路接入探测")
+            return String(localized: "已退到后台，跳过这次连接")
+        }
+        if !silent {
+            pendingApprovals.removeAll()
+            pendingQuestions.removeAll()
+            handledApprovalKeys.removeAll()
+            handledQuestionKeys.removeAll()
+        }
+        setConnection(.connecting(hostId: hostId))
+
+        let started = Date()
+        let tier = await uplink.connect()
+        // 探测这一段走完了，后面降级到 iroh 时得让 `connectIroh` 能进自己的重入保护。
+        isConnecting = false
+
+        guard let tier else {
+            let reason = uplink.lastError ?? String(localized: "没有可用的档位")
+            logs.log(.warning, "多路接入不可用（\(Self.brief(reason))），降级 iroh")
+            // 降级前把 uplink 的基址清掉：否则票据会跟着 iroh 的本地代理发出去。
+            coordinator.setUplinkBaseURL(nil)
+            guard let fallback = settings.activeHostId, !fallback.isEmpty else {
+                // 连 iroh 都没配过 —— 如实报错，别假装在重试。
+                setConnection(.failed(reason))
+                return reason
+            }
+            return await connectIroh(hostId: fallback, pairingCode: nil, silent: silent)
+        }
+
+        coordinator.setUplinkBaseURL(tier.url)
+        let elapsed = Int(Date().timeIntervalSince(started) * 1000)
+        // 这一行是排查"到底走了哪条路"的唯一入口（用户报障时先看它）。
+        logs.log(.info, "传输档位=\(tier.kind.rawValue)（\(tier.url.absoluteString)），探测+换票用时 \(elapsed)ms")
+        await activateClient(modeLabel: String(localized: "多路接入"))
+        return nil
+    }
+
+    /// 是否是需要"建连"的模式（iroh 与多路接入）。直连网关不需要。
+    ///
+    /// 单独抽出来是因为原来十几处都写成 `== .remote`，加一个档位时
+    /// 每一处都要重新判断一次"这里到底是不是在说 iroh" —— 容易漏。
+    private var needsConnect: Bool {
+        settings.transportMode == .remote || settings.transportMode == .uplink
+    }
+
     private var isConnecting = false
     /// 上一次 `connect()` 是不是**被我们自己取消**的。
     ///
@@ -557,6 +674,16 @@ public final class AppModel {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(3))
                 guard !Task.isCancelled, let self else { return }
+                if settings.transportMode == .uplink {
+                    // 多路接入没有"传输层健康"这回事（就是普通 HTTP），
+                    // 用探测到的基址本身当事实。
+                    guard !self.isBackgrounded else { continue }
+                    if !self.connection.isConnected, self.uplink.baseURL != nil {
+                        self.logs.log(.info, "连接状态自愈：多路接入基址就绪，界面从「\(self.connection.label)」拉正")
+                        self.setConnection(.connected(mode: String(localized: "多路接入")))
+                    }
+                    continue
+                }
                 let healthy = await self.tether.isTransportHealthy()
                 guard healthy, !self.isBackgrounded else { continue }
                 guard settings.transportMode == .remote else { continue }
@@ -595,12 +722,42 @@ public final class AppModel {
 
     /// 用户在设置里改了连接方式/地址之后，按当前配置重建一次。
     func activateConfiguredTransport() async {
-        if settings.transportMode == .remote {
+        switch settings.transportMode {
+        case .uplink:
+            // 用户在设置里改了档位开关 / 点了「重新探测」：上一档的基址先作废再探。
+            coordinator.setUplinkBaseURL(nil)
+            uplink.reset()
+            await connectUplink(hostId: settings.activeHostId ?? "", silent: true)
+        case .remote:
             guard let hostId = settings.activeHostId, !hostId.isEmpty else { return }
             await connect(hostId: hostId, pairingCode: nil, silent: true)
-        } else {
+        case .devDirect, .directGateway:
             coordinator.setRemoteBaseURL(nil)
             await activateClient(modeLabel: coordinator.mode.label)
+        }
+    }
+
+    // MARK: 多路接入（设置页入口）
+
+    /// 粘贴一段配对串。返回错误文案（`nil` = 已配对并开始连接）。
+    func adoptUplinkPairing(_ text: String) async -> String? {
+        guard let pairing = uplink.adopt(text) else {
+            return uplink.lastError ?? UplinkError.badPairing.errorDescription
+        }
+        uplinkPairing = pairing
+        settings.transportMode = .uplink
+        await activateConfiguredTransport()
+        return nil
+    }
+
+    /// 忘掉已配对的多路接入主机（连带把传输方式退回 iroh）。
+    func forgetUplinkPairing() async {
+        uplink.forget()
+        uplinkPairing = nil
+        coordinator.setUplinkBaseURL(nil)
+        if settings.transportMode == .uplink {
+            settings.transportMode = .remote
+            await activateConfiguredTransport()
         }
     }
 
@@ -780,7 +937,13 @@ public final class AppModel {
     )
 
     private func scheduleTransportReconnect() async {
-        guard !isBackgrounded, settings.transportMode == .remote else { return }
+        guard !isBackgrounded else { return }
+        if settings.transportMode == .uplink {
+            // 多路接入没有隧道可退避重建，重连就是重新探测一次。
+            await connectUplink(hostId: settings.activeHostId ?? "", silent: true)
+            return
+        }
+        guard settings.transportMode == .remote else { return }
         // **只有"必须用户动手"的失败才停。**
         //
         // 这里以前是"连续失败超过 6 次就不再自动重连"，把 DNS/网络这类
@@ -821,6 +984,8 @@ public final class AppModel {
         await client.closeTransport()
         await tether.disconnect()
         coordinator.setRemoteBaseURL(nil)
+        coordinator.setUplinkBaseURL(nil)
+        uplink.reset()
         setConnection(.idle)
         diagnostics = nil
         hostRelease = nil

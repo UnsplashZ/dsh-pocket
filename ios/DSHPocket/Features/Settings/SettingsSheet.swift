@@ -9,6 +9,9 @@ struct SettingsSheet: View {
 
     @State private var showPairing = false
     @State private var renamingHost: TetherHostRecord?
+    /// 多路接入的配对串输入框。
+    @State private var pairingText = ""
+    @State private var pairingError: String?
 
     // 这三个是**功能**状态，不是调试状态，所以必须在 DEBUG 之外：
     // 缓存页会读 `cacheStats`，电脑设置那个 sheet 会绑另外两个。
@@ -31,6 +34,7 @@ struct SettingsSheet: View {
                 #if DEBUG
                 developerModeSection
                 #endif
+                connectionSection
                 hostsSection
                 hostSettingsSection
                 cacheSection
@@ -82,7 +86,8 @@ struct SettingsSheet: View {
     /// 改完 defaults 之后界面上没有任何地方能看出来，也没法改回去。
     @ViewBuilder
     private var developerModeSection: some View {
-        if model.settings.transportMode != .remote {
+        // `.uplink` 是正经的用户选项，不是开发者模式 —— 别给它挂"请改回去"的横幅。
+        if model.settings.transportMode == .devDirect || model.settings.transportMode == .directGateway {
             Section {
                 Label {
                     VStack(alignment: .leading, spacing: 2) {
@@ -104,6 +109,140 @@ struct SettingsSheet: View {
         }
     }
     #endif
+
+    // MARK: 连接方式
+
+    /// 「自动（多路接入）」/「仅 iroh」二选一。
+    ///
+    /// 为什么值得给用户选：多路接入走局域网/虚拟组网时比 iroh 中转快得多，
+    /// 但前提是电脑端开了 uplink 插件；没开的人选"仅 iroh"能少一轮 800ms 的探测。
+    private var connectionSection: some View {
+        @Bindable var settings = model.settings
+
+        return Section {
+            // 开发者模式（devDirect / directGateway）下不渲染这个 Picker：
+            // 它的两个 tag 都匹配不上，界面上会出现"什么都没选中"的空行。
+            if settings.transportMode == .remote || settings.transportMode == .uplink {
+                Picker(selection: connectionMode) {
+                    Label("自动（多路接入）", systemImage: "arrow.triangle.branch")
+                        .tag(TransportMode.uplink)
+                    Label("仅 iroh", systemImage: "point.3.connected.trianglepath.dotted")
+                        .tag(TransportMode.remote)
+                } label: {
+                    Text("连接方式")
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
+            }
+            if settings.transportMode == .uplink {
+                uplinkRows
+            }
+        } header: {
+            Text("连接方式")
+        } footer: {
+            Text("「多路接入」会先并行探测电脑给出的所有地址（局域网、Tailscale、ZeroTier、自建中转），谁先通就用谁；一条都不通时自动退回 iroh。")
+        }
+    }
+
+    /// 切换连接方式后立刻按新配置重建，而不是等下一次冷启动。
+    private var connectionMode: Binding<TransportMode> {
+        Binding(
+            get: { model.settings.transportMode },
+            set: { next in
+                guard next != model.settings.transportMode else { return }
+                model.settings.transportMode = next
+                Task { await model.activateConfiguredTransport() }
+            }
+        )
+    }
+
+    // MARK: 多路接入
+
+    @ViewBuilder
+    private var uplinkRows: some View {
+        if let pairing = model.uplinkPairing {
+            LabeledContent("已配对的电脑") {
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(pairing.displayName)
+                    Text(String(pairing.hostId.prefix(8)) + "…")
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+
+        TextField("粘贴电脑上显示的配对串（dshuplink://…）", text: $pairingText)
+            .font(.caption.monospaced())
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .onSubmit { submitPairing() }
+
+        Button(model.uplinkPairing == nil ? "配对" : "重新配对") {
+            submitPairing()
+        }
+        .disabled(pairingText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+        if let pairingError {
+            Text(pairingError)
+                .font(.footnote)
+                .foregroundStyle(.red)
+        }
+
+        ForEach(UplinkTierKind.networkKinds) { kind in
+            Toggle(isOn: tierBinding(kind)) {
+                Label(kind.label, systemImage: kind.symbol)
+            }
+        }
+
+        Button {
+            Task { await model.activateConfiguredTransport() }
+        } label: {
+            Label("重新探测", systemImage: "arrow.clockwise")
+        }
+
+        if model.uplinkPairing != nil {
+            Button("忘记这台电脑", role: .destructive) {
+                Task { await model.forgetUplinkPairing() }
+            }
+        }
+    }
+
+    /// 逐档开关。
+    ///
+    /// 「空集合 = 全开」这条约定要在这里展开成显式集合，否则用户第一次关掉某一档时
+    /// 会得到"只剩一档开着"的效果 —— 因为空集合被读成"全开"，减去一档就变成
+    /// "只有这一档是显式列出的"，语义正好反了。
+    private func tierBinding(_ kind: UplinkTierKind) -> Binding<Bool> {
+        Binding(
+            get: {
+                let tiers = model.settings.uplinkEnabledTiers
+                return tiers.isEmpty || tiers.contains(kind.rawValue)
+            },
+            set: { on in
+                var tiers = model.settings.uplinkEnabledTiers
+                if tiers.isEmpty {
+                    tiers = Set(UplinkTierKind.networkKinds.map(\.rawValue))
+                }
+                if on { tiers.insert(kind.rawValue) } else { tiers.remove(kind.rawValue) }
+                model.settings.uplinkEnabledTiers = tiers
+                // **不**在每次拨开关时重连：连拨三下就是三次拆建（事件流全部重订阅），
+                // 而且中间态（比如刚关掉当前正在用的那档）会短暂连不上。
+                // 拨完之后点「重新探测」即可 —— 按钮就是为这个存在的。
+            }
+        )
+    }
+
+    private func submitPairing() {
+        let text = pairingText
+        pairingError = nil
+        Task {
+            if let failure = await model.adoptUplinkPairing(text) {
+                pairingError = failure
+            } else {
+                pairingText = ""
+            }
+        }
+    }
 
     // MARK: 主机
 

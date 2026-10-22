@@ -56,10 +56,12 @@
 		7414F4E68D5512C52D2705A4 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D3E85F2E06D4C88D4910978 /* AppSettings.swift */; };
 		752B2C890AE4EA28F18A1D09 /* EventStreamCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B624E63D100EADA66BC73883 /* EventStreamCoordinator.swift */; };
 		75EED839A224C161BB5F06C7 /* Iroh.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 59C72C7E55FE2D733E43C1E5 /* Iroh.xcframework */; };
+		76E1AC79D2D30A848A9A25FD /* UplinkSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = D73AA7D394A5A56A149F33C7 /* UplinkSession.swift */; };
 		78E396D2D850FB21020E1833 /* TimelineBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79B7887EBC326BB1948E7ABE /* TimelineBuilder.swift */; };
 		7A09869C8EFE551AD6BA036F /* TetherKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E056E04F55E32F4971BE31A7 /* TetherKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		7D1604DE7CF072C44796FD1E /* HostPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBD739A226633E29134DDDE5 /* HostPlugin.swift */; };
 		7E8F1BF59B07B532CCC456C4 /* AgentPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = C53081436A11EF6105069F25 /* AgentPreset.swift */; };
+		8140F9281CEEEE5AC7BB8E1B /* UplinkCredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD98BC7D8D25F112EE12F81E /* UplinkCredentialStore.swift */; };
 		8A956C5313E815D2ADB5A673 /* Composer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30AC58D8B9981CB968F5B72C /* Composer.swift */; };
 		8ED4D3A2D9AE5EA283F32DBE /* DiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8228B8138EE7502853E22F63 /* DiagnosticsView.swift */; };
 		91981B8519415344F4C539AA /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF7607647BE2F4F50589011E /* Theme.swift */; };
@@ -83,11 +85,13 @@
 		B2F99E897F8DC4F71127968C /* IrohLib.swift in Sources */ = {isa = PBXBuildFile; fileRef = 649275652C15B4E856D19630 /* IrohLib.swift */; };
 		B4AD5FE8791A38577D7AE2C8 /* PairingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBF83F4E8B796777D460DAE3 /* PairingSheet.swift */; };
 		B595A2C3E9B6DE071231042E /* HostSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29D28F9396FE62A8F095295F /* HostSettingsView.swift */; };
+		B7E018CF5C52601510A1072C /* UplinkModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F0F9B3474D252E3BDA84328 /* UplinkModels.swift */; };
 		C2665264EC06FAA6E444E409 /* FilesSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20391EC33E89609CD0C82B2E /* FilesSheet.swift */; };
 		C413F3D23477EB4FE7FDC8FE /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = A5E7199FB47AB4C5FC808F5D /* Localizable.xcstrings */; };
 		C7C6CA257F9F4F86986457BD /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 11DD1FE84C8891CE789BA08F /* Security.framework */; };
 		D051BDD7042B5F35D33DD166 /* RPCClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD7894845FFE4AECBFFF46BF /* RPCClient.swift */; };
 		D2641787F38253254D561E75 /* TimelineRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4F4775F445DDBB99CD6F0AC /* TimelineRow.swift */; };
+		E4AB7A28FC5A502499CB3C3B /* UplinkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35B5A88A70E4795C75A49DEC /* UplinkTests.swift */; };
 		EA0E68CC7F6507DDFA6DE538 /* PromptMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = F345924C6640FF3AAB53E779 /* PromptMode.swift */; };
 		EC447F99538B096408898E49 /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DD8113BDAC19FC1DACA36A1 /* WelcomeView.swift */; };
 		F0331CB4B6C1CF214442030F /* TetherWire.swift in Sources */ = {isa = PBXBuildFile; fileRef = A45D16E92E08B9CC5DE69CA8 /* TetherWire.swift */; };
@@ -180,11 +184,13 @@
 		27AB7E58212ECE6794F8BC2C /* GoalSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoalSheet.swift; sourceTree = "<group>"; };
 		29D28F9396FE62A8F095295F /* HostSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostSettingsView.swift; sourceTree = "<group>"; };
 		2EF1F42C52A900A991734E25 /* WorkspaceFrame.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceFrame.swift; sourceTree = "<group>"; };
+		2F0F9B3474D252E3BDA84328 /* UplinkModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UplinkModels.swift; sourceTree = "<group>"; };
 		30AC58D8B9981CB968F5B72C /* Composer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Composer.swift; sourceTree = "<group>"; };
 		30CD985C4108BF56D8D1B48A /* FilePreviewScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePreviewScreen.swift; sourceTree = "<group>"; };
 		31CE6B371F32508FBC3EA5B7 /* Retry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Retry.swift; sourceTree = "<group>"; };
 		332E9727DA5B522FCF725E72 /* TimelineItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineItem.swift; sourceTree = "<group>"; };
 		33BA4D73DF3106AB6973C28A /* ModelCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelCatalog.swift; sourceTree = "<group>"; };
+		35B5A88A70E4795C75A49DEC /* UplinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UplinkTests.swift; sourceTree = "<group>"; };
 		399A0014BBF5FD29CAE8F73F /* ConnectionPhase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionPhase.swift; sourceTree = "<group>"; };
 		3A7C174641C1E1F8CA69CAC6 /* SessionCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCache.swift; sourceTree = "<group>"; };
 		40A6CAEA31A2FC5E8666132A /* TetherDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TetherDiscovery.swift; sourceTree = "<group>"; };
@@ -241,12 +247,14 @@
 		C8088DA54E74F0EC85BF1FB4 /* SessionListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListView.swift; sourceTree = "<group>"; };
 		CBD739A226633E29134DDDE5 /* HostPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostPlugin.swift; sourceTree = "<group>"; };
 		CD212F40CEBB2E882DB37AE2 /* SessionCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCacheTests.swift; sourceTree = "<group>"; };
+		CD98BC7D8D25F112EE12F81E /* UplinkCredentialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UplinkCredentialStore.swift; sourceTree = "<group>"; };
 		CE27129706630B034A013169 /* NewSessionSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewSessionSheet.swift; sourceTree = "<group>"; };
 		D128DDECCA3A17DBC3E55D94 /* ModelProvidersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelProvidersView.swift; sourceTree = "<group>"; };
 		D3FFD174FD60E9DC57F54FF3 /* TetherIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TetherIdentity.swift; sourceTree = "<group>"; };
 		D4B82B84D34748F34AB480E7 /* ArchivedSessionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchivedSessionsView.swift; sourceTree = "<group>"; };
 		D5363D3D5D59ADA73D62643C /* MarkdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownView.swift; sourceTree = "<group>"; };
 		D5C42B2030342DD922D6CD3A /* ZoomableImageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZoomableImageView.swift; sourceTree = "<group>"; };
+		D73AA7D394A5A56A149F33C7 /* UplinkSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UplinkSession.swift; sourceTree = "<group>"; };
 		E056E04F55E32F4971BE31A7 /* TetherKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = TetherKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		E0DEE2C65B00CABFAB497AB6 /* TetherLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TetherLink.swift; sourceTree = "<group>"; };
 		E6171EF0D2E0ED43307720E3 /* DSHPocketTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = DSHPocketTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -475,6 +483,16 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		7FE23D94E01AD7B869C6438A /* Uplink */ = {
+			isa = PBXGroup;
+			children = (
+				CD98BC7D8D25F112EE12F81E /* UplinkCredentialStore.swift */,
+				2F0F9B3474D252E3BDA84328 /* UplinkModels.swift */,
+				D73AA7D394A5A56A149F33C7 /* UplinkSession.swift */,
+			);
+			path = Uplink;
+			sourceTree = "<group>";
+		};
 		87FDD7AAEAC7FF6E4B4A769E /* DSHKit */ = {
 			isa = PBXGroup;
 			children = (
@@ -528,6 +546,7 @@
 			children = (
 				E9FA0B78A3547368B545428A /* AppLogicTests.swift */,
 				CD212F40CEBB2E882DB37AE2 /* SessionCacheTests.swift */,
+				35B5A88A70E4795C75A49DEC /* UplinkTests.swift */,
 			);
 			path = DSHPocketTests;
 			sourceTree = "<group>";
@@ -558,6 +577,7 @@
 				7C5A7DC6BEFF48AE77F6319B /* HostCoordinator.swift */,
 				7D76E6059B978ABEE1B99C48 /* RootView.swift */,
 				3A7C174641C1E1F8CA69CAC6 /* SessionCache.swift */,
+				7FE23D94E01AD7B869C6438A /* Uplink */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -801,6 +821,7 @@
 			files = (
 				AD46495FBEDBD188501813BC /* AppLogicTests.swift in Sources */,
 				1124AFA07CF308417A5A1867 /* SessionCacheTests.swift in Sources */,
+				E4AB7A28FC5A502499CB3C3B /* UplinkTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -863,6 +884,9 @@
 				69882D66922A4F6677764464 /* SettingsSheet.swift in Sources */,
 				91981B8519415344F4C539AA /* Theme.swift in Sources */,
 				D2641787F38253254D561E75 /* TimelineRow.swift in Sources */,
+				8140F9281CEEEE5AC7BB8E1B /* UplinkCredentialStore.swift in Sources */,
+				B7E018CF5C52601510A1072C /* UplinkModels.swift in Sources */,
+				76E1AC79D2D30A848A9A25FD /* UplinkSession.swift in Sources */,
 				EC447F99538B096408898E49 /* WelcomeView.swift in Sources */,
 				A8FDF4C9E27F3887B5D1A402 /* ZoomableImageView.swift in Sources */,
 			);
@@ -1057,7 +1081,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.4.27;
+				MARKETING_VERSION = 0.5.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-framework",
@@ -1174,7 +1198,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.4.27;
+				MARKETING_VERSION = 0.5.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-framework",

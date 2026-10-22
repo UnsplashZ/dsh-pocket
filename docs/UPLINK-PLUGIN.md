@@ -207,6 +207,11 @@ macOS 取 SSID 用 `networksetup -getairportnetwork <dev>`（失败就只用地�
 3. **二维码 / 手动** —— 电脑侧设置页显示二维码（内容 = 清单 JSON 的 base64url）。
    iroh 整档关掉时这是唯一的引导方式。
 
+配对串里除了 `urls`（纯地址，兼容旧客户端）还带 `tiers: [{kind, url}]`。
+**必须有 kind**：局域网与 ZeroTier 常用同一个私有网段（10.x / 172.16-31），
+只按地址段反推永远分不开，"关掉 ZeroTier 但保留局域网"就做不到。
+iroh 的配对**码**不放进配对串 —— 它只有 600 秒有效期，塞进长期凭据里只会变成过期的坑。
+
 清单带 `ttl`，手机侧缓存并在过期后重取；取不到就继续用旧的（离线可用），但标「可能已过期」。
 
 ---
@@ -359,15 +364,18 @@ ATS 不适用于 `Network` 框架，所以这条路绕开整个问题。**M2 再
 
 M0 结束就能拿到 §12 前两行指标 —— 也就是说**最高频场景的收益在第一阶段就到手**。
 
-> **实现进度**：电脑侧 **M0 + M1 + M2** 已落地在 [`packages/dsh-plugin-uplink/`](../packages/dsh-plugin-uplink/)
-> （约 3900 行、106 条测试），对真 dsh 跑通：首页 61 KB 经网关 p50 **2.0 ms** vs 直连 1.9 ms、
-> 正文逐字节一致；WebSocket `api/remote.mux` 101；未带票 401 且到不了 dsh；
-> Bonjour 用 `dns-sd` 验证可发现；iroh 档位用真 sidecar 跑通 `endpointId#code`；
-> 自签 TLS 的指纹与 `openssl x509 -fingerprint -sha256` 逐字符一致。
+> **实现进度**：电脑侧 **M0–M2** + 手机侧 **M3** 都已落地。
+> 电脑侧在 [`packages/dsh-plugin-uplink/`](../packages/dsh-plugin-uplink/)（约 4000 行、110 条测试），
+> 手机侧在 [`ios/DSHPocket/App/Uplink/`](../ios/DSHPocket/App/Uplink/)（约 900 行、33 条测试，App 总计 98 条）。
 >
-> 仍与本文有偏差的两处：**手机侧 UI（M3）在另一条线上推进**；**frp 与 Tailscale/ZeroTier
-> 只有单测覆盖**（本机没装 frpc，`tailscale` 是个指向已删除 App 的坏 shim），
-> 真连通要等真机验证。
+> 对真 dsh 跑通的实测：首页 61 KB 经网关 p50 **2.0 ms** vs 直连 1.9 ms、正文逐字节一致；
+> WebSocket `api/remote.mux` 101；未带票 401 且到不了 dsh；Bonjour 用 `dns-sd` 验证可发现；
+> iroh 档位用真 sidecar 跑通 `endpointId#code`；自签 TLS 指纹与
+> `openssl x509 -fingerprint -sha256` 逐字符一致。
+>
+> 仍未真机验证的：**frp 与 Tailscale/ZeroTier 只有单测覆盖**（本机没装 frpc，
+> `tailscale` 是个指向已删除 App 的坏 shim）；手机与电脑的**端到端**握手要等 dsh 重启后
+> 用真机验。
 
 ---
 

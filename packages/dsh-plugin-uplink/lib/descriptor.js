@@ -10,6 +10,8 @@
 import { priorityOf } from './config.js'
 
 export const DESCRIPTOR_VERSION = 1
+/** 手机侧认识的档位名。配对串里带 kind 就是为了让"逐档开关"真的能逐档生效。 */
+export const TIER_KINDS = Object.freeze(['lan', 'tailscale', 'zerotier', 'frp', 'iroh'])
 export const PAIRING_SCHEME = 'dshuplink://'
 /** 清单的软有效期。过期后手机仍可用旧清单（离线优先），但会标注"可能已过期"。 */
 export const DESCRIPTOR_TTL_MS = 300_000
@@ -72,6 +74,7 @@ export function encodePairingPayload({
   deviceId,
   secret,
   urls = [],
+  tiers = [],
   iroh = null,
   now = Date.now(),
 }) {
@@ -83,6 +86,12 @@ export function encodePairingPayload({
     deviceId,
     secret,
     urls,
+    // 地址 + 档位名。`urls` 保留是为了兼容只认地址的旧客户端；
+    // 但只有带 kind 才能让"关掉 ZeroTier 但保留局域网"真的生效 ——
+    // 两者常用同一个私有网段，靠地址段反推永远分不开。
+    ...(tiers.length > 0
+      ? { tiers: tiers.filter((tier) => typeof tier?.url === 'string' && TIER_KINDS.includes(tier?.kind)).map((tier) => ({ kind: tier.kind, url: tier.url })) }
+      : {}),
     // iroh 兜底档的寻址信息：endpointId + relay。配对**码**不放在这里 ——
     // 它只有几分钟有效期，塞进长期保存的配对串里只会变成一个过期的坑。
     ...(iroh ? { iroh } : {}),
@@ -111,6 +120,11 @@ export function decodePairingPayload(text) {
     return { ok: false, reason: 'bad-secret' }
   }
   const urls = Array.isArray(parsed.urls) ? parsed.urls.filter((url) => typeof url === 'string') : []
+  const tiers = Array.isArray(parsed.tiers)
+    ? parsed.tiers
+      .filter((tier) => tier && typeof tier.url === 'string' && TIER_KINDS.includes(tier.kind))
+      .map((tier) => ({ kind: tier.kind, url: tier.url }))
+    : []
   const iroh = parsed.iroh && typeof parsed.iroh === 'object' && typeof parsed.iroh.endpointId === 'string'
     ? {
       endpointId: parsed.iroh.endpointId,
@@ -126,6 +140,7 @@ export function decodePairingPayload(text) {
       deviceId: parsed.deviceId,
       secret: parsed.secret,
       urls,
+      tiers,
       iroh,
       issuedAt: Number.isInteger(parsed.issuedAt) ? parsed.issuedAt : 0,
     },

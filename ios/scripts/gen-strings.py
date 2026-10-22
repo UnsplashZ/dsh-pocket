@@ -1130,6 +1130,52 @@ EN: dict[str, str] = {
     "这个会话由子代理托管，请到它的父会话里操作。":
         "This session is managed by a subagent. Use its parent session instead.",
     "工作中，至少已用时 %@": "Working · at least %@ elapsed",
+
+    # ── 0.5.0 多路接入（uplink）─────────────────────────────────────────
+    "多路接入": "Multi-path",
+    "自动（多路接入）": "Automatic (multi-path)",
+    "仅 iroh": "iroh only",
+    "局域网": "LAN",
+    "自建中转": "Self-hosted relay",
+    "已配对的电脑": "Paired computer",
+    "粘贴电脑上显示的配对串（dshuplink://…）": "Paste the pairing link from your computer (dshuplink://…)",
+    "配对": "Pair",
+    "重新配对": "Pair again",
+    "忘记这台电脑": "Forget this computer",
+    "重新探测": "Probe again",
+    "已关闭": "Off",
+    "未选档": "No path selected",
+    "票据": "Ticket",
+    "还剩 %@ 秒": "%@ s left",
+    "档位：%@": "Path: %@",
+    "网关：%@": "Gateway: %@",
+    "「多路接入」会先并行探测电脑给出的所有地址（局域网、Tailscale、ZeroTier、自建中转），谁先通就用谁；一条都不通时自动退回 iroh。":
+        "“Multi-path” probes every address your computer advertises (LAN, Tailscale, ZeroTier, self-hosted relay) in parallel and uses whichever answers first. If none answer, it falls back to iroh.",
+    "地址清单来自电脑端的配对串。RTT 是最近一次探测的结果，「—」表示这次没测到（另一档先通了）。":
+        "The address list comes from the pairing link your computer showed. RTT is from the latest probe; “—” means it was not measured this time (another path answered first).",
+    # 错误与诊断
+    "上一次探测还在进行中": "A probe is still running",
+    "上一次用的 %@ 这次没通，换到 %@": "The previous path %@ did not respond — switched to %@",
+    "所有档位都探测失败（%lld 个地址，用时 %@ms）": "All paths failed to respond (%lld addresses, %@ ms)",
+    "所有档位都被关掉了。至少打开一个，或者换回 iroh。":
+        "Every path is turned off. Turn one back on, or switch back to iroh.",
+    "所有档位都连不上。检查手机和电脑是否在同一网络，或者换一个档位再试。":
+        "No path is reachable. Check that the phone and the computer are on the same network, or try another path.",
+    "没有可用的档位": "No usable path",
+    "还没有配对这台电脑。请让电脑端显示配对串，然后粘贴到这里。":
+        "This computer is not paired yet. Show the pairing link on your computer and paste it here.",
+    "配对串认不出来。它应该以 dshuplink:// 开头，后面是一整段字符 —— 别只复制半截。":
+        "That pairing link is not readable. It should start with dshuplink:// followed by one long run of characters — make sure you copied all of it.",
+    "这个地址上是另一台电脑（期望 %@…，实际 %@…），已跳过。":
+        "That address belongs to another computer (expected %@…, got %@…) — skipped.",
+    "电脑拒绝了这台手机（%@）。多半是电脑端重装过插件或清过配对数据，重新配一次就好。":
+        "Your computer rejected this phone (%@). This usually means the plugin was reinstalled or the pairing data was cleared — pairing again fixes it.",
+    "票据被拒（%@）。请在电脑端确认这台设备还在授权列表里。":
+        "The ticket was rejected (%@). Check that this device is still in the authorized list on your computer.",
+    "电脑回了一个意外的状态码 %@。": "Your computer returned an unexpected status code %@.",
+    "电脑回的响应看不懂：%@": "Could not parse the response from your computer: %@",
+    "连不上：%@": "Can’t connect: %@",
+    "不是 JSON": "not JSON",
 }
 
 # 哪些插值表达式是整数。判错的后果是英文界面上显示成 `%lld` 字面量，

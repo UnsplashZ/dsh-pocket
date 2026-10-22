@@ -57,6 +57,14 @@
 	<!-- iOS 14 起，同网段私网 IP 的收发受内核层 Local Network Privacy 管控；
 	     iroh 用的原始 UDP socket 同样受限。缺这个键系统既不弹窗也不放行，
 	     表现为 connect timed out 且电脑端完全收不到连接。 -->
+	<!-- 多路接入：电脑端会在局域网里用 Bonjour 广播 `_dsh._tcp`，
+	     手机侧声明之后才能在不扫网段的前提下发现"这台电脑在哪"。
+	     与 NSLocalNetworkUsageDescription 配套 —— 缺了它，广播能被看见但解析不出地址。 -->
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_dsh._tcp</string>
+	</array>
+
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>用于发现并直连同一局域网内已配对的电脑。打洞成功时数据不经过任何中转，更快也更省流量。</string>
 

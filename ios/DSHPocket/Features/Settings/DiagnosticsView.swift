@@ -25,6 +25,7 @@ struct DiagnosticsView: View {
     var body: some View {
         List {
             connectionSection
+            uplinkSection
             transportSection
             selfCheckSection
             logSection
@@ -79,6 +80,78 @@ struct DiagnosticsView: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    // MARK: 多路接入
+
+    /// 只在"多路接入"模式下显示。
+    ///
+    /// 三件事必须看得见，否则用户报"卡住"时无从判断：
+    ///   1. **当前用哪一档**（局域网 / Tailscale / …）与它的地址；
+    ///   2. **每一档各多快**（最近一次探测的 RTT）—— "局域网 4ms、Tailscale 90ms"
+    ///      直接说明了为什么选中这一档；
+    ///   3. **最近一次为什么换档**（上一档没通？被关掉了？）。
+    @ViewBuilder
+    private var uplinkSection: some View {
+        if model.settings.transportMode == .uplink {
+            Section {
+                LabeledContent("当前档位", value: currentTierLabel)
+                LabeledContent("网关地址") {
+                    Text(model.uplink.baseURL?.absoluteString ?? String(localized: "未选档"))
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                if let remaining = model.uplink.ticketRemainingSeconds {
+                    LabeledContent("票据", value: String(localized: "还剩 \(String(remaining)) 秒"))
+                }
+
+                ForEach(model.uplink.tierStatuses) { status in
+                    HStack(spacing: Token.Spacing.tight) {
+                        Label(status.tier.kind.label, systemImage: status.tier.kind.symbol)
+                        Spacer()
+                        if !status.enabled {
+                            Text("已关闭")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                        Text(status.rttMilliseconds.map { "\($0) ms" } ?? "—")
+                            .font(.caption.monospaced())
+                            .foregroundStyle(status.isCurrent ? .primary : .secondary)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+
+                if let reason = model.uplink.lastSwitchReason {
+                    Text(reason)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if let error = model.uplink.lastError {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Button {
+                    Task { await model.activateConfiguredTransport() }
+                } label: {
+                    Label("重新探测", systemImage: "arrow.clockwise")
+                }
+            } header: {
+                Text("多路接入")
+            } footer: {
+                Text("地址清单来自电脑端的配对串。RTT 是最近一次探测的结果，「—」表示这次没测到（另一档先通了）。")
+            }
+        }
+    }
+
+    private var currentTierLabel: String {
+        guard let kind = model.uplink.currentTier?.kind else { return String(localized: "未选档") }
+        return kind.resolvedLabel
     }
 
     private var transportSection: some View {
@@ -262,6 +335,10 @@ struct DiagnosticsView: View {
             lines.append(String(localized: "传输层：\(transportHealthy ? "健康" : "未连接")"))
         }
         lines.append(String(localized: "mux：\(muxLabel)"))
+        if model.settings.transportMode == .uplink {
+            lines.append(String(localized: "档位：\(currentTierLabel)"))
+            lines.append(String(localized: "网关：\(model.uplink.baseURL?.absoluteString ?? "—")"))
+        }
         if let diagnostics = model.diagnostics {
             lines.append(String(localized: "路径：\(pathLabel)"))
             lines.append(String(localized: "代理：\(diagnostics.proxyURL ?? "—")"))
