@@ -676,9 +676,27 @@ function apply(ctx, rawConfig = {}) {
         .filter((tier) => typeof tier.url === 'string')
         .map((tier) => ({ kind: tier.kind, url: tier.url }))
       const irohTierEntry = tiers.find((tier) => tier.kind === 'iroh') ?? null
-      const iroh = irohTierEntry === null
+      // 配对串里直接带上 iroh 的**一次性配对码**。
+      //
+      // 为什么必须带上，而不是让手机"需要时再来要"：手机要票才能调
+      // /uplink/iroh-pairing，而票只能在**某个网关档可达**时换到 —— 可 iroh 恰恰是
+      // "所有网关档都不可达"时的兜底。于是形成一个死锁：
+      //   5G + 局域网不可达 → 换不到票 → 要不到 iroh 配对码 → iroh 也用不了。
+      // 把码塞进配对串就绕开了：粘一次，两件事一起完成。
+      //
+      // 代价是码只有 600 秒有效期。过期了 App 要如实提示"重新生成配对串"，
+      // 不能假装在重试（那种静默重试是最难查的一类问题）。
+      let iroh = irohTierEntry === null
         ? null
         : { endpointId: irohTierEntry.endpointId, relay: irohTierEntry.relay ?? null }
+      let irohPairing = null
+      if (irohTier !== null && irohTier.status().running) {
+        const opened = await irohTier.openPairing()
+        if (opened.ok !== false) {
+          irohPairing = { pairingString: opened.pairingString, expiresInSec: opened.expiresInSec }
+          iroh = { ...iroh, code: opened.pairingString.split('#')[1] ?? null, expiresAt: Date.now() + opened.expiresInSec * 1000 }
+        }
+      }
       const pairingString = encodePairingPayload({
         hostId,
         name: config.name !== '' ? config.name : hostname(),
@@ -689,13 +707,6 @@ function apply(ctx, rawConfig = {}) {
         tiers: tierHints,
         iroh,
       })
-      // iroh 的配对**码**只有几分钟有效期，不能塞进长期保存的配对串里，
-      // 所以单独回一份，手机拿到就要立刻用掉。
-      let irohPairing = null
-      if (irohTier !== null && irohTier.status().running) {
-        const opened = await irohTier.openPairing()
-        if (opened.ok !== false) irohPairing = { pairingString: opened.pairingString, expiresInSec: opened.expiresInSec }
-      }
       logger.info(`[uplink] ${tt('新设备已配对：', 'device paired: ')}${device.name}（${device.deviceId}）`)
       json(res, 200, {
         ok: true,

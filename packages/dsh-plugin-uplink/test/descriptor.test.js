@@ -131,3 +131,30 @@ test('没带 tiers 的老配对串仍能解析，tiers 退化成空数组', () =
   assert.deepEqual(decoded.payload.tiers, [])
   assert.deepEqual(decoded.payload.urls, ['http://10.0.0.1:1'])
 })
+
+test('配对串里带 iroh 的一次性配对码 —— 绕开"要票才能要码"的死锁', () => {
+  const text = encodePairingPayload({
+    hostId: 'abcd1234',
+    port: 18788,
+    deviceId: 'd1',
+    secret: 'a'.repeat(64),
+    urls: ['http://10.0.0.5:18788'],
+    iroh: { endpointId: 'e'.repeat(64), relay: null, code: '123456', expiresAt: 1_700_000_600_000 },
+  })
+  const decoded = decodePairingPayload(text)
+  assert.equal(decoded.ok, true)
+  assert.equal(decoded.payload.iroh.endpointId, 'e'.repeat(64))
+  assert.equal(decoded.payload.iroh.code, '123456')
+  assert.equal(decoded.payload.iroh.expiresAt, 1_700_000_600_000)
+})
+
+test('没有 iroh 码时字段是 null，而不是缺失（手机侧好判断）', () => {
+  const text = encodePairingPayload({
+    hostId: 'abcd1234', port: 1, deviceId: 'd', secret: 'b'.repeat(64),
+    iroh: { endpointId: 'f'.repeat(64), relay: 'https://relay.example' },
+  })
+  const decoded = decodePairingPayload(text)
+  assert.equal(decoded.payload.iroh.code, null)
+  assert.equal(decoded.payload.iroh.expiresAt, null)
+  assert.equal(decoded.payload.iroh.relay, 'https://relay.example')
+})

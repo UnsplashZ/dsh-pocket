@@ -1,0 +1,30 @@
+[package]
+name = "tether-host"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.91"
+description = "DSH tether host: the computer-side iroh endpoint (DLP v1), JSON-lines over stdio to the plugin"
+license = "MIT"
+
+# 二进制名必须是 tether-host：bin/<platform>-<arch>/tether-host 是插件约定的落点，
+# lib/tiers/iroh.js 的 resolveHostBinary() 也只认这个名字。
+[[bin]]
+name = "tether-host"
+path = "src/main.rs"
+
+[dependencies]
+# 1.0.3 是与手机端 iroh-ffi 1.1.0 实测互通的那一版，不要随手升级。
+iroh = "=1.0.3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "time", "sync", "signal"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+rand = "0.8"
+
+[profile.release]
+# 体积优先：这个二进制会随 npm 包发布，18MB 的上游产物已经很扎眼。
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

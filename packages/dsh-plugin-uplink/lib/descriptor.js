@@ -129,6 +129,10 @@ export function decodePairingPayload(text) {
     ? {
       endpointId: parsed.iroh.endpointId,
       relay: typeof parsed.iroh.relay === 'string' ? parsed.iroh.relay : null,
+      // 一次性配对码（可选）：跟着配对串一起发，手机粘上就能**立刻**把 iroh 也配上，
+      // 不必先连上某个网关档去换票 —— 那是个死锁（见 index.js 里的说明）。
+      code: typeof parsed.iroh.code === 'string' ? parsed.iroh.code : null,
+      expiresAt: Number.isInteger(parsed.iroh.expiresAt) ? parsed.iroh.expiresAt : null,
     }
     : null
   return {

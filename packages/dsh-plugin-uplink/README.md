@@ -215,10 +215,17 @@ dsh 自己的端口（只有本机可达，用于管理）：
 | `POST /uplink/rotate` | 轮换签名密钥（踢掉所有在途票据，设备不必重配） |
 | `GET /uplink/probe` | 立刻重新探测网络环境 |
 
-`/uplink/pair` 同时回两样东西，因为它们的生命周期完全不同：
+`/uplink/pair` 回的 `pairingString`（`dshuplink://…`）是**唯一入口**：它把三档需要的东西
+一次带全 —— deviceId + secret（网关档换票用）、地址清单、以及 iroh 的 `endpointId` +
+**一次性配对码** `code`/`expiresAt`。
 
-- `pairingString`（`dshuplink://…`）：**长期**凭据，含 deviceId + secret + 地址清单 + iroh endpointId；
-- `irohPairing`：**一次性**配对码（默认 600 秒），手机拿到就要立刻用掉，不能存起来。
+为什么码也要塞进配对串（而不是让手机"需要时再来要"）：手机要票才能调
+`/uplink/iroh-pairing`，而票只能在**某个网关档可达**时换到 —— 可 iroh 恰恰是
+"所有网关档都不可达"时的兜底。那是个死锁（5G + 局域网不可达 → 换不到票 →
+要不到码 → iroh 也用不了）。把码随配对串发出去就绕开了：粘一次，两件事一起完成。
+
+代价是码只有 600 秒有效期 —— 过期了要如实提示"重新生成配对串"，不能假装在重试。
+`irohPairing` 字段仍然单独回一份（兼容旧客户端与"刷新"场景）。
 
 ## 安全边界
 
