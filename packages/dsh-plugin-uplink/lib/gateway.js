@@ -15,7 +15,7 @@
  */
 import http from 'node:http'
 import https from 'node:https'
-import { AUTH_PATH, PUBLIC_PATHS } from './constants.js'
+import { AUTH_PATH, DESCRIPTOR_PATH, PUBLIC_PATHS } from './constants.js'
 import { publicIdentity } from './descriptor.js'
 
 /** hop-by-hop 头不能透传（RFC 7230 §6.1），否则连接语义会错乱。 */
@@ -116,6 +116,8 @@ export function createGateway({
   identity,
   logger,
   tierOfAddress = () => 'unknown',
+  /** 现算清单（`() => descriptor`）。要票：地址清单本身也是信息，不该给未配对的人看。 */
+  descriptor = null,
   /**
    * 可选的自签 TLS。传 `{key, cert}`（PEM 内容，不是路径）就起 https，
    * 否则起明文 http —— 局域网默认明文是刻意的：ATS 不挡 IP 字面量，
@@ -256,6 +258,18 @@ export function createGateway({
         json(res, 401, { ok: false, reason: authorized.reason })
         return
       }
+
+      // 清单：手机拿它刷新"这台电脑现在有哪些地址"（配对串只是快照）
+      if (path === DESCRIPTOR_PATH && descriptor !== null) {
+        try {
+          json(res, 200, { ok: true, ...(await descriptor()) })
+        } catch (error) {
+          stats.lastError = `descriptor: ${error?.message ?? error}`
+          json(res, 500, { ok: false, reason: 'descriptor-failed' })
+        }
+        return
+      }
+
       proxyRequest(req, res, { deviceName: authorized.name })
     })().catch((error) => {
       stats.lastError = `handler: ${error?.message ?? error}`

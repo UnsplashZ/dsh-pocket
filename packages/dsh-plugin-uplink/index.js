@@ -173,6 +173,7 @@ function apply(ctx, rawConfig = {}) {
   let advertiser = null
   let frpTier = null
   let irohTier = null
+  let irohBinaryPath = ''
   let tlsInfo = null
   let actualPort = config.port
   let hostId = ''
@@ -361,10 +362,10 @@ function apply(ctx, rawConfig = {}) {
     if (irohTier === null) {
       // 只看本包自己 + 用户显式指定的路径。**不向任何外部包伸手** ——
       // 这是"完全独立构建"的硬约束（见 lib/tiers/iroh.js 的 resolveHostBinary）。
-      const binaryPath = config.tiers.iroh.binaryPath !== ''
+      irohBinaryPath = config.tiers.iroh.binaryPath !== ''
         ? config.tiers.iroh.binaryPath
         : resolveHostBinary()
-      if (!binaryPath) {
+      if (!irohBinaryPath) {
         logger.warn(`[uplink] ${tt(
           '找不到 iroh sidecar 二进制，iroh 档位不可用（其余档位照常工作）。本插件不依赖外部包：把二进制放进包内 bin/，或用 tiers.iroh.binaryPath 显式指一个',
           'the iroh sidecar binary was not found, so the iroh tier is unavailable (other tiers still work). This plugin depends on no external package: ship the binary under the package bin/ directory, or point tiers.iroh.binaryPath at one',
@@ -374,7 +375,7 @@ function apply(ctx, rawConfig = {}) {
       const dataDir = config.tiers.iroh.dataDir !== '' ? config.tiers.iroh.dataDir : join(stateDir, 'iroh')
       await mkdir(dataDir, { recursive: true })
       irohTier = createIrohTier({
-        binaryPath,
+        binaryPath: irohBinaryPath,
         proxyTarget: authority,
         dataDir,
         lang: terminalZh ? 'zh' : 'en',
@@ -384,7 +385,7 @@ function apply(ctx, rawConfig = {}) {
     const result = await irohTier.start()
     if (result.ok) {
       // 打出用的是哪个二进制：内置的、自己 build 的、还是用户显式指的 —— 排障第一问
-      logger.info(`[uplink] iroh 兜底档已就绪：${result.endpointId.slice(0, 16)}…（sidecar: ${binaryPath}）`)
+      logger.info(`[uplink] iroh 兜底档已就绪：${result.endpointId.slice(0, 16)}…（sidecar: ${irohBinaryPath}）`)
     } else {
       logger.warn(`[uplink] ${tt(`iroh 档位不可用（${result.reason}）`, `the iroh tier is unavailable (${result.reason})`)}`)
     }
@@ -451,6 +452,17 @@ function apply(ctx, rawConfig = {}) {
       logger,
       tierOfAddress,
       tls: tlsInfo,
+      // 清单要票：手机探测失败时可以重新问一次，不必重配对
+      descriptor: async () => {
+        const env = await environment({ force: true })
+        const tiers = await buildTiers({ port: actualPort, env })
+        return buildDescriptor({
+          hostId,
+          name: config.name !== '' ? config.name : hostname(),
+          port: actualPort,
+          tiers,
+        })
+      },
     })
 
     try {

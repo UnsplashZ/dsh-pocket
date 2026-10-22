@@ -54,6 +54,15 @@ async function harness({ cookie = { cookie: 'session=abc123', authority: '127.0.
     identity: { hostId: 'testhost', name: 'Test Mac', version: '0.1.0' },
     logger: { info: () => {}, warn: () => {} },
     tierOfAddress: () => 'lan',
+    descriptor: async () => ({
+      v: 1,
+      hostId: 'testhost',
+      name: 'Test Mac',
+      port: 18788,
+      tiers: [{ kind: 'lan', url: 'http://10.0.0.9:18788', prio: 10 }],
+      issuedAt: 1,
+      ttl: 300000,
+    }),
   })
   const bound = await gateway.listen({ port: 0, bind: '127.0.0.1' })
   const base = `http://127.0.0.1:${bound.port}`
@@ -326,3 +335,64 @@ test('端口被占用时自动顺延，而不是起不来', async () => {
     await new Promise((resolve) => blocker.close(resolve))
   }
 })
+
+
+test('清单路由：没票 401，有票拿到当前地址列表（配对串只是快照）', async () => {
+  const env = await harness()
+  try {
+    const unauth = await fetch(`${env.base}/uplink/descriptor`)
+    assert.equal(unauth.status, 401)
+
+    const device = await pair(env.store)
+    const auth = await authenticate(env.base, device)
+    const response = await fetch(`${env.base}/uplink/descriptor`, {
+      headers: { authorization: `Bearer ${auth.body.ticket}` },
+    })
+    assert.equal(response.status, 200)
+    const body = await response.json()
+    assert.equal(body.ok, true)
+    assert.equal(body.hostId, 'testhost')
+    assert.deepEqual(body.tiers, [{ kind: 'lan', url: 'http://10.0.0.9:18788', prio: 10 }])
+    // 清单绝不能带密钥
+    assert.equal(JSON.stringify(body).includes('secret'), false)
+    // 它不该被当成普通请求转发给 dsh
+    assert.equal(env.seen.length, 0)
+  } finally {
+    await env.close()
+  }
+})
+
+test('清单算不出来时给 500，而不是把网关拖挂', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'uplink-gw-'))
+  const store = new DeviceStore(join(dir, 'state.json'))
+  await store.load()
+  const gateway = createGateway({
+    target: { host: '127.0.0.1', port: 1 },
+    store,
+    cookie: { get: () => ({ cookie: 'session=x', authority: '127.0.0.1:1' }) },
+    identity: { hostId: 'h', name: 'n', version: '0' },
+    logger: { info: () => {}, warn: () => {} },
+    descriptor: async () => { throw new Error('环境探测炸了') },
+  })
+  const bound = await gateway.listen({ port: 0, bind: '127.0.0.1' })
+  try {
+    const device = await store.createDevice('手机')
+    const ts = Date.now()
+    const nonce = `n-${Math.random().toString(16).slice(2)}`
+    const proof = DeviceStore.proofFor({ secret: device.secret, deviceId: device.deviceId, ts, nonce })
+    const auth = await (await fetch(`http://127.0.0.1:${bound.port}/uplink/auth`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ deviceId: device.deviceId, ts, nonce, proof }),
+    })).json()
+    const response = await fetch(`http://127.0.0.1:${bound.port}/uplink/descriptor`, {
+      headers: { authorization: `Bearer ${auth.ticket}` },
+    })
+    assert.equal(response.status, 500)
+    assert.equal((await response.json()).reason, 'descriptor-failed')
+    // 网关还活着
+    assert.equal((await fetch(`http://127.0.0.1:${bound.port}/uplink/ping`)).status, 200)
+  } finally {
+    await gateway.close()
+  }
+})
+

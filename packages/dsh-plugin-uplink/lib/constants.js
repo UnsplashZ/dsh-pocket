@@ -12,6 +12,15 @@ export const PUBLIC_PATHS = Object.freeze(['/uplink/hello', '/uplink/ping'])
 /** 换票路由。 */
 export const AUTH_PATH = '/uplink/auth'
 
+/**
+ * 清单路由（**要票**）：手机任何时候都能重新问一次"你现在有哪些地址"。
+ *
+ * 为什么必须有：配对串是**那一刻的快照**。电脑换网、DHCP 续租换了 IP、
+ * 新接了一块网卡，快照就过期了 —— 而手机没有任何办法知道新地址，
+ * 只能重新配对。有了这条，只要手机还能打到**任意一个**旧地址，就能自愈。
+ */
+export const DESCRIPTOR_PATH = '/uplink/descriptor'
+
 /** 管理路由（挂在 dsh 自己的 webServer 上，仅回环可达）。 */
 export const ADMIN_PATHS = Object.freeze({
   state: '/uplink/state',
