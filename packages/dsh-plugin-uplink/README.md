@@ -42,6 +42,34 @@
 - frp 只是把这个端口从公网映射进来，网关一行不改；
 - iroh 走 sidecar 的代理流，与本网关无关。
 
+## 装进 dsh
+
+插件跟 dsh 跑在**同一个进程**里，所以改完必须重启 dsh 才生效。
+
+1. profile 的 `package.json`（macOS 上是 `~/.dsh/profiles/<profile>/package.json`）加两处：
+
+   ```jsonc
+   "dependencies": {
+     "dsh-plugin-uplink": "link:/绝对路径/dsh-pocket/packages/dsh-plugin-uplink"
+   },
+   "dsh": { "profile": { "bundles": [ /* … */, "dsh-plugin-uplink" ] } }
+   ```
+
+2. 装依赖：`pnpm install`。等价的手工做法是 `ln -s` 到 `node_modules/dsh-plugin-uplink`
+   —— `link:` 协议生成的就是一个符号链接，两者没有区别。
+
+3. 重启 dsh。终端应当打印：
+
+   ```
+   [uplink] gateway listening on 0.0.0.0:18788
+   [uplink]   lan       http://10.8.54.221:18788
+   ```
+
+4. 状态、设备与签名密钥在 `$DSH_HOME/uplink/state.json`（0600）。
+
+手机要能连上，还得放行入站：macOS 的防火墙如果开着，第一次监听时系统会弹窗问是否允许
+`node` 接受连接 —— 必须允许，否则手机侧表现为"局域网地址一直超时"。
+
 ## 配置
 
 ```yaml

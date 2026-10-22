@@ -259,7 +259,14 @@ export async function detectDefaultInterface({ run } = {}) {
   return match === null ? '' : match[1]
 }
 
-/** macOS 当前 Wi-Fi 名（拿不到就空串，不报错）。 */
+/**
+ * macOS 当前 Wi-Fi 名（拿不到就空串，不报错）。
+ *
+ * **最好只当锦上添花**：macOS 14+ 上这条命令经常回
+ * `You are not associated with an AirPort network.`（没授权定位、或走的是有线/USB 网卡），
+ * 即使 Wi-Fi 明明连着。所以指纹不能依赖 SSID —— 地址列表才是主体，
+ * SSID 只在拿得到时用来区分"同一个网段的不同 Wi-Fi"。
+ */
 export async function detectSsid({ run, iface = 'en0' } = {}) {
   const result = await run('networksetup', ['-getairportnetwork', iface])
   if (!result.ok) return ''
