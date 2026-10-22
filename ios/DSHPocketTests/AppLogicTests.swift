@@ -518,7 +518,15 @@ final class AppLogicTests: XCTestCase {
         suite.set(true, forKey: "settings.devDirect")
         XCTAssertEqual(AppSettings(defaults: suite).transportMode, .devDirect)
 
+        // 没打开过 devDirect、也没配过电脑 → 全新安装，默认「自动（多路接入）」。
+        // 注意：上面那次 init 已经把 transportMode 落盘了，要模拟"全新安装"必须清掉它。
         suite.set(false, forKey: "settings.devDirect")
+        suite.removeObject(forKey: "settings.transportMode")
+        XCTAssertEqual(AppSettings(defaults: suite).transportMode, .uplink)
+
+        // 已经配过电脑的老用户：保持 .remote，绝不能在升级时把他切走
+        suite.set("some-old-endpoint-id", forKey: "settings.activeHost")
+        suite.removeObject(forKey: "settings.transportMode")
         XCTAssertEqual(AppSettings(defaults: suite).transportMode, .remote)
     }
 

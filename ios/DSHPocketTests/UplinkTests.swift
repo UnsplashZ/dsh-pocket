@@ -56,15 +56,22 @@ final class UplinkTests: XCTestCase {
         suite: UserDefaults,
         server: StubServer,
         probe: @escaping UplinkSession.Probe,
-        now: @escaping () -> Date = { Date(timeIntervalSince1970: 1_700_000_000) }
+        discover: @escaping UplinkSession.Discover = { _ in [] },
+        network: UplinkNetworkKind = .wifi,
+        now: @escaping () -> Date = { Date(timeIntervalSince1970: 1_700_000_000) },
+        // 传进来的 store 必须复用：`EphemeralSecretStore` 是**进程内**存储，
+        // 两个实例互相看不见对方的密钥（表现就是"明明存了却说没配对"）。
+        store: UplinkCredentialStore? = nil
     ) -> (UplinkSession, UplinkCredentialStore) {
         let settings = AppSettings(defaults: suite)
-        let store = UplinkCredentialStore(secrets: EphemeralSecretStore(), defaults: suite)
+        let store = store ?? UplinkCredentialStore(secrets: EphemeralSecretStore(), defaults: suite)
         let session = UplinkSession(
             store: store,
             settings: settings,
             probe: probe,
             send: { request in try await server.send(request) },
+            discover: discover,
+            network: UplinkNetworkMonitor(fixed: network),
             now: now
         )
         return (session, store)
@@ -72,7 +79,9 @@ final class UplinkTests: XCTestCase {
 
     private static func pairing(
         urls: [String] = ["http://10.0.0.5:18788", "http://100.64.0.1:18788"],
-        secret: String = UplinkTests.secret
+        secret: String = UplinkTests.secret,
+        hintedTiers: [UplinkTier] = [],
+        irohEndpointId: String? = nil
     ) -> UplinkPairing {
         UplinkPairing(
             hostId: "host-1234abcd",
@@ -81,8 +90,30 @@ final class UplinkTests: XCTestCase {
             deviceId: "abc123",
             secret: secret,
             urls: urls,
+            hintedTiers: hintedTiers,
+            irohEndpointId: irohEndpointId,
             issuedAt: 1_700_000_000_000
         )!
+    }
+
+    /// 造一条 `sockaddr`（Bonjour 的地址记录就是这个形状）。
+    private static func sockaddrData(_ address: String) -> Data {
+        var raw = sockaddr_in()
+        raw.sin_family = sa_family_t(AF_INET)
+        raw.sin_port = in_port_t(18788).bigEndian
+        _ = inet_pton(AF_INET, address, &raw.sin_addr)
+        return withUnsafeBytes(of: &raw) { Data($0) }
+    }
+
+    /// 造一条 TXT 记录（长度字节 + 内容）。
+    private static func txtData(_ entries: [String]) -> Data {
+        var data = Data()
+        for entry in entries {
+            let bytes = Data(entry.utf8)
+            data.append(UInt8(bytes.count))
+            data.append(bytes)
+        }
+        return data
     }
 
     // MARK: 档位名（配对串里的 tiers）
@@ -281,12 +312,12 @@ final class UplinkTests: XCTestCase {
             switch tier.kind {
             case .lan:
                 try? await Task.sleep(for: .milliseconds(150))
-                return 150
+                return .reachable(rttMilliseconds: 150)
             case .tailscale:
                 try? await Task.sleep(for: .milliseconds(10))
-                return 10
+                return .reachable(rttMilliseconds: 10)
             default:
-                return nil
+                return .unreachable(.timedOut(milliseconds: 800))
             }
         }
         let (session, store) = makeSession(suite: suite, server: server, probe: probe)
@@ -314,7 +345,9 @@ final class UplinkTests: XCTestCase {
         let probed = NSMutableSet()
         let probe: UplinkSession.Probe = { tier, _ in
             probed.add(tier.kind.rawValue)
-            return tier.kind == .lan ? 300 : 5
+            return tier.kind == .lan
+                ? .reachable(rttMilliseconds: 300)
+                : .reachable(rttMilliseconds: 5)
         }
         let store = UplinkCredentialStore(secrets: EphemeralSecretStore(), defaults: suite)
         let session = UplinkSession(
@@ -342,7 +375,9 @@ final class UplinkTests: XCTestCase {
 
         let server = StubServer([(200, Self.authOK)])
         let probe: UplinkSession.Probe = { tier, _ in
-            tier.kind == .lan ? nil : 7
+            tier.kind == .lan
+                ? .unreachable(.timedOut(milliseconds: 800))
+                : .reachable(rttMilliseconds: 7)
         }
         let store = UplinkCredentialStore(secrets: EphemeralSecretStore(), defaults: suite)
         let session = UplinkSession(
@@ -367,7 +402,9 @@ final class UplinkTests: XCTestCase {
 
         let server = StubServer([(200, Self.authOK)])
         let probe: UplinkSession.Probe = { tier, _ in
-            tier.kind == .lan ? 400 : 3
+            tier.kind == .lan
+                ? .reachable(rttMilliseconds: 400)
+                : .reachable(rttMilliseconds: 3)
         }
         let store = UplinkCredentialStore(secrets: EphemeralSecretStore(), defaults: suite)
         let session = UplinkSession(
@@ -392,7 +429,7 @@ final class UplinkTests: XCTestCase {
         let probed = NSMutableSet()
         let probe: UplinkSession.Probe = { tier, _ in
             probed.add(tier.kind.rawValue)
-            return 5
+            return .reachable(rttMilliseconds: 5)
         }
         let store = UplinkCredentialStore(secrets: EphemeralSecretStore(), defaults: suite)
         let session = UplinkSession(
@@ -412,7 +449,7 @@ final class UplinkTests: XCTestCase {
         let suite = makeSuite()
         defer { suite.removePersistentDomain(forName: suite.description) }
         let server = StubServer([])
-        let probe: UplinkSession.Probe = { _, _ in nil }
+        let probe: UplinkSession.Probe = { _, _ in .unreachable(.timedOut(milliseconds: 800)) }
         let (session, store) = makeSession(suite: suite, server: server, probe: probe)
         store.save(Self.pairing())
 
@@ -429,7 +466,7 @@ final class UplinkTests: XCTestCase {
         let suite = makeSuite()
         defer { suite.removePersistentDomain(forName: suite.description) }
         let server = StubServer([])
-        let probe: UplinkSession.Probe = { _, _ in 1 }
+        let probe: UplinkSession.Probe = { _, _ in .reachable(rttMilliseconds: 1) }
         let (session, _) = makeSession(suite: suite, server: server, probe: probe)
 
         let tier = await session.connect()
@@ -444,7 +481,7 @@ final class UplinkTests: XCTestCase {
         let suite = makeSuite()
         defer { suite.removePersistentDomain(forName: suite.description) }
         let server = StubServer([(200, Self.authOK)])
-        let probe: UplinkSession.Probe = { _, _ in 3 }
+        let probe: UplinkSession.Probe = { _, _ in .reachable(rttMilliseconds: 3) }
         let fixed = Date(timeIntervalSince1970: 1_700_000_000)
         let (session, store) = makeSession(suite: suite, server: server, probe: probe, now: { fixed })
         store.save(Self.pairing())
@@ -474,7 +511,7 @@ final class UplinkTests: XCTestCase {
         let suite = makeSuite()
         defer { suite.removePersistentDomain(forName: suite.description) }
         let server = StubServer([(200, Self.authOK)])
-        let probe: UplinkSession.Probe = { _, _ in 3 }
+        let probe: UplinkSession.Probe = { _, _ in .reachable(rttMilliseconds: 3) }
         let (session, store) = makeSession(suite: suite, server: server, probe: probe)
         store.save(Self.pairing())
 
@@ -493,7 +530,7 @@ final class UplinkTests: XCTestCase {
             (200, Self.authOK),
             (200, #"{"ok":true,"ticket":"ticket-2","ttl":900000}"#),
         ])
-        let probe: UplinkSession.Probe = { _, _ in 3 }
+        let probe: UplinkSession.Probe = { _, _ in .reachable(rttMilliseconds: 3) }
         var clock = Date(timeIntervalSince1970: 1_700_000_000)
         let (session, store) = makeSession(suite: suite, server: server, probe: probe, now: { clock })
         store.save(Self.pairing())
@@ -525,7 +562,7 @@ final class UplinkTests: XCTestCase {
             (200, #"{"ok":true,"ticket":"ticket-2","ttl":900000}"#),   // 重换
             (200, #"{"ok":true}"#),                                    // 重试成功
         ])
-        let probe: UplinkSession.Probe = { _, _ in 3 }
+        let probe: UplinkSession.Probe = { _, _ in .reachable(rttMilliseconds: 3) }
         let (session, store) = makeSession(suite: suite, server: server, probe: probe)
         store.save(Self.pairing())
         let connected = await session.connect()
@@ -552,7 +589,7 @@ final class UplinkTests: XCTestCase {
             (200, #"{"ok":true,"ticket":"ticket-2","ttl":900000}"#),
             (401, #"{"ok":false,"reason":"unknown-device"}"#),
         ])
-        let probe: UplinkSession.Probe = { _, _ in 3 }
+        let probe: UplinkSession.Probe = { _, _ in .reachable(rttMilliseconds: 3) }
         let (session, store) = makeSession(suite: suite, server: server, probe: probe)
         store.save(Self.pairing())
         let connected = await session.connect()
@@ -573,7 +610,7 @@ final class UplinkTests: XCTestCase {
         let suite = makeSuite()
         defer { suite.removePersistentDomain(forName: suite.description) }
         let server = StubServer([(401, #"{"ok":false,"reason":"bad-proof"}"#)])
-        let probe: UplinkSession.Probe = { _, _ in 3 }
+        let probe: UplinkSession.Probe = { _, _ in .reachable(rttMilliseconds: 3) }
         let (session, store) = makeSession(suite: suite, server: server, probe: probe)
         store.save(Self.pairing())
 
@@ -625,7 +662,7 @@ final class UplinkTests: XCTestCase {
         let suite = makeSuite()
         defer { suite.removePersistentDomain(forName: suite.description) }
         let settings = AppSettings(defaults: suite)
-        XCTAssertEqual(settings.transportMode, .remote, "老用户默认仍然是 iroh")
+        XCTAssertEqual(settings.transportMode, .uplink, "全新安装默认「自动（多路接入）」")
         XCTAssertTrue(settings.uplinkEnabledTiers.isEmpty, "空集合 = 全开")
 
         settings.transportMode = .uplink
@@ -650,7 +687,7 @@ final class UplinkTests: XCTestCase {
         settings.transportMode = .uplink
 
         let server = StubServer([(200, Self.authOK)])
-        let probe: UplinkSession.Probe = { _, _ in 3 }
+        let probe: UplinkSession.Probe = { _, _ in .reachable(rttMilliseconds: 3) }
         let store = UplinkCredentialStore(secrets: EphemeralSecretStore(), defaults: suite)
         let uplink = UplinkSession(
             store: store, settings: settings, probe: probe,
@@ -699,7 +736,7 @@ final class UplinkTests: XCTestCase {
         settings.gatewayToken = "should-not-leak"
 
         let server = StubServer([(200, Self.authOK)])
-        let probe: UplinkSession.Probe = { _, _ in 3 }
+        let probe: UplinkSession.Probe = { _, _ in .reachable(rttMilliseconds: 3) }
         let store = UplinkCredentialStore(secrets: EphemeralSecretStore(), defaults: suite)
         let uplink = UplinkSession(
             store: store, settings: settings, probe: probe,
@@ -723,5 +760,526 @@ final class UplinkTests: XCTestCase {
         XCTAssertEqual(base.absoluteString, "http://127.0.0.1:51234")
         let headers = await coordinator.requestHeaders()
         XCTAssertTrue(headers.isEmpty, "走回 iroh 之后票据与网关令牌都不该带上")
+    }
+
+    // MARK: Bonjour 发现（纯逻辑）
+
+    /// 一条 SRV 可能对应多条 A 记录（Wi-Fi + Tailscale + 虚拟网桥）。
+    /// 只取第一条等于自己扔掉备选 —— 手机经常是"Wi-Fi 通、Tailscale 也通"。
+    func testSockaddrParsingYieldsEveryIPv4() {
+        let blobs = [
+            Self.sockaddrData("10.8.54.221"),
+            Self.sockaddrData("100.64.0.9"),
+            Self.sockaddrData("127.0.0.1"),        // 回环：从手机看永远指自己，丢掉
+            Data([0x01, 0x02]),                    // 太短，不是 sockaddr
+        ]
+        let addresses = UplinkBonjour.ipv4Addresses(from: blobs)
+        XCTAssertEqual(addresses, ["10.8.54.221", "100.64.0.9"])
+        XCTAssertEqual(UplinkBonjour.tiers(addresses: addresses, port: 18788).map(\.kind), [.lan, .tailscale])
+    }
+
+    func testTXTRecordParsing() {
+        let txt = Self.txtData(["id=abc123", "port=18788", "v=0.3.0"])
+        let parsed = UplinkBonjour.parseTXT(txt)
+        XCTAssertEqual(parsed["id"], "abc123", "id 是唯一能把广播对上\"我配对的是哪台电脑\"的字段")
+        XCTAssertEqual(parsed["port"], "18788")
+        XCTAssertEqual(parsed["v"], "0.3.0")
+        XCTAssertTrue(UplinkBonjour.parseTXT(Data()).isEmpty)
+    }
+
+    func testTiersNeedUsablePort() {
+        XCTAssertTrue(UplinkBonjour.tiers(addresses: ["10.0.0.5"], port: 0).isEmpty)
+        XCTAssertTrue(UplinkBonjour.tiers(addresses: ["10.0.0.5"], port: 70000).isEmpty)
+        XCTAssertEqual(UplinkBonjour.tiers(addresses: ["10.0.0.5"], port: 18788).first?.url.absoluteString,
+                       "http://10.0.0.5:18788")
+    }
+
+    /// `getaddrinfo` 这条只做"回环会被过滤"的断言：它不依赖任何网络，
+    /// 而"真能解析出多 IP"要靠真实 mDNS 应答，CI 里没有。
+    func testResolveHostFiltersLoopback() {
+        XCTAssertTrue(UplinkBonjour.resolve(hostName: "localhost").isEmpty,
+                      "回环地址不该进候选：从手机看 127.0.0.1 永远指自己")
+    }
+
+    func testMergeDedupesByNormalizedURL() throws {
+        let a = try XCTUnwrap(UplinkTier(urlString: "http://10.0.0.5:18788"))
+        let duplicate = try XCTUnwrap(UplinkTier(urlString: "http://10.0.0.5:18788/"))
+        let other = try XCTUnwrap(UplinkTier(urlString: "http://192.168.1.9:18788"))
+        let merged = UplinkBonjour.merge([a], [duplicate, other])
+        XCTAssertEqual(merged.count, 2, "同一个地址（只差结尾斜杠）只能留一条")
+        XCTAssertEqual(merged.first?.kind, a.kind, "先来的那条带着更可信的 kind，要留住")
+    }
+
+    // MARK: 探测失败原因
+
+    func testURLErrorMapping() {
+        XCTAssertEqual(UplinkProbeFailure(urlError: URLError(.timedOut), milliseconds: 832),
+                       .timedOut(milliseconds: 832))
+        XCTAssertEqual(UplinkProbeFailure(urlError: URLError(.cannotConnectToHost), milliseconds: 12),
+                       .refused(milliseconds: 12))
+        XCTAssertEqual(UplinkProbeFailure(urlError: URLError(.notConnectedToInternet), milliseconds: 3),
+                       .offline(milliseconds: 3))
+        XCTAssertEqual(UplinkProbeFailure(urlError: URLError(.networkConnectionLost), milliseconds: 4),
+                       .offline(milliseconds: 4))
+        XCTAssertEqual(UplinkProbeFailure(urlError: URLError(.cannotFindHost), milliseconds: 5),
+                       .unknownHost(milliseconds: 5))
+        XCTAssertEqual(UplinkProbeFailure(urlError: URLError(.badServerResponse), milliseconds: 7).category, .other)
+    }
+
+    func testFailureLogLabelIsStableAndNotLocalized() {
+        // 日志里要能直接 grep 出 URLError 的语义（翻译过反而对不上系统日志）。
+        XCTAssertEqual(UplinkProbeFailure.timedOut(milliseconds: 832).logLabel, "timedOut(832ms)")
+        XCTAssertEqual(UplinkProbeFailure.refused(milliseconds: 12).logLabel, "refused(12ms)")
+        XCTAssertEqual(UplinkProbeFailure.hostMismatch(milliseconds: 5).category, .mismatch)
+    }
+
+    func testFailureSummaryPicksTheMostActionableCategory() {
+        let timeout = UplinkProbeFailure.summary(for: [.timedOut(milliseconds: 800)])
+        let refused = UplinkProbeFailure.summary(for: [.refused(milliseconds: 10)])
+        let offline = UplinkProbeFailure.summary(for: [.offline(milliseconds: 2)])
+        // 三类成因的文案必须互不相同 —— 糊成一句就等于什么都没说。
+        XCTAssertNotEqual(timeout, refused)
+        XCTAssertNotEqual(refused, offline)
+        // 没网能解释其余一切：优先级最高（文案里带条数，所以用同样两条来比）。
+        XCTAssertEqual(
+            UplinkProbeFailure.summary(for: [.timedOut(milliseconds: 800), .offline(milliseconds: 2)]),
+            UplinkProbeFailure.summary(for: [.offline(milliseconds: 2), .offline(milliseconds: 9)])
+        )
+        // 超时比"被拒"更可能是根因（被拒说明地址是通的）。
+        XCTAssertEqual(
+            UplinkProbeFailure.summary(for: [.timedOut(milliseconds: 800), .refused(milliseconds: 10)]),
+            UplinkProbeFailure.summary(for: [.timedOut(milliseconds: 800), .timedOut(milliseconds: 801)])
+        )
+        XCTAssertFalse(UplinkProbeFailure.summary(for: []).isEmpty)
+    }
+
+    // MARK: 网络类型（蜂窝跳过局域网）
+
+    /// 真机 0.5.0 的事故形状：手机只有 5G，配对串里只有一个私有地址。
+    /// 正确行为是**立刻说清楚**，而不是探 800ms 再报一句"都失败了"。
+    @MainActor
+    func testCellularSkipsLanTiersWithoutProbing() async {
+        let suite = makeSuite()
+        defer { suite.removePersistentDomain(forName: suite.description) }
+        let counter = Counter()
+        let probe: UplinkSession.Probe = { _, _ in
+            counter.count += 1
+            return .reachable(rttMilliseconds: 5)
+        }
+        let (session, store) = makeSession(
+            suite: suite, server: StubServer([]), probe: probe, network: .cellular
+        )
+        store.save(Self.pairing(urls: ["http://10.8.54.221:18788"]))
+
+        let tier = await session.connect()
+        XCTAssertNil(tier)
+        XCTAssertEqual(counter.count, 0, "蜂窝下探私有地址是纯粹的白等，一个包都不该发")
+        XCTAssertEqual(session.lastError, UplinkSession.noUsableTierMessage(for: .cellular, skipped: 1))
+        XCTAssertTrue(session.lastError?.contains("iroh") == true, "文案要指出缺的是 iroh / Tailscale / 自建中转")
+    }
+
+    @MainActor
+    func testCellularStillProbesTailscaleAndRelay() async throws {
+        let suite = makeSuite()
+        defer { suite.removePersistentDomain(forName: suite.description) }
+        let server = StubServer([(200, Self.authOK)])
+        var probed: [UplinkTierKind] = []
+        let probe: UplinkSession.Probe = { tier, _ in
+            probed.append(tier.kind)
+            return .reachable(rttMilliseconds: 5)
+        }
+        let (session, store) = makeSession(
+            suite: suite, server: server, probe: probe, network: .cellular
+        )
+        store.save(Self.pairing(urls: ["http://10.8.54.221:18788", "http://100.64.0.1:18788"]))
+
+        let connected = await session.connect()
+        let tier = try XCTUnwrap(connected)
+        XCTAssertEqual(tier.kind, .tailscale, "Tailscale 走自己的隧道，蜂窝下照样能连")
+        XCTAssertFalse(probed.contains(.lan), "局域网档仍然要被跳过")
+    }
+
+    @MainActor
+    func testCellularSkipsBonjourDiscovery() async {
+        let suite = makeSuite()
+        defer { suite.removePersistentDomain(forName: suite.description) }
+        let counter = Counter()
+        let probe: UplinkSession.Probe = { _, _ in .unreachable(.timedOut(milliseconds: 800)) }
+        let (session, store) = makeSession(
+            suite: suite,
+            server: StubServer([]),
+            probe: probe,
+            discover: { _ in counter.count += 1; return [] },
+            network: .cellular
+        )
+        store.save(Self.pairing(urls: ["http://100.64.0.1:18788"]))
+
+        _ = await session.connect()
+        XCTAssertEqual(counter.count, 0, "mDNS 只在链路本地有意义，蜂窝下发现等于白等 1.5 秒")
+    }
+
+    // MARK: Bonjour 兜底探测
+
+    @MainActor
+    func testDiscoveryRunsAfterSnapshotFailsAndPersists() async throws {
+        let suite = makeSuite()
+        defer { suite.removePersistentDomain(forName: suite.description) }
+        let discovered = "http://192.168.1.50:18788"
+        let server = StubServer([(200, Self.authOK)])
+        let probe: UplinkSession.Probe = { tier, _ in
+            tier.url.absoluteString == discovered
+                ? .reachable(rttMilliseconds: 4)
+                : .unreachable(.timedOut(milliseconds: 800))
+        }
+        let (session, store) = makeSession(
+            suite: suite,
+            server: server,
+            probe: probe,
+            discover: { _ in [UplinkTier(kind: .lan, url: URL(string: discovered)!)] }
+        )
+        store.save(Self.pairing(urls: ["http://10.8.54.221:18788"]))
+
+        let connected = await session.connect()
+        let tier = try XCTUnwrap(connected)
+        XCTAssertEqual(tier.url.absoluteString, discovered, "快照地址死了就该用发现到的地址")
+        XCTAssertEqual(session.baseURL?.absoluteString, discovered)
+        // 回写配对材料：下次启动不用再发现一次。
+        XCTAssertEqual(store.loadPairing()?.urls.contains(discovered), true)
+        XCTAssertEqual(store.loadDiscovered()?.tiers.first?.url.absoluteString, discovered)
+    }
+
+    @MainActor
+    func testDiscoveryIsNotRunWhenSnapshotAlreadyWorks() async throws {
+        let suite = makeSuite()
+        defer { suite.removePersistentDomain(forName: suite.description) }
+        let counter = Counter()
+        let (session, store) = makeSession(
+            suite: suite,
+            server: StubServer([(200, Self.authOK)]),
+            probe: { _, _ in .reachable(rttMilliseconds: 3) },
+            discover: { _ in counter.count += 1; return [] }
+        )
+        store.save(Self.pairing())
+
+        let connected = await session.connect()
+        XCTAssertNotNil(connected)
+        XCTAssertEqual(counter.count, 0, "能连上就别去打扰 mDNS")
+    }
+
+    @MainActor
+    func testDiscoveredAddressesAreCandidatesNextTime() async throws {
+        let suite = makeSuite()
+        defer { suite.removePersistentDomain(forName: suite.description) }
+        let store = UplinkCredentialStore(secrets: EphemeralSecretStore(), defaults: suite)
+        let url = try XCTUnwrap(URL(string: "http://192.168.1.77:18788"))
+        store.save(Self.pairing(urls: []))
+        store.saveDiscovered([UplinkTier(kind: .lan, url: url)], at: Date())
+
+        let (session, _) = makeSession(
+            suite: suite,
+            server: StubServer([(200, Self.authOK)]),
+            probe: { _, _ in .reachable(rttMilliseconds: 2) },
+            store: store
+        )
+        let connected = await session.connect()
+        XCTAssertNotNil(connected, "连不上：\(session.lastError ?? "—")")
+        let tier = try XCTUnwrap(connected)
+        XCTAssertEqual(tier.url.absoluteString, url.absoluteString,
+                       "上次发现到的地址在有效期内要直接当候选，不用再发现一次")
+    }
+
+    // MARK: iroh 配对窗口
+
+    func testIrohPairingStringParsing() throws {
+        let issued = try XCTUnwrap(UplinkIrohPairing(
+            pairingString: "cc8a1078aabbccdd#741231", endpointId: "cc8a1078aabbccdd", expiresInSec: 600
+        ))
+        XCTAssertEqual(issued.endpointId, "cc8a1078aabbccdd")
+        XCTAssertEqual(issued.code, "741231")
+        XCTAssertEqual(issued.expiresInSec, 600)
+
+        XCTAssertNil(UplinkIrohPairing(pairingString: "no-separator", endpointId: nil, expiresInSec: 0))
+        XCTAssertNil(UplinkIrohPairing(pairingString: "abc#", endpointId: nil, expiresInSec: 0))
+        // endpointId 字段和串里的对不上：宁可不信，也别拿一个连不上的组合去白试。
+        XCTAssertNil(UplinkIrohPairing(pairingString: "abc#123456", endpointId: "def", expiresInSec: 600))
+    }
+
+    @MainActor
+    func testRequestIrohPairingUsesTicket() async throws {
+        let suite = makeSuite()
+        defer { suite.removePersistentDomain(forName: suite.description) }
+        let server = StubServer([
+            (200, Self.authOK),
+            (200, #"{"ok":true,"endpointId":"cc8a1078","pairingString":"cc8a1078#741231","expiresInSec":600}"#),
+        ])
+        let (session, store) = makeSession(
+            suite: suite, server: server, probe: { _, _ in .reachable(rttMilliseconds: 3) }
+        )
+        store.save(Self.pairing())
+        let connected = await session.connect()
+        XCTAssertNotNil(connected)
+
+        let issued = try await session.requestIrohPairing()
+        XCTAssertEqual(issued.endpointId, "cc8a1078")
+        XCTAssertEqual(issued.code, "741231")
+
+        let request = try XCTUnwrap(server.requests.last)
+        XCTAssertEqual(request.url?.path, "/uplink/iroh-pairing")
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer ticket-1",
+                       "这条路由要票：票据是唯一的凭据")
+    }
+
+    @MainActor
+    func testRequestIrohPairingWithoutTicketFails() async {
+        let suite = makeSuite()
+        defer { suite.removePersistentDomain(forName: suite.description) }
+        let (session, store) = makeSession(
+            suite: suite, server: StubServer([]), probe: { _, _ in .reachable(rttMilliseconds: 3) }
+        )
+        store.save(Self.pairing())
+        do {
+            _ = try await session.requestIrohPairing()
+            XCTFail("没有票就不该能换到配对码")
+        } catch let error as UplinkIrohPairingError {
+            XCTAssertEqual(error, .noTicket)
+        } catch {
+            XCTFail("错误的错误类型：\(error)")
+        }
+    }
+
+    @MainActor
+    func testRequestIrohPairingUnavailableOn503() async throws {
+        let suite = makeSuite()
+        defer { suite.removePersistentDomain(forName: suite.description) }
+        let server = StubServer([
+            (200, Self.authOK),
+            (503, #"{"ok":false,"reason":"iroh-unavailable"}"#),
+        ])
+        let (session, store) = makeSession(
+            suite: suite, server: server, probe: { _, _ in .reachable(rttMilliseconds: 3) }
+        )
+        store.save(Self.pairing())
+        let connected = await session.connect()
+        XCTAssertNotNil(connected)
+        do {
+            _ = try await session.requestIrohPairing()
+            XCTFail("503 要当成「这一档不可用」")
+        } catch let error as UplinkIrohPairingError {
+            XCTAssertEqual(error, .unavailable)
+        }
+    }
+
+    // MARK: iroh 兜底编排
+
+    /// 主路：配对串里带着码 → 第一次连就把码带上，成了就再也不请求那条路由。
+    ///
+    /// 这是死锁修复的核心：配对走 iroh 通道本身，**不需要任何 HTTP 请求**，
+    /// 所以 5G + 局域网完全不可达也能配上。
+    @MainActor
+    func testIrohFallbackUsesPairingCodeWithoutAnyHTTP() async throws {
+        var calls: [(String, String?)] = []
+        var pairingRequests = 0
+        let outcome = await UplinkIrohFallback.run(
+            endpointId: "cc8a1078",
+            pairingCode: "741231",
+            connect: { host, code in
+                calls.append((host, code))
+                return .connected
+            },
+            requestPairing: { pairingRequests += 1; return .failure(.noTicket) }
+        )
+        XCTAssertEqual(outcome, .connected)
+        XCTAssertEqual(calls.count, 1)
+        XCTAssertEqual(calls[0].0, "cc8a1078")
+        XCTAssertEqual(calls[0].1, "741231", "配对串里的码要直接用上")
+        XCTAssertEqual(pairingRequests, 0, "配上了就别再请求 /uplink/iroh-pairing")
+    }
+
+    /// 没有码、也没有票（网关全不可达）→ 如实说"需要配对但没有票"，不假装在重试。
+    @MainActor
+    func testIrohFallbackWithoutCodeOrTicket() async {
+        var calls = 0
+        let outcome = await UplinkIrohFallback.run(
+            endpointId: "cc8a1078",
+            pairingCode: nil,
+            connect: { _, _ in calls += 1; return .needsPairing("还没有和这台电脑配对") },
+            requestPairing: { .failure(.noTicket) }
+        )
+        XCTAssertEqual(outcome, .needsPairingWithoutTicket)
+        XCTAssertEqual(calls, 1, "只连一次：没有码就没有第二次可试的")
+    }
+
+    /// 带了码却被拒（窗口过期）+ 网关不可达 → **明确报"码过期"**，不静默重试。
+    @MainActor
+    func testIrohFallbackReportsExpiredCode() async {
+        var calls = 0
+        var pairingRequests = 0
+        let outcome = await UplinkIrohFallback.run(
+            endpointId: "cc8a1078",
+            pairingCode: "111111",
+            connect: { _, _ in calls += 1; return .codeRejected("配对窗口已过期。") },
+            requestPairing: { pairingRequests += 1; return .failure(.noTicket) }
+        )
+        XCTAssertEqual(outcome, .pairingCodeExpired)
+        XCTAssertEqual(calls, 1, "过期的码不要再试第二遍")
+        XCTAssertEqual(pairingRequests, 1, "先问一次能不能刷新（有票就能刷新，没票才报过期）")
+    }
+
+    /// 码被拒但网关可达 → 用票据刷新一次，拿到新码再连。
+    @MainActor
+    func testIrohFallbackRefreshesCodeWhenGatewayReachable() async throws {
+        var calls: [(String, String?)] = []
+        let outcome = await UplinkIrohFallback.run(
+            endpointId: "old",
+            pairingCode: "111111",
+            connect: { host, code in
+                calls.append((host, code))
+                return code == "111111" ? .codeRejected("bad-code") : .connected
+            },
+            requestPairing: {
+                .success(UplinkIrohPairing(
+                    pairingString: "cc8a1078#741231", endpointId: "cc8a1078", expiresInSec: 600
+                )!)
+            }
+        )
+        XCTAssertEqual(outcome, .connected)
+        XCTAssertEqual(calls.count, 2)
+        XCTAssertEqual(calls[1].0, "cc8a1078", "第二次要用电脑端给的 endpointId")
+        XCTAssertEqual(calls[1].1, "741231")
+    }
+
+    @MainActor
+    func testIrohFallbackSkipsPairingWhenAlreadyPaired() async {
+        var calls = 0
+        var pairingRequests = 0
+        let outcome = await UplinkIrohFallback.run(
+            endpointId: "known",
+            pairingCode: nil,
+            connect: { _, code in
+                calls += 1
+                XCTAssertNil(code, "已配对时不该带配对码（电脑端会判成协议错误）")
+                return .connected
+            },
+            requestPairing: { pairingRequests += 1; return .failure(.noTicket) }
+        )
+        XCTAssertEqual(outcome, .connected)
+        XCTAssertEqual(calls, 1)
+        XCTAssertEqual(pairingRequests, 0, "已经配对过就不要再请求这条路由")
+    }
+
+    @MainActor
+    func testIrohFallbackStopsOn503() async {
+        var calls = 0
+        let outcome = await UplinkIrohFallback.run(
+            endpointId: "old",
+            pairingCode: "111111",
+            connect: { _, _ in calls += 1; return .codeRejected("bad-code") },
+            requestPairing: { .failure(.unavailable) }
+        )
+        XCTAssertEqual(outcome, .unavailable)
+        XCTAssertEqual(calls, 1, "503 = 电脑端没跑 iroh 档，不重试")
+    }
+
+    @MainActor
+    func testIrohFallbackDoesNotPairOnNetworkFailure() async {
+        var calls = 0
+        var pairingRequests = 0
+        let outcome = await UplinkIrohFallback.run(
+            endpointId: "old",
+            pairingCode: "111111",
+            connect: { _, _ in calls += 1; return .failed("连接失败：超时") },
+            requestPairing: { pairingRequests += 1; return .failure(.noTicket) }
+        )
+        XCTAssertEqual(outcome, .failed("连接失败：超时"))
+        XCTAssertEqual(calls, 1)
+        XCTAssertEqual(pairingRequests, 0, "网络类失败换配对码也没用，别去骚扰电脑端")
+    }
+
+    // MARK: 配对码的有效期
+
+    func testPairingCodeExpiry() throws {
+        let now = Date(timeIntervalSince1970: 1_792_000_000)
+        let fresh = try XCTUnwrap(UplinkPairing(
+            hostId: "h", name: "n", port: 18788, deviceId: "d", secret: Self.secret,
+            urls: [], irohEndpointId: "cc8a1078", irohCode: "123456",
+            irohExpiresAt: Int64(now.addingTimeInterval(300).timeIntervalSince1970 * 1000),
+            issuedAt: 1
+        ))
+        XCTAssertFalse(fresh.irohCodeExpired(now: now))
+        XCTAssertTrue(fresh.canPairIroh(now: now))
+
+        let stale = try XCTUnwrap(UplinkPairing(
+            hostId: "h", name: "n", port: 18788, deviceId: "d", secret: Self.secret,
+            urls: [], irohEndpointId: "cc8a1078", irohCode: "123456",
+            irohExpiresAt: Int64(now.addingTimeInterval(-1).timeIntervalSince1970 * 1000),
+            issuedAt: 1
+        ))
+        XCTAssertTrue(stale.irohCodeExpired(now: now))
+        XCTAssertFalse(stale.canPairIroh(now: now), "过期的码不能拿去试：电脑端会记一次失败")
+
+        // 没有 expiresAt 的老配对串：按"未过期"处理，试一次才知道行不行。
+        let legacy = try XCTUnwrap(UplinkPairing(
+            hostId: "h", name: "n", port: 18788, deviceId: "d", secret: Self.secret,
+            urls: [], irohEndpointId: "cc8a1078", irohCode: "123456", issuedAt: 1
+        ))
+        XCTAssertFalse(legacy.irohCodeExpired(now: now))
+    }
+
+    func testPairingCarriesIrohCodeThroughEncodeDecode() throws {
+        let original = try XCTUnwrap(UplinkPairing(
+            hostId: "host-1", name: "Mac", port: 18788, deviceId: "d", secret: Self.secret,
+            urls: [], irohEndpointId: "cc8a1078aabb", irohRelay: "https://relay.example",
+            irohCode: "741231", irohExpiresAt: 1_792_670_400_000, issuedAt: 1
+        ))
+        let parsed = try XCTUnwrap(UplinkPairing.parse(original.encodedString()))
+        XCTAssertEqual(parsed.irohEndpointId, "cc8a1078aabb")
+        XCTAssertEqual(parsed.irohCode, "741231", "码必须跟着配对串走 —— 否则 iroh 兜底又回到死锁")
+        XCTAssertEqual(parsed.irohExpiresAt, 1_792_670_400_000)
+        XCTAssertEqual(parsed.irohRelay, "https://relay.example")
+    }
+
+    // MARK: iroh endpoint 的来源
+
+    @MainActor
+    func testIrohHostIdPrefersPairingEndpoint() {
+        let pairing = Self.pairing(irohEndpointId: "pairing-endpoint")
+        XCTAssertEqual(AppModel.irohHostId(pairing: pairing, activeHostId: "stale-endpoint"),
+                       "pairing-endpoint",
+                       "配对串里的 endpointId 才是这台电脑现在的身份")
+        XCTAssertEqual(AppModel.irohHostId(pairing: nil, activeHostId: "stale-endpoint"), "stale-endpoint",
+                       "没有配对串信息时才退回上次配对的身份")
+        XCTAssertNil(AppModel.irohHostId(pairing: nil, activeHostId: "  "))
+        XCTAssertEqual(AppModel.irohHostId(pairing: Self.pairing(irohEndpointId: ""), activeHostId: "old"),
+                       "old", "空的 endpointId 不能顶掉有效值")
+    }
+
+    @MainActor
+    func testCredentialStorePersistsTiersAndIrohEndpoint() throws {
+        let suite = makeSuite()
+        defer { suite.removePersistentDomain(forName: suite.description) }
+        let store = UplinkCredentialStore(secrets: EphemeralSecretStore(), defaults: suite)
+        let url = try XCTUnwrap(URL(string: "http://10.147.20.5:18788"))
+        store.save(Self.pairing(
+            urls: [url.absoluteString],
+            hintedTiers: [UplinkTier(kind: .zerotier, url: url)],
+            irohEndpointId: "cc8a1078"
+        ))
+
+        let loaded = try XCTUnwrap(store.loadPairing())
+        XCTAssertEqual(loaded.hintedTiers.first?.kind, .zerotier,
+                       "kind 必须持久化，否则重启后 ZeroTier 会被重新猜成局域网")
+        XCTAssertEqual(loaded.irohEndpointId, "cc8a1078",
+                       "iroh endpoint 必须持久化，否则降级时只能退回那个已失效的旧身份")
+    }
+}
+
+/// 计数盒子：`@Sendable` 闭包里改可变状态用（Swift 并发下不能用裸 `var`）。
+private final class Counter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage = 0
+    var count: Int {
+        get { lock.lock(); defer { lock.unlock() }; return storage }
+        set { lock.lock(); storage = newValue; lock.unlock() }
     }
 }

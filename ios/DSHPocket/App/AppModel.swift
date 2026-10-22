@@ -314,6 +314,9 @@ public final class AppModel {
         }
         startTransportSupervisor()
         startConnectionWatchdog()
+        // 多路接入要先知道"现在是什么网络"，否则蜂窝下会去探私有地址白等 800ms
+        //（真机 0.5.0：手机只有 5G，日志里全是超时，电脑侧零包）。
+        uplink.startNetworkMonitoring()
 
         if !needsConnect {
             // 直连网关：不需要 iroh，直接就能用。
@@ -451,6 +454,8 @@ public final class AppModel {
     /// iroh 建连（原来的 `connect`，逻辑一行没改）。
     @discardableResult
     private func connectIroh(hostId: String, pairingCode: String?, silent: Bool) async -> String? {
+        lastIrohNeedsPairing = false
+        lastIrohCodeRejected = false
         // 重入保护：一次只允许一条连接在建立。电脑端同一身份只接受一条连接，
         // 并发建连会把彼此顶掉。
         guard !isConnecting else { return String(localized: "上一次连接还在进行中") }
@@ -541,6 +546,20 @@ public final class AppModel {
             return nil
         } catch {
             let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            // "这台电脑不认识我们"与"网络不通"必须分开：前者能靠自动换一张配对码救回来，
+            // 后者换多少次都没用（而且电脑端对失败有限流）。判据只看错误类型，不猜文案。
+            if let tetherError = error as? TetherError {
+                switch tetherError {
+                case .notPaired:
+                    // 主机簿里没有这台电脑：需要一张配对码。
+                    lastIrohNeedsPairing = true
+                case .pairingFailed:
+                    // 带了码但被拒（窗口过期 / 码不对 / 错太多次）：同一个码再试没用。
+                    lastIrohCodeRejected = true
+                default:
+                    break
+                }
+            }
             // 被自己取消（退到后台、或被新连接顶掉）不是失败：不写失败态、不计数、不提示。
             if (error as? TetherError)?.policy == .cancelled {
                 lastConnectCancelled = true
@@ -588,12 +607,7 @@ public final class AppModel {
             logs.log(.warning, "多路接入不可用（\(Self.brief(reason))），降级 iroh")
             // 降级前把 uplink 的基址清掉：否则票据会跟着 iroh 的本地代理发出去。
             coordinator.setUplinkBaseURL(nil)
-            guard let fallback = settings.activeHostId, !fallback.isEmpty else {
-                // 连 iroh 都没配过 —— 如实报错，别假装在重试。
-                setConnection(.failed(reason))
-                return reason
-            }
-            return await connectIroh(hostId: fallback, pairingCode: nil, silent: silent)
+            return await fallbackToIroh(reason: reason, silent: silent)
         }
 
         coordinator.setUplinkBaseURL(tier.url)
@@ -601,6 +615,110 @@ public final class AppModel {
         // 这一行是排查"到底走了哪条路"的唯一入口（用户报障时先看它）。
         logs.log(.info, "传输档位=\(tier.kind.rawValue)（\(tier.url.absoluteString)），探测+换票用时 \(elapsed)ms")
         await activateClient(modeLabel: String(localized: "多路接入"))
+        return nil
+    }
+
+    /// 多路接入不可用之后的 iroh 兜底：**先直连，需要配对码时自动换一张再连**。
+    ///
+    /// 电脑侧有 `POST /uplink/iroh-pairing` 之后这件事才算自动化：以前用户必须
+    /// "去电脑上打开连接手机、抄 6 位码"，而手机上根本没有那个入口。
+    ///
+    /// 三条边界（都有单测，见 `UplinkIrohFallback`）：
+    ///   · 网络类失败**不**去换配对码（换了也连不上，还会撞上电脑端限流）；
+    ///   · 503 表示电脑端没跑 iroh 档 —— 这一档不可用，**不重试**；
+    ///   · 手上没有票据就换不到配对码 —— 如实报错，不假装在重试。
+    private func fallbackToIroh(reason: String, silent: Bool) async -> String? {
+        let pairing = uplink.pairing
+        guard let endpoint = Self.irohHostId(pairing: pairing, activeHostId: settings.activeHostId) else {
+            // 连 iroh 都没配过 —— 如实报错，别假装在重试。
+            setConnection(.failed(reason))
+            return reason
+        }
+        let source = pairing?.irohEndpointId == endpoint ? "pairing" : "cached"
+        logs.log(.info, "降级 iroh：endpointId=\(endpoint.prefix(16))…（来源：\(source)）")
+
+        // 码已经过期、iroh 又没配上：**不要再拿它去撞电脑端**（会记一次失败），
+        // 直接说清楚用户该做什么。这是"如实报错、不假装在重试"的具体落点。
+        if irohPairedEndpoint != endpoint, pairing?.irohCodeExpired(now: Date()) == true {
+            logs.log(.warning, "iroh 配对码已过期（endpointId=\(endpoint.prefix(16))…），需要重新生成配对串")
+            setConnection(.failed(Self.pairingCodeExpiredMessage))
+            return Self.pairingCodeExpiredMessage
+        }
+
+        let outcome = await UplinkIrohFallback.run(
+            endpointId: endpoint,
+            // 配对串里带的码（已经配过就不带：对已配对的电脑发 pair 会被判成协议错误）。
+            pairingCode: irohPairedEndpoint == endpoint ? nil : pairing?.irohCode,
+            connect: { [weak self] hostId, code in
+                guard let self else { return .failed(reason) }
+                guard let failure = await self.connectIroh(
+                    hostId: hostId, pairingCode: code, silent: silent
+                ) else { return .connected }
+                // `connectIroh` 已经把失败类型判好了（按错误类型，不猜文案）。
+                if self.lastIrohCodeRejected { return .codeRejected(failure) }
+                if self.lastIrohNeedsPairing { return .needsPairing(failure) }
+                return .failed(failure)
+            },
+            requestPairing: { [weak self] in
+                guard let self else { return .failure(.noTicket) }
+                // 没有可达的基址就没有票，也就换不到配对码。
+                guard self.uplink.baseURL != nil else { return .failure(.noTicket) }
+                do {
+                    return .success(try await self.uplink.requestIrohPairing())
+                } catch let error as UplinkIrohPairingError {
+                    return .failure(error)
+                } catch {
+                    return .failure(.failed((error as? LocalizedError)?.errorDescription ?? error.localizedDescription))
+                }
+            }
+        )
+
+        switch outcome {
+        case .connected:
+            irohPairedEndpoint = endpoint
+            logs.log(.info, "iroh 兜底已连上")
+            return nil
+        case .unavailable:
+            logs.log(.warning, "iroh 兜底不可用（电脑端没跑 iroh 档），不再重试")
+            setConnection(.failed(reason))
+            return reason
+        case .pairingCodeExpired:
+            // 串里带过码却被拒 + 网关也不可达 → 这个码只能作废。
+            // **不要静默重试**：电脑端会记失败次数，用户也永远不知道该干什么。
+            logs.log(.warning, "iroh 配对码已过期，且网关不可达 —— 需要用户重新生成配对串")
+            setConnection(.failed(Self.pairingCodeExpiredMessage))
+            return Self.pairingCodeExpiredMessage
+        case .needsPairingWithoutTicket:
+            let message = UplinkIrohPairingError.noTicket.errorDescription
+                ?? String(localized: "换不到 iroh 配对码")
+            logs.log(.warning, "iroh 兜底需要配对码，但手上没有可用票据（一个地址都不通）")
+            setConnection(.failed(message))
+            return message
+        case .failed(let message):
+            setConnection(.failed(message))
+            return message
+        }
+    }
+
+    /// "码过期了，去重新生成配对串"这句话只有一处定义 —— 两个分支必须说同一句话，
+    /// 否则用户在不同路径上看到两种说法。
+    static let pairingCodeExpiredMessage = String(localized: "配对码已过期。请在电脑上重新生成配对串（电脑端的「连接手机」里点一次生成），然后重新粘贴。")
+
+    /// 多路接入降级到 iroh 时用哪个 endpointId。
+    ///
+    /// **配对串里的 `iroh.endpointId` 优先**。`settings.activeHostId` 是上一次
+    /// tether 配对留下的旧身份，电脑端重装/换机/清过配对数据之后它就不存在了 ——
+    /// 继续用它就是每轮白等 15 秒超时（真机日志里"降级 iroh 之后一直连不上"就是这个）。
+    ///
+    /// 反过来也成立：用「添加电脑 + 粘贴配对串」做过 iroh 配对之后，
+    /// `activeHostId` 会被写成那个正确的 endpoint，此时两条来源是同一个值。
+    static func irohHostId(pairing: UplinkPairing?, activeHostId: String?) -> String? {
+        if let endpoint = pairing?.irohEndpointId, !endpoint.isEmpty {
+            return endpoint
+        }
+        if let active = activeHostId?.trimmingCharacters(in: .whitespacesAndNewlines), !active.isEmpty {
+            return active
+        }
         return nil
     }
 
@@ -613,6 +731,13 @@ public final class AppModel {
     }
 
     private var isConnecting = false
+    /// 上一次 `connectIroh` 的失败是不是"需要配对码"那一类
+    /// （`TetherError.notPaired` / `.pairingFailed`）。自动换配对码靠它决定要不要走。
+    private(set) var lastIrohNeedsPairing = false
+    /// 上一次 `connectIroh` 的失败是不是"带了码但被拒"（窗口过期 / 码不对）。
+    private(set) var lastIrohCodeRejected = false
+    /// 已经确认配过对的 iroh endpoint（诊断页与"还要不要带码"都看它）。
+    private(set) var irohPairedEndpoint: String?
     /// 上一次 `connect()` 是不是**被我们自己取消**的。
     ///
     /// 不用"把返回的错误文案和「连接已取消」比字符串"那种写法：文案是本地化的，
@@ -746,8 +871,37 @@ public final class AppModel {
         }
         uplinkPairing = pairing
         settings.transportMode = .uplink
+        // **趁码还新鲜，先把 iroh 配上。** 这一步走 iroh 通道本身，不发任何 HTTP 请求 ——
+        // 5G、局域网完全不可达也能成。它也是"一个配对串搞定全部"的关键：
+        // iroh 是网关档全挂时的兜底，不能反过来依赖网关才拿得到码。
+        await pairIrohFromPairing(pairing)
+        // 然后才按优先级探网关：通就用网关（快），不通就用刚配好的 iroh。
         await activateConfiguredTransport()
         return nil
+    }
+
+    /// 用配对串里带的码把 iroh 配上（幂等：已经配过就直接记下来）。
+    ///
+    /// 失败**不抛**也不阻断配对流程：码过期/电脑没跑 iroh 都只影响兜底，
+    /// 网关那条路照走。
+    private func pairIrohFromPairing(_ pairing: UplinkPairing) async {
+        guard let endpoint = pairing.irohEndpointId else { return }
+        if await tether.isPaired(hostId: endpoint) {
+            irohPairedEndpoint = endpoint
+            return
+        }
+        guard let code = pairing.irohCode else { return }
+        guard !pairing.irohCodeExpired(now: Date()) else {
+            logs.log(.warning, "配对串里的 iroh 配对码已过期，无法自动配 iroh")
+            return
+        }
+        logs.log(.info, "用配对串里的码配 iroh：endpointId=\(endpoint.prefix(16))…")
+        if let failure = await connectIroh(hostId: endpoint, pairingCode: code, silent: true) {
+            logs.log(.warning, "iroh 配对失败：\(Self.brief(failure))")
+        } else {
+            irohPairedEndpoint = endpoint
+            logs.log(.info, "iroh 已配对：\(endpoint.prefix(16))…")
+        }
     }
 
     /// 忘掉已配对的多路接入主机（连带把传输方式退回 iroh）。

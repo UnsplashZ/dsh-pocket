@@ -6,6 +6,8 @@ import {
   collectCandidates,
   detectSingBox,
   detectTailscale,
+  parseTailscalePeerList,
+  resolveOwnTailnetAddresses,
   detectZeroTier,
   fingerprint,
   TAILSCALE_CANDIDATES,
@@ -236,4 +238,71 @@ test('sing-box：API 连不上 / 超时都要有可读原因，不能抛', async
     fetchImpl: async () => { const e = new Error('aborted'); e.name = 'AbortError'; throw e },
   })
   assert.equal(timeout.reason, 'api-timeout')
+})
+
+// ── sing-box 的 tailnet 地址（网卡上看不到，只能问 API） ──────────────────────
+
+test('peer list 解析：只取 IPv4，FQDN 与在线状态都要留下', () => {
+  const sample = [
+    'sfm-mac.tail3d9dd2.ts.net\t100.64.16.30\tyes',
+    'derper.tail3d9dd2.ts.net\t100.77.45.69\tyes',
+    'steamdeck.tail3d9dd2.ts.net\t100.94.194.87\tno',
+    'garbage line without ip',
+    '',
+  ].join('\n')
+  assert.deepEqual(parseTailscalePeerList(sample), [
+    { fqdn: 'sfm-mac.tail3d9dd2.ts.net', ip: '100.64.16.30', online: true },
+    { fqdn: 'derper.tail3d9dd2.ts.net', ip: '100.77.45.69', online: true },
+    { fqdn: 'steamdeck.tail3d9dd2.ts.net', ip: '100.94.194.87', online: false },
+  ])
+  assert.deepEqual(parseTailscalePeerList(''), [])
+  assert.deepEqual(parseTailscalePeerList(undefined), [])
+})
+
+test('peer list 没有在线列时按在线处理（不同 sing-box 版本输出不一致）', () => {
+  assert.deepEqual(parseTailscalePeerList('box.ts.net\t100.1.2.3'), [
+    { fqdn: 'box.ts.net', ip: '100.1.2.3', online: true },
+  ])
+})
+
+test('自证本机地址：谁的 hostId 对得上，谁才是"我"', async () => {
+  const run = fakeRun({
+    'sing-box api tailscale peer list --url http://api --secret s': [
+      'self.ts.net\t100.64.16.30\tyes',
+      'phone.ts.net\t100.86.75.36\tyes',
+      'stale.ts.net\t100.94.194.87\tyes',
+    ].join('\n'),
+  })
+  // 只有 100.64.16.30 回我们的 hostId；phone 回别人的；stale 超时
+  const fetchImpl = async (url) => {
+    if (url.includes('100.64.16.30')) return { ok: true, json: async () => ({ ok: true, hostId: 'me-1234' }) }
+    if (url.includes('100.86.75.36')) return { ok: true, json: async () => ({ ok: true, hostId: 'someone-else' }) }
+    throw new Error('timeout')
+  }
+  const result = await resolveOwnTailnetAddresses({
+    run, cliPath: 'sing-box', apiUrl: 'http://api', apiSecret: 's',
+    port: 18788, hostId: 'me-1234', fetchImpl,
+  })
+  assert.equal(result.available, true)
+  assert.deepEqual(result.addresses, ['100.64.16.30'])
+  assert.equal(result.peers.length, 3)
+})
+
+test('自证失败要给出可读原因，而不是编一个地址', async () => {
+  const noConfig = await resolveOwnTailnetAddresses({ run: fakeRun({}), cliPath: '', apiUrl: '', apiSecret: '' })
+  assert.equal(noConfig.reason, 'not-configured')
+
+  const cliFail = await resolveOwnTailnetAddresses({
+    run: fakeRun({}), cliPath: 'sing-box', apiUrl: 'http://api', apiSecret: 's',
+    port: 1, hostId: 'h', fetchImpl: async () => { throw new Error('x') },
+  })
+  assert.equal(cliFail.reason.startsWith('cli-failed'), true)
+
+  const nothing = await resolveOwnTailnetAddresses({
+    run: fakeRun({ 'sing-box api tailscale peer list --url http://api --secret s': 'box.ts.net\t100.1.2.3\tyes' }),
+    cliPath: 'sing-box', apiUrl: 'http://api', apiSecret: 's',
+    port: 1, hostId: 'h', fetchImpl: async () => { throw new Error('timeout') },
+  })
+  assert.equal(nothing.available, false)
+  assert.equal(nothing.reason, 'self-not-reachable')
 })

@@ -18,6 +18,7 @@
 		180EF74A2CCF87F7403C8622 /* PermissionPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26456AC49423F3B6A1F97ACE /* PermissionPreset.swift */; };
 		1F3BC6A32A38E2FFA850E0A9 /* LocalProxyServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57FD4C43AD3A7045506EDF86 /* LocalProxyServer.swift */; };
 		1F54D4112656EAB0E1A33F9C /* TetherProxyPort.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB8FD867EC3110B3BB52E461 /* TetherProxyPort.swift */; };
+		1F7A94C0C579558354558822 /* UplinkDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A429F23DD8BEE6140C5C705 /* UplinkDiscovery.swift */; };
 		2334369E70DDD4DDE1C6E6E5 /* RemindersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E6545733A72A6DFD18FD257 /* RemindersView.swift */; };
 		28162644411E5D89A0CA6C97 /* DSHClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54FBBD8E05AA668CEF81EF66 /* DSHClient.swift */; };
 		2E7AB6FBC330CEE60C43B586 /* SystemConfiguration.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7071E06DC937B83C09108A62 /* SystemConfiguration.framework */; };
@@ -45,6 +46,7 @@
 		5A8B17FDF4B38B446DD30163 /* TetherIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3FFD174FD60E9DC57F54FF3 /* TetherIdentity.swift */; };
 		5BA98D3D35912124CBD15736 /* Projections.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6607BBF3D413D89A4B537871 /* Projections.swift */; };
 		5DB96C79B4A6DC6E909B650C /* FilePreviewScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30CD985C4108BF56D8D1B48A /* FilePreviewScreen.swift */; };
+		5DF347BC40F50718AE9C539D /* UplinkIrohFallback.swift in Sources */ = {isa = PBXBuildFile; fileRef = D74C9B352C2AAFF892C18B0D /* UplinkIrohFallback.swift */; };
 		5E9D06012AD7777CCDDAFC04 /* MuxClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C78763CE3BDD07B0CCD4293E /* MuxClient.swift */; };
 		63B4AEBB49A2986D8B848C37 /* WorkspaceFrame.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EF1F42C52A900A991734E25 /* WorkspaceFrame.swift */; };
 		6695A409C898AAA1A1ABD408 /* MarkdownBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EB168BF3F2BD1743521E92A /* MarkdownBlock.swift */; };
@@ -76,6 +78,7 @@
 		A2961CCDDA750A6A8B7C691E /* HostCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C5A7DC6BEFF48AE77F6319B /* HostCoordinator.swift */; };
 		A466F339BFBD733A2492ADE5 /* MessageFeedback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46609A991FC8C5A35FF55F60 /* MessageFeedback.swift */; };
 		A4C4DA46B5DCBB456010BE0A /* DSHError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2151DE06AE4BA2D88CBE912C /* DSHError.swift */; };
+		A4C86392D55678D6936EB6A3 /* UplinkNetwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE7721BC8DEFFD53BFDB86F3 /* UplinkNetwork.swift */; };
 		A4D35E605F7A98B9F1ABA329 /* TetherSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AAEDF5B0163D090BF27398A /* TetherSession.swift */; };
 		A6BE9190F5019A8A430646C2 /* PermissionPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = EECC9AE2D0F11BEC981A1404 /* PermissionPickerSheet.swift */; };
 		A8FDF4C9E27F3887B5D1A402 /* ZoomableImageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5C42B2030342DD922D6CD3A /* ZoomableImageView.swift */; };
@@ -198,6 +201,7 @@
 		42AD7FF2C0BB55901583FD66 /* SessionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionModel.swift; sourceTree = "<group>"; };
 		46609A991FC8C5A35FF55F60 /* MessageFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageFeedback.swift; sourceTree = "<group>"; };
 		47BFF308352D7C2CA14B9481 /* FilePreviewKinds.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePreviewKinds.swift; sourceTree = "<group>"; };
+		4A429F23DD8BEE6140C5C705 /* UplinkDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UplinkDiscovery.swift; sourceTree = "<group>"; };
 		4EB168BF3F2BD1743521E92A /* MarkdownBlock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownBlock.swift; sourceTree = "<group>"; };
 		54FBBD8E05AA668CEF81EF66 /* DSHClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSHClient.swift; sourceTree = "<group>"; };
 		57FD4C43AD3A7045506EDF86 /* LocalProxyServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalProxyServer.swift; sourceTree = "<group>"; };
@@ -231,6 +235,7 @@
 		A61720A16CF30E3539C3DDD3 /* ApprovalViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalViews.swift; sourceTree = "<group>"; };
 		AB8FD867EC3110B3BB52E461 /* TetherProxyPort.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TetherProxyPort.swift; sourceTree = "<group>"; };
 		AD7894845FFE4AECBFFF46BF /* RPCClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPCClient.swift; sourceTree = "<group>"; };
+		AE7721BC8DEFFD53BFDB86F3 /* UplinkNetwork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UplinkNetwork.swift; sourceTree = "<group>"; };
 		B16F1734F870C61F4CE7ADE9 /* StreamFlowPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamFlowPolicy.swift; sourceTree = "<group>"; };
 		B225F0688C4A99917EBDD4AE /* SessionCategory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCategory.swift; sourceTree = "<group>"; };
 		B3E177347AB2BA195EBD899C /* TetherSecretStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TetherSecretStore.swift; sourceTree = "<group>"; };
@@ -255,6 +260,7 @@
 		D5363D3D5D59ADA73D62643C /* MarkdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownView.swift; sourceTree = "<group>"; };
 		D5C42B2030342DD922D6CD3A /* ZoomableImageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZoomableImageView.swift; sourceTree = "<group>"; };
 		D73AA7D394A5A56A149F33C7 /* UplinkSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UplinkSession.swift; sourceTree = "<group>"; };
+		D74C9B352C2AAFF892C18B0D /* UplinkIrohFallback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UplinkIrohFallback.swift; sourceTree = "<group>"; };
 		E056E04F55E32F4971BE31A7 /* TetherKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = TetherKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		E0DEE2C65B00CABFAB497AB6 /* TetherLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TetherLink.swift; sourceTree = "<group>"; };
 		E6171EF0D2E0ED43307720E3 /* DSHPocketTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = DSHPocketTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -487,7 +493,10 @@
 			isa = PBXGroup;
 			children = (
 				CD98BC7D8D25F112EE12F81E /* UplinkCredentialStore.swift */,
+				4A429F23DD8BEE6140C5C705 /* UplinkDiscovery.swift */,
+				D74C9B352C2AAFF892C18B0D /* UplinkIrohFallback.swift */,
 				2F0F9B3474D252E3BDA84328 /* UplinkModels.swift */,
+				AE7721BC8DEFFD53BFDB86F3 /* UplinkNetwork.swift */,
 				D73AA7D394A5A56A149F33C7 /* UplinkSession.swift */,
 			);
 			path = Uplink;
@@ -885,7 +894,10 @@
 				91981B8519415344F4C539AA /* Theme.swift in Sources */,
 				D2641787F38253254D561E75 /* TimelineRow.swift in Sources */,
 				8140F9281CEEEE5AC7BB8E1B /* UplinkCredentialStore.swift in Sources */,
+				1F7A94C0C579558354558822 /* UplinkDiscovery.swift in Sources */,
+				5DF347BC40F50718AE9C539D /* UplinkIrohFallback.swift in Sources */,
 				B7E018CF5C52601510A1072C /* UplinkModels.swift in Sources */,
+				A4C86392D55678D6936EB6A3 /* UplinkNetwork.swift in Sources */,
 				76E1AC79D2D30A848A9A25FD /* UplinkSession.swift in Sources */,
 				EC447F99538B096408898E49 /* WelcomeView.swift in Sources */,
 				A8FDF4C9E27F3887B5D1A402 /* ZoomableImageView.swift in Sources */,
@@ -1081,7 +1093,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.5.0;
+				MARKETING_VERSION = 0.5.1;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-framework",
@@ -1198,7 +1210,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.5.0;
+				MARKETING_VERSION = 0.5.1;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-framework",

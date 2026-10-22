@@ -5,7 +5,10 @@ import Observation
 /// 多路接入的**会话层**：探测选档 → 换票 → 供 `HostCoordinator` 读基址与鉴权头。
 ///
 /// 它只解决"怎么连"这一件事：
+///   · 按**当前网络类型**先筛掉物理上不可达的档（蜂窝下不探局域网）；
 ///   · 并行探测配对串里的所有地址，选最快通的那个（800ms 上限）；
+///   · 全都不通时跑一次 Bonjour 发现，拿"电脑现在的真实地址"再探一次
+///     （配对串里的地址只是配对那一刻的快照，DHCP 一换就失效）；
 ///   · 用 per-device secret 换一张 900 秒的票据，到期前 60 秒自动续；
 ///   · 401 时清缓存、重换一次再试，第二次仍 401 才报错。
 ///
@@ -18,11 +21,15 @@ import Observation
 public final class UplinkSession {
     // MARK: 可注入的接缝
 
-    /// 探一个档位：返回 RTT（毫秒），不可达返回 nil。
-    /// 第二个参数是配对串里的 hostId —— 探到"另一台电脑"必须判失败。
-    public typealias Probe = @Sendable (UplinkTier, String) async -> Int?
+    /// 探一个档位。第二个参数是配对串里的 hostId —— 探到"另一台电脑"必须判失败。
+    ///
+    /// 返回值是 `UplinkProbeResult` 而不是 `Int?`：失败**原因**和"通不通"一样重要
+    /// （超时 / 被拒 / 没网 / 认错电脑，四种修法完全不同）。
+    public typealias Probe = @Sendable (UplinkTier, String) async -> UplinkProbeResult
     /// 发一个 HTTP 请求。单测用它造假响应。
     public typealias Send = @Sendable (URLRequest) async throws -> (Data, HTTPURLResponse)
+    /// Bonjour 发现：给 hostId，返回它现在的候选地址。找不到返回空数组。
+    public typealias Discover = @Sendable (String) async -> [UplinkTier]
 
     /// 单档探测上限。局域网正常是几毫秒，800ms 已经够宽松；
     /// 再长就等于"连不上"，继续等只会拖慢连接。
@@ -35,6 +42,12 @@ public final class UplinkSession {
     public static let stickyWindow: TimeInterval = 300
     /// 到期前多久续票。票据 900 秒，60 秒足够覆盖一次慢请求。
     public static let refreshLead: TimeInterval = 60
+    /// Bonjour 发现的等待上限。mDNS 正常是几十毫秒，1.5 秒是给"第一次查询、
+    /// 缓存空、要等一次应答周期"留的余量；再长就等于用户按了没反应。
+    public static let discoveryTimeout: TimeInterval = 1.5
+    /// 发现结果的有效期。DHCP 租约通常几小时，但换 SSID/换网是随时的事，
+    /// 10 分钟之后就当它过期，宁可重新发现一次（1.5 秒）也不要用一个死地址。
+    public static let discoveredTTL: TimeInterval = 600
 
     // MARK: 对外状态
 
@@ -47,6 +60,13 @@ public final class UplinkSession {
     public private(set) var lastSwitchReason: String?
     /// 每个档位最近一次测到的 RTT（毫秒）。键是 `UplinkTierKind.rawValue`。
     public private(set) var tierRTTs: [String: Int] = [:]
+    /// 每个档位最近一次失败的**原因**。键同上。
+    /// 这是"探测失败"从一句话变成可排障信息的关键：超时和被拒要分得开。
+    public private(set) var tierFailures: [String: UplinkProbeFailure] = [:]
+    /// Bonjour 发现到的地址（本次会话内）。诊断页要能看到"这些不是配对串里的"。
+    public private(set) var discoveredTiers: [UplinkTier] = []
+    /// 当前网络类型（诊断页显示）。
+    public var networkKind: UplinkNetworkKind { network.kind }
     /// 票据到期时间（诊断页用）。
     public private(set) var ticketExpiresAt: Date?
     public private(set) var isConnecting = false
@@ -58,7 +78,10 @@ public final class UplinkSession {
     private let logger: (any DSHLogSink)?
     private let probe: Probe
     private let send: Send
+    private let discover: Discover
     private let now: () -> Date
+    /// 网络类型监控。**只用来筛掉物理上不可达的档**，不参与选档策略。
+    private let network: UplinkNetworkMonitor
 
     private var ticket: String?
     private var ticketExpiry: Date?
@@ -75,6 +98,10 @@ public final class UplinkSession {
         send: @escaping Send = { request in
             try await UplinkSession.urlSessionSend(request)
         },
+        discover: @escaping Discover = { hostId in
+            await UplinkBonjourBrowser.browse(hostId: hostId, timeout: UplinkSession.discoveryTimeout)
+        },
+        network: UplinkNetworkMonitor? = nil,
         now: @escaping () -> Date = { Date() }
     ) {
         self.store = store
@@ -82,7 +109,18 @@ public final class UplinkSession {
         self.logger = logger
         self.probe = probe
         self.send = send
+        self.discover = discover
+        self.network = network ?? UplinkNetworkMonitor()
         self.now = now
+    }
+
+    /// 开始监听网络类型。由 `AppModel.start()` 调；单测不调（它们注入固定的网络类型）。
+    public func startNetworkMonitoring() {
+        network.start()
+    }
+
+    public func stopNetworkMonitoring() {
+        network.stop()
     }
 
     // MARK: 配对
@@ -135,39 +173,167 @@ public final class UplinkSession {
             lastError = UplinkError.notPaired.errorDescription
             return nil
         }
-        let candidates = enabledTiers(of: pairing)
-        guard !candidates.isEmpty else {
+
+        // ① 先按**当前网络类型**筛一遍。蜂窝下探私有地址是纯粹的白等：
+        //    800ms 超时、电脑侧一个包都收不到，还给人一句误导的"超时"。
+        //    冷启动时监控可能还没回第一条，先等一眼（监控没启动时立刻返回）。
+        await network.waitForFirstUpdate()
+        let kind = network.kind
+        if kind == .offline {
+            lastError = Self.noUsableTierMessage(for: kind, skipped: 0)
+            lastSwitchReason = lastError
+            logger?.log(.warning, "[uplink] 网络不可用（offline），不探测")
+            return nil
+        }
+        let all = enabledTiers(of: pairing) + cachedDiscoveredTiers()
+        guard !all.isEmpty else {
             lastError = String(localized: "所有档位都被关掉了。至少打开一个，或者换回 iroh。")
             return nil
         }
+        let usable = all.filter { !shouldSkip($0, on: kind) }
+        let skipped = all.filter { shouldSkip($0, on: kind) }
+        if !skipped.isEmpty {
+            logger?.log(.info, "[uplink] 当前在\(kind.resolvedLabel)，跳过局域网档 \(skipped.count) 个")
+        }
+        guard !usable.isEmpty else {
+            // 全部被跳过：**立刻失败**，别让用户盯着"连接中"等一轮毫无意义的超时。
+            lastError = Self.noUsableTierMessage(for: kind, skipped: skipped.count)
+            lastSwitchReason = lastError
+            logger?.log(.warning, "[uplink] 没有可探测的档位（\(kind.rawValue)，跳过 \(skipped.count) 个）")
+            return nil
+        }
 
-        if let sticky = stickyTier(in: candidates) {
-            if let rtt = await probe(sticky, pairing.hostId) {
+        // ② 粘滞档位单独先探（它刚才就通，多半还通）。
+        if let sticky = stickyTier(in: usable) {
+            let result = await probe(sticky, pairing.hostId)
+            record(sticky, result)
+            if let rtt = result.rtt {
                 logger?.log(.debug, "[uplink] 粘滞命中 \(sticky.kind.rawValue) \(rtt)ms")
                 return await settle(on: sticky, rtt: rtt, reason: nil)
             }
             logger?.log(.debug, "[uplink] 粘滞档位 \(sticky.kind.rawValue) 这次没通，改为并行探测")
         }
 
-        let started = now()
-        let results = await race(candidates, hostId: pairing.hostId)
-        // 先记下**所有**测到的 RTT —— 诊断页要显示"每一档多快"，
-        // 只记选中那档的话，用户看不出"局域网 4ms、Tailscale 90ms"这种关键信息。
-        for (tier, rtt) in results { tierRTTs[tier.kind.rawValue] = rtt }
-        guard let winner = Self.fastest(results) else {
-            let elapsed = Int(now().timeIntervalSince(started) * 1000)
-            lastError = UplinkError.noTierAvailable.errorDescription
-            lastSwitchReason = String(localized: "所有档位都探测失败（\(candidates.count) 个地址，用时 \(String(elapsed))ms）")
-            logger?.log(.warning, "[uplink] 所有档位都探测失败（\(candidates.count) 个，\(elapsed)ms）")
+        // ③ 并行探快照里的地址。
+        let snapshot = await probeAll(usable, hostId: pairing.hostId)
+        if let winner = snapshot.winner {
+            return await settle(on: winner.0, rtt: winner.1, reason: switchReason(winner.0))
+        }
+
+        // ④ 快照全不可达 → Bonjour 重新发现（配对串里的地址只是**配对那一刻**的快照，
+        //    DHCP 续租/换 SSID 之后它就已经死了，而手机没有任何别的办法知道新地址）。
+        var failures = snapshot.failures
+        var discovered: [UplinkTier] = []
+        if kind.isLocalNetwork {
+            logger?.log(.info, "[uplink] 快照地址全部不可达，开始 Bonjour 发现")
+            discovered = await discover(pairing.hostId)
+            logger?.log(.info, "[uplink] Bonjour 发现到 \(discovered.count) 个地址")
+        } else {
+            logger?.log(.info, "[uplink] 当前不是本地网络（\(kind.rawValue)），跳过 Bonjour 发现")
+        }
+
+        if !discovered.isEmpty {
+            discoveredTiers = UplinkBonjour.merge(discoveredTiers, discovered)
+            // 发现的地址即使这次没通也先记下来（带时间戳，10 分钟就过期）：
+            // 下次连的时候它就是一个免费候选，省掉一次 1.5 秒的发现。
+            store.saveDiscovered(discovered, at: now())
+
+            let known = Set(usable.map { UplinkPairing.normalized($0.url.absoluteString) })
+            let fresh = discovered.filter {
+                !known.contains(UplinkPairing.normalized($0.url.absoluteString))
+            }.filter { !shouldSkip($0, on: kind) }
+            if !fresh.isEmpty {
+                let second = await probeAll(fresh, hostId: pairing.hostId)
+                if let winner = second.winner {
+                    // 通了才**回写**配对材料：把死地址写进去只会让下次多探一个必超时的候选。
+                    let merged = pairing.merging(tiers: discovered)
+                    if merged != pairing { store.save(merged) }
+                    return await settle(on: winner.0, rtt: winner.1, reason: switchReason(winner.0))
+                }
+                failures += second.failures
+            }
+        }
+
+        // ⑤ 如实报告：**按失败原因分类**给建议，而不是一句"都失败了"。
+        lastError = UplinkProbeFailure.summary(for: failures.map(\.1))
+        lastSwitchReason = lastError
+        logger?.log(.warning, "[uplink] 所有档位都探测失败（\(failures.count) 个）：\(failures.map { "\($0.0.kind.rawValue)=\($0.1.logLabel)" }.joined(separator: "，"))")
+        return nil
+    }
+
+    /// 一次探测的结果落到诊断状态里。RTT 与失败原因**互斥** ——
+    /// 留着上一轮的 RTT 会让人以为"这档刚才还通"。
+    private func record(_ tier: UplinkTier, _ result: UplinkProbeResult) {
+        switch result {
+        case .reachable(let rtt):
+            tierRTTs[tier.kind.rawValue] = rtt
+            tierFailures[tier.kind.rawValue] = nil
+        case .unreachable(let failure):
+            tierRTTs[tier.kind.rawValue] = nil
+            tierFailures[tier.kind.rawValue] = failure
+            logger?.log(.info, "[uplink] 探测失败 \(tier.kind.rawValue) \(tier.url.absoluteString)：\(failure.logLabel)")
+        }
+    }
+
+    /// 并行探一批档位，返回最快的成功者与全部失败原因。
+    private func probeAll(
+        _ tiers: [UplinkTier],
+        hostId: String
+    ) async -> (winner: (UplinkTier, Int)?, failures: [(UplinkTier, UplinkProbeFailure)]) {
+        let results = await race(tiers, hostId: hostId)
+        var succeeded: [(UplinkTier, Int)] = []
+        var failures: [(UplinkTier, UplinkProbeFailure)] = []
+        for (tier, result) in results {
+            record(tier, result)
+            switch result {
+            case .reachable(let rtt):
+                succeeded.append((tier, rtt))
+            case .unreachable(let failure):
+                failures.append((tier, failure))
+            }
+        }
+        return (Self.fastest(succeeded), failures)
+    }
+
+    /// 上一次用的档位这次没通、换到别的档时给诊断页的一句话。
+    private func switchReason(_ tier: UplinkTier) -> String? {
+        guard let previous = settings.uplinkLastGoodTier, previous != tier.kind.rawValue else {
             return nil
         }
-        let previous = settings.uplinkLastGoodTier
-        let reason: String? = previous.flatMap { prev in
-            prev == winner.0.kind.rawValue
-                ? nil
-                : String(localized: "上一次用的 \(prev) 这次没通，换到 \(winner.0.kind.resolvedLabel)")
+        return String(localized: "上一次用的 \(previous) 这次没通，换到 \(tier.kind.resolvedLabel)")
+    }
+
+    /// 这一档在当前网络下要不要跳过。
+    ///
+    /// 只跳**局域网**：Tailscale / ZeroTier / 自建中转都建立在自己的隧道或公网上，
+    /// 蜂窝下照样能用（`frp` 尤其 —— 它存在的意义就是"在外面也能连"）。
+    ///
+    /// 边界：老配对串没有 `tiers` 时，ZeroTier 的 10.x 地址会被推断成 `.lan`，
+    /// 于是蜂窝下也被跳过。电脑端现在会在配对串里带 kind（`descriptor.js` 的 `tiers`），
+    /// 那时 `kind == .zerotier`，就不会被误跳。
+    private func shouldSkip(_ tier: UplinkTier, on kind: UplinkNetworkKind) -> Bool {
+        guard kind.skipsLocalTiers else { return false }
+        return tier.kind == .lan
+    }
+
+    /// 没有任何档位可探时的文案。**按网络类型分支** —— 蜂窝下那句必须说清
+    /// "要配 iroh / Tailscale / 自建中转"，否则用户只会以为 App 坏了。
+    static func noUsableTierMessage(for kind: UplinkNetworkKind, skipped: Int) -> String {
+        switch kind {
+        case .cellular:
+            return String(localized: "当前在蜂窝网络，局域网地址不可达。需要配置 iroh 兜底 / Tailscale / 自建中转才能在外面连。")
+        case .offline:
+            return String(localized: "手机现在没有网络连接。先确认 Wi-Fi 或蜂窝数据是开的。")
+        default:
+            return String(localized: "当前网络下没有可用的地址（跳过 \(String(skipped)) 个档位）。")
         }
-        return await settle(on: winner.0, rtt: winner.1, reason: reason)
+    }
+
+    /// 上次 Bonjour 发现到的地址（未过期才用）。
+    private func cachedDiscoveredTiers() -> [UplinkTier] {
+        guard let cached = store.loadDiscovered() else { return [] }
+        guard now().timeIntervalSince(cached.at) < Self.discoveredTTL else { return [] }
+        return cached.tiers
     }
 
     /// 选定了档位之后：换票、落 lastGood、暴露基址。
@@ -212,6 +378,8 @@ public final class UplinkSession {
         lastError = nil
         lastSwitchReason = nil
         tierRTTs = [:]
+        tierFailures = [:]
+        discoveredTiers = []
     }
 
     // MARK: 票据
@@ -295,6 +463,45 @@ public final class UplinkSession {
         return issued
     }
 
+    /// 用当前票据换一张 **iroh 配对窗口**（`POST /uplink/iroh-pairing`）。
+    ///
+    /// 有了它，iroh 兜底不再需要用户"去电脑上开窗口抄 6 位码"：
+    /// 电脑端自己起 sidecar、把 `endpointId#code` 交给我们。
+    ///
+    /// 前提是**手上有一张能用的票**：票据只能在已配对、且当前可达的地址上换到。
+    /// 一个地址都不通时这里直接抛 `.noTicket` —— 假装在重试没有意义。
+    public func requestIrohPairing() async throws -> UplinkIrohPairing {
+        guard let tier = currentTier, baseURL != nil else {
+            throw UplinkIrohPairingError.noTicket
+        }
+        var request = URLRequest(url: Self.endpoint(tier.url, "uplink/iroh-pairing"))
+        request.httpMethod = "POST"
+        request.timeoutInterval = 10
+
+        let (data, response) = try await sendWithTicket(request)
+        switch response.statusCode {
+        case 200:
+            break
+        case 503:
+            // 电脑端没跑 iroh 档。这一档就是不可用 —— **不重试**。
+            throw UplinkIrohPairingError.unavailable
+        default:
+            throw UplinkIrohPairingError.failed("http-\(response.statusCode)")
+        }
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              object["ok"] as? Bool == true,
+              let pairingString = object["pairingString"] as? String,
+              let issued = UplinkIrohPairing(
+                  pairingString: pairingString,
+                  endpointId: object["endpointId"] as? String,
+                  expiresInSec: object["expiresInSec"] as? Int ?? 0
+              ) else {
+            throw UplinkIrohPairingError.failed("bad-body")
+        }
+        logger?.log(.info, "[uplink] 拿到 iroh 配对窗口：\(issued.endpointId.prefix(16))…（\(issued.expiresInSec)s）")
+        return issued
+    }
+
     /// 带票据的请求。**401 时清掉缓存、重换一次票再重试**；第二次还是 401 才算失败。
     ///
     /// 为什么只重试一次：401 有两种成因 —— "票据过期 / 电脑端轮换了密钥"（重换就好）
@@ -336,17 +543,28 @@ public final class UplinkSession {
         public let tier: UplinkTier
         public let enabled: Bool
         public let rttMilliseconds: Int?
+        /// 最近一次探测失败的原因（没探过或探通了就是 nil）。
+        public let failure: UplinkProbeFailure?
+        /// 这一档被"当前网络类型"跳过了（例如蜂窝下的局域网）。
+        public let skipReason: String?
         public let isCurrent: Bool
         public var id: String { tier.id }
     }
 
     public var tierStatuses: [TierStatus] {
         let current = currentTier
-        return (pairing?.tiers ?? []).map { tier in
-            TierStatus(
+        let kind = network.kind
+        // 配对串里的 + 本次发现到的：用户要知道"这个地址是哪来的"，
+        // 也要能看出"发现了但没通"。
+        let all = UplinkBonjour.merge(pairing?.tiers ?? [], discoveredTiers)
+        return all.map { tier in
+            let skipped = shouldSkip(tier, on: kind)
+            return TierStatus(
                 tier: tier,
                 enabled: isEnabled(tier),
-                rttMilliseconds: tierRTTs[tier.kind.rawValue],
+                rttMilliseconds: skipped ? nil : tierRTTs[tier.kind.rawValue],
+                failure: skipped ? nil : tierFailures[tier.kind.rawValue],
+                skipReason: skipped ? String(localized: "当前在蜂窝网络，局域网不可达") : nil,
                 isCurrent: current == tier
             )
         }
@@ -387,20 +605,17 @@ public final class UplinkSession {
     /// 为什么不像"先到先得"那样一有结果就收工：每档都有自己的 800ms 上限，
     /// 所以最坏只等 800ms（和单档探测一个量级），但能拿到**每一档**的 RTT ——
     /// 诊断页"各档 RTT"才有内容，用户也才看得出"局域网 4ms、Tailscale 90ms"。
-    private func race(_ tiers: [UplinkTier], hostId: String) async -> [(UplinkTier, Int)] {
+    private func race(_ tiers: [UplinkTier], hostId: String) async -> [(UplinkTier, UplinkProbeResult)] {
         let probe = self.probe
-        return await withTaskGroup(of: (UplinkTier, Int)?.self) { group in
+        return await withTaskGroup(of: (UplinkTier, UplinkProbeResult).self) { group in
             for tier in tiers {
                 group.addTask {
-                    guard let rtt = await probe(tier, hostId) else { return nil }
-                    return (tier, rtt)
+                    (tier, await probe(tier, hostId))
                 }
             }
-            var succeeded: [(UplinkTier, Int)] = []
-            for await result in group {
-                if let result { succeeded.append(result) }
-            }
-            return succeeded
+            var results: [(UplinkTier, UplinkProbeResult)] = []
+            for await result in group { results.append(result) }
+            return results
         }
     }
 
@@ -431,22 +646,39 @@ public final class UplinkSession {
     ///
     /// **必须核对 hostId**：同一网段里可能有好几台跑 dsh 的电脑，
     /// 连错人比连不上更糟（会把配对串里的 secret 交给别人算应答）。
-    public nonisolated static func httpProbe(tier: UplinkTier, expectedHostId: String) async -> Int? {
+    public nonisolated static func httpProbe(
+        tier: UplinkTier,
+        expectedHostId: String
+    ) async -> UplinkProbeResult {
         var request = URLRequest(url: endpoint(tier.url, "uplink/ping"))
         request.timeoutInterval = probeTimeout
         request.cachePolicy = .reloadIgnoringLocalCacheData
         let started = Date()
+        func elapsed() -> Int { max(1, Int(Date().timeIntervalSince(started) * 1000)) }
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
-            guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                return nil
+            guard let http = response as? HTTPURLResponse else {
+                return .unreachable(.other(milliseconds: elapsed(), reason: "not-http"))
             }
-            guard object["ok"] as? Bool == true else { return nil }
-            if let got = object["hostId"] as? String, got != expectedHostId { return nil }
-            return max(1, Int(Date().timeIntervalSince(started) * 1000))
+            guard http.statusCode == 200 else {
+                // 网关活着但回了个错（502 = 它转发不到 dsh）。这不是"网络不通"，
+                // 分类要如实反映，否则用户会去查 Wi-Fi。
+                return .unreachable(.other(milliseconds: elapsed(), reason: "http-\(http.statusCode)"))
+            }
+            guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  object["ok"] as? Bool == true else {
+                return .unreachable(.other(milliseconds: elapsed(), reason: "bad-body"))
+            }
+            // hostId 对不上 = 这个地址上是**另一台**电脑（同一网段常见）。
+            // 这不是"连不上"，是"连错人"，文案必须分开。
+            if let got = object["hostId"] as? String, got != expectedHostId {
+                return .unreachable(.hostMismatch(milliseconds: elapsed()))
+            }
+            return .reachable(rttMilliseconds: elapsed())
+        } catch let error as URLError {
+            return .unreachable(UplinkProbeFailure(urlError: error, milliseconds: elapsed()))
         } catch {
-            return nil
+            return .unreachable(.other(milliseconds: elapsed(), reason: "transport"))
         }
     }
 

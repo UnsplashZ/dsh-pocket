@@ -149,6 +149,56 @@ All notable changes to this project are documented here.
 
 ---
 
+## [0.5.1] — 2026-10-22
+
+一个 uplink 同时负责局域网 / 虚拟组网 / iroh，并且把「出门在外」真正打通。
+
+### Added
+
+- **配对串带 iroh 一次性配对码**。`dshuplink://…` 里现在有
+  `iroh: {endpointId, code, expiresAt}`：粘一次就把设备密钥、地址清单**和 iroh 配对**
+  一起完成 —— 这一步走 iroh 通道本身，**不需要任何 HTTP**，所以 5G 下、局域网完全
+  不可达也能成。它顺手解掉了一个死锁：原来要拿 iroh 配对码得先换票，而换票要求
+  某个网关档可达，可 iroh 恰恰是"所有网关档都不可达"时的兜底。
+- **Bonjour 发现**（`NetService`）：TXT(`id/port/v`) → SRV → A 记录，拿到电脑
+  **当前**的全部 IPv4，与配对串里的快照合并去重。探测全失败时自动重新发现并重试一次。
+  用 `NetService` 而不是 `NWBrowser`：后者的 result 只有实例名 + TXT，拿不到 SRV 与
+  A 记录，多网卡（Wi-Fi + tailnet + 网桥）会退化成只有一个候选。
+- **按网络类型跳档**：`NWPathMonitor` 认出蜂窝网络后直接跳过局域网档（不探测、
+  不计 RTT）；全被跳过时立刻失败并给准确文案，而不是白等 800ms 后说一句"都连不上"。
+- **探测失败分类**：每档记 `URLError.Code`（超时 / 被拒 / 无网络 / 域名 / hostId 不符），
+  诊断页逐档显示地址 + 原因。
+- **虚拟组网：sing-box 提供的 tailnet**。sing-box 的 `tailscale` endpoint 是用户态
+  tsnet，tailnet IP 不落在任何网卡上；插件现在通过它的 API 服务
+  （`services: [{type:"api", …}]`）列节点地址，再**自证**——逐个候选打自己的
+  `/uplink/ping`，谁回本机 `hostId` 谁才算数。实测认出 `100.64.16.30` 并作为
+  `tailscale` 档进清单。
+- 新增 **overlay 档**：收 TUN 网卡上的私有地址（WireGuard、`system_interface`、n2n），
+  这类组网没有 CLI 可问，以前被直接丢掉。
+
+### Changed
+
+- **全新安装默认「自动（多路接入）」**。已配过电脑的老用户保持原模式不动
+  （切成 uplink 会让他在粘新配对串前彻底连不上，那是回归）。
+- 「添加电脑」改名为「用 iroh 单独添加电脑（遗留）」；「自动（多路接入）」成为唯一推荐项。
+- 诊断页把「当前档位」与「iroh 兜底（已配对 / 未配对）」分开显示。
+
+### Fixed
+
+- **iroh 档位连上也只 401**：插件从来没把浏览器 cookie 交给 sidecar。sidecar 的
+  `proxy-auth` 是 stdin 协议，它只负责转发字节，而 dsh 的浏览器认证只认 cookie。
+  修完后端到端实测 `GET /` → **200，40709 字节，与直连逐字节一致**（此前是 401/68 字节）。
+  cookie 每次续期都会同步给 sidecar，否则 12 小时后又开始 401。
+- iroh 降级用配对串给的 `endpointId`，不再连已失效的旧 tether 身份（那会让每轮白等 15 秒）。
+
+### Known issues
+
+- 自研 Rust sidecar 仍在 `host-rs/`（未完成）；当前内置的是可用的上游 MIT 二进制。
+- `frp` 档位仍只有单测（没有公网 frps 可验）。
+- 手机端 Bonjour 发现与 5G 下的 iroh 配对只有单测覆盖，端到端待装机确认。
+
+---
+
 ## [0.5.0] — 2026-10-22
 
 多路接入：手机不再只有 iroh 一条路。电脑端给出地址清单，手机并行探一遍，

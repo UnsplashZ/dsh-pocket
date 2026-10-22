@@ -42,7 +42,7 @@ export const DEFAULTS = Object.freeze({
   /** 额外地址：自动探测漏掉的（例如 sing-box 的 ts endpoint 只走用户态，网卡上看不到）。 */
   extraAddresses: [],
   /** sing-box 的 Clash API（可选）：用来回答"ts endpoint 在不在"，不读它的 root 状态文件。 */
-  singbox: { apiUrl: '', apiSecret: '' },
+  singbox: { apiUrl: '', apiSecret: '', cliPath: '' },
 })
 
 const bool = (value, fallback) => (typeof value === 'boolean' ? value : fallback)
@@ -176,8 +176,11 @@ export function normalizeConfig(input = {}) {
     },
     extraAddresses: extraAddressList(raw.extraAddresses),
     singbox: {
+      // Clash API：只用来回答"有没有 tailscale endpoint"
       apiUrl: str(raw.singbox?.apiUrl, '').trim(),
       apiSecret: str(raw.singbox?.apiSecret, ''),
+      // sing-box 的 API 服务（gRPC）：用来列出 tailnet 节点地址，进而自证本机 tailnet IP
+      cliPath: str(raw.singbox?.cliPath, '').trim(),
     },
   }
 

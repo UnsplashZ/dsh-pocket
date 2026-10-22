@@ -1176,6 +1176,59 @@ EN: dict[str, str] = {
     "电脑回的响应看不懂：%@": "Could not parse the response from your computer: %@",
     "连不上：%@": "Can’t connect: %@",
     "不是 JSON": "not JSON",
+
+    # ── 0.5.0 多路接入：网络类型 / 探测失败分类 / iroh 兜底 ──────────────
+    "当前网络": "Network",
+    "网络：%@": "Network: %@",
+    "蜂窝网络": "Cellular",
+    "有线网络": "Ethernet",
+    "无网络": "Offline",
+    "其他网络": "Other network",
+    "未知网络": "Unknown network",
+    "当前在蜂窝网络，局域网不可达": "Skipped: LAN is unreachable on cellular",
+    "当前在蜂窝网络，局域网地址不可达。需要配置 iroh 兜底 / Tailscale / 自建中转才能在外面连。":
+        "You are on cellular, so LAN addresses are unreachable. Configure the iroh fallback / Tailscale / a self-hosted relay to connect from outside.",
+    "当前网络下没有可用的地址（跳过 %@ 个档位）。": "No usable address on this network (%@ paths skipped).",
+    "手机现在没有网络连接。先确认 Wi-Fi 或蜂窝数据是开的。":
+        "The phone has no network right now. Check that Wi-Fi or cellular data is on.",
+    "手机当前没有网络连接。": "The phone has no network connection.",
+    "没有可探测的地址。": "There is no address to probe.",
+    "超时：可能不在同一网络、iOS「本地网络」权限没开，或者 VPN 拦了请求。":
+        "Timed out: you may be on a different network, iOS Local Network permission may be off, or a VPN is blocking the request.",
+    "连接被拒：地址是通的，但那个端口上没有服务（电脑端网关没起，或被防火墙挡了）。":
+        "Connection refused: the address responds, but nothing is listening on that port (gateway not running, or blocked by a firewall).",
+    "解析不到这个地址（DNS / mDNS 没回应）。": "This address does not resolve (no DNS / mDNS answer).",
+    "这个地址上是另一台电脑，不是已配对的那台。":
+        "That address belongs to a different computer, not the paired one.",
+    "探测失败：%@": "Probe failed: %@",
+    "%lld 个地址都没试通：手机现在没有网络。先确认 Wi-Fi 或蜂窝数据是开的。":
+        "None of the %lld addresses worked: the phone has no network. Check that Wi-Fi or cellular data is on.",
+    "%lld 个地址都超时了：可能不在同一网络、iOS「本地网络」权限没开，或者 VPN 把请求劫持了。":
+        "All %lld addresses timed out: you may be on a different network, iOS Local Network permission may be off, or a VPN is intercepting requests.",
+    "%lld 个地址都拒绝连接：电脑上的网关可能没在跑，或者被防火墙挡了。":
+        "All %lld addresses refused the connection: the gateway on your computer may not be running, or a firewall is blocking it.",
+    "%lld 个地址都解析不到：多半是 DNS 或 VPN 的问题。":
+        "None of the %lld addresses could be resolved — usually a DNS or VPN problem.",
+    "%lld 个地址上都不是已配对的那台电脑，请重新配对。":
+        "%lld addresses belong to a different computer — pair again.",
+    "%lld 个地址都不通，原因见下方每一档的说明。":
+        "None of the %lld addresses are reachable; see the per-path details below.",
+    # iroh 兜底
+    "iroh 兜底": "iroh fallback",
+    "用 iroh 单独添加电脑（遗留）": "Add a computer over iroh (legacy)",
+    "已配对": "Paired",
+    "未配对": "Not paired",
+    "电脑端没有启用 iroh 兜底档。": "The iroh fallback is not enabled on your computer.",
+    "换不到 iroh 配对码": "Could not get an iroh pairing code",
+    "换 iroh 配对码失败：%@": "Could not get an iroh pairing code: %@",
+    "现在一个地址都不通，换不到 iroh 配对码。请先回到能连上这台电脑的网络。":
+        "No address is reachable right now, so an iroh pairing code cannot be fetched. Get back to a network where this computer is reachable.",
+    "配对码已过期。请在电脑上重新生成配对串（电脑端的「连接手机」里点一次生成），然后重新粘贴。":
+        "The pairing code has expired. Generate a new pairing link on your computer (tap “Connect phone” again) and paste it here.",
+    "「自动（多路接入）」是推荐项：一个配对串同时配好局域网 / Tailscale / ZeroTier / 自建中转**和 iroh 兜底**，哪条通走哪条。在外面（蜂窝网络）时自动用 iroh。「仅 iroh」只为已有配对记录的老用户与排障保留。":
+        "“Automatic (multi-path)” is the recommended option: one pairing link sets up LAN / Tailscale / ZeroTier / self-hosted relay **and the iroh fallback**, and whichever path works is used. On cellular it switches to iroh automatically. “iroh only” is kept for existing pairings and troubleshooting.",
+    "地址清单来自电脑端的配对串，探测全不通时还会用 Bonjour 找一次电脑现在的地址。RTT 是最近一次探测的结果，「—」表示这次没测到（另一档先通了，或当前网络下不可达）。":
+        "The address list comes from the pairing link; when nothing responds the app also runs a Bonjour lookup for the computer’s current address. RTT is from the latest probe; “—” means it was not measured (another path answered first, or it is unreachable on this network).",
 }
 
 # 哪些插值表达式是整数。判错的后果是英文界面上显示成 `%lld` 字面量，

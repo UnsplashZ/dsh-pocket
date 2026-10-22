@@ -171,11 +171,39 @@ public struct UplinkPairing: Sendable, Equatable {
     /// 反推永远分不开，"关掉 ZeroTier 但保留局域网"就做不到。
     /// 老版本电脑端不发这个字段，那时退化成按地址猜（见 `tiers`）。
     public let hintedTiers: [UplinkTier]
+    /// iroh 兜底档的 endpointId（`iroh: {endpointId, relay}`）。
+    ///
+    /// 为什么必须有它：降级到 iroh 时如果还用 `settings.activeHostId`
+    /// （上一次 tether 配对留下的旧身份），电脑端重装/换机之后那个 id 已经不存在了，
+    /// 每一轮都要白等 15 秒超时。配对串里的这个值才是**这台电脑现在**的身份。
+    public let irohEndpointId: String?
+    public let irohRelay: String?
+    /// 配对串里带的**一次性 iroh 配对码**（`iroh.code`）。
+    ///
+    /// 为什么把码放进配对串：iroh 是"所有网关档都不可达"时的兜底，如果它自己还要
+    /// 先有票（票据只能在网关档可达时换到）才能要码，那就是个死锁 ——
+    /// 5G + 局域网不可达时永远用不上 iroh。码随串一起下发，配对走 iroh 通道本身，
+    /// **不需要任何 HTTP 请求**。
+    public let irohCode: String?
+    /// 码的过期时间（毫秒时间戳）。过期的码不要拿去试 —— 电脑端会记一次失败。
+    public let irohExpiresAt: Int64?
     public let issuedAt: Int64
 
     /// 校验构造。任何一项不合规都返回 nil。
-    public init?(hostId: String, name: String, port: Int, deviceId: String,
-                 secret: String, urls: [String], hintedTiers: [UplinkTier] = [], issuedAt: Int64) {
+    public init?(
+        hostId: String,
+        name: String,
+        port: Int,
+        deviceId: String,
+        secret: String,
+        urls: [String],
+        hintedTiers: [UplinkTier] = [],
+        irohEndpointId: String? = nil,
+        irohRelay: String? = nil,
+        irohCode: String? = nil,
+        irohExpiresAt: Int64? = nil,
+        issuedAt: Int64
+    ) {
         let host = hostId.trimmingCharacters(in: .whitespacesAndNewlines)
         let device = deviceId.trimmingCharacters(in: .whitespacesAndNewlines)
         let key = secret.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -189,7 +217,60 @@ public struct UplinkPairing: Sendable, Equatable {
         self.secret = key
         self.urls = urls.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
         self.hintedTiers = hintedTiers
+        let endpoint = irohEndpointId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.irohEndpointId = (endpoint?.isEmpty == false) ? endpoint : nil
+        let relay = irohRelay?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.irohRelay = (relay?.isEmpty == false) ? relay : nil
+        let code = irohCode?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.irohCode = (code?.isEmpty == false) ? code : nil
+        self.irohExpiresAt = irohExpiresAt
         self.issuedAt = issuedAt
+    }
+
+    /// 配对码是否已经过期。没有 `expiresAt` 时**按未过期处理**（老配对串没这个字段，
+    /// 拿它去试一次才知道行不行 —— 总比直接拒绝强）。
+    public func irohCodeExpired(now: Date) -> Bool {
+        guard let irohExpiresAt, irohExpiresAt > 0 else { return false }
+        return Double(irohExpiresAt) / 1000 <= now.timeIntervalSince1970
+    }
+
+    /// 能不能"就地"配 iroh（不需要任何 HTTP）：有 endpointId 和码，且码没过期。
+    public func canPairIroh(now: Date) -> Bool {
+        irohEndpointId != nil && irohCode != nil && !irohCodeExpired(now: now)
+    }
+
+    /// 把"新发现到的地址"并进配对材料（回写用）。
+    ///
+    /// 老配对串没有 `tiers`（只有 `urls`）时**继续只写 `urls`** —— 那台电脑端
+    /// 不认识带 kind 的清单，硬塞进去反而会让它下次解析出不一致的东西。
+    public func merging(tiers extra: [UplinkTier]) -> UplinkPairing {
+        guard !extra.isEmpty else { return self }
+        let known = Set((hintedTiers.isEmpty ? urls : hintedTiers.map { $0.url.absoluteString })
+            .map { Self.normalized($0) })
+        let fresh = extra.filter { !known.contains(Self.normalized($0.url.absoluteString)) }
+        guard !fresh.isEmpty else { return self }
+        return UplinkPairing(
+            hostId: hostId,
+            name: name,
+            port: port,
+            deviceId: deviceId,
+            secret: secret,
+            urls: urls + fresh.map { $0.url.absoluteString },
+            hintedTiers: hintedTiers.isEmpty ? [] : hintedTiers + fresh,
+            irohEndpointId: irohEndpointId,
+            irohRelay: irohRelay,
+            irohCode: irohCode,
+            irohExpiresAt: irohExpiresAt,
+            issuedAt: issuedAt
+        ) ?? self
+    }
+
+    /// 地址比较用的规范化形式：去掉结尾的 `/`、统一小写。
+    /// `http://10.0.0.5:18788` 与 `http://10.0.0.5:18788/` 是同一个地址。
+    static func normalized(_ url: String) -> String {
+        var text = url.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        while text.hasSuffix("/") { text.removeLast() }
+        return text
     }
 
     /// 可探测的档位。
@@ -234,6 +315,7 @@ public struct UplinkPairing: Sendable, Equatable {
             else { return nil }
             return UplinkTier(kind: kind, url: tier.url)
         }
+        let iroh = json["iroh"] as? [String: Any]
         return UplinkPairing(
             hostId: hostId,
             name: json["name"] as? String ?? "",
@@ -242,6 +324,14 @@ public struct UplinkPairing: Sendable, Equatable {
             secret: secret,
             urls: urls,
             hintedTiers: hintedTiers,
+            // endpointId 缺失就当没有 —— 别猜、也别用 relay 顶替。
+            irohEndpointId: iroh?["endpointId"] as? String,
+            irohRelay: iroh?["relay"] as? String,
+            irohCode: iroh?["code"] as? String,
+            // JSONSerialization 会把整数给成 Int（64 位上够装毫秒时间戳），
+            // 但服务端如果用浮点写（`1792670400000.0`）就会是 Double —— 两种都收。
+            irohExpiresAt: (iroh?["expiresAt"] as? Int).map(Int64.init)
+                ?? (iroh?["expiresAt"] as? Double).map { Int64($0) },
             issuedAt: Int64(json["issuedAt"] as? Int ?? 0)
         )
     }
@@ -261,6 +351,13 @@ public struct UplinkPairing: Sendable, Equatable {
         ]
         if !hintedTiers.isEmpty {
             payload["tiers"] = hintedTiers.map { ["kind": $0.kind.rawValue, "url": $0.url.absoluteString] }
+        }
+        if let irohEndpointId {
+            var iroh: [String: Any] = ["endpointId": irohEndpointId]
+            if let irohRelay { iroh["relay"] = irohRelay }
+            if let irohCode { iroh["code"] = irohCode }
+            if let irohExpiresAt { iroh["expiresAt"] = irohExpiresAt }
+            payload["iroh"] = iroh
         }
         let data = (try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]))
             ?? Data("{}".utf8)
@@ -339,6 +436,207 @@ enum UplinkBase64 {
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
+    }
+}
+
+// MARK: - iroh 配对窗口
+
+/// 一次 iroh 配对窗口（`POST /uplink/iroh-pairing` 的返回）。
+///
+/// 电脑端回的是 `<endpointId>#<6 位码>`。**码只有几分钟有效期**，所以它不能存 ——
+/// 用掉就该扔（`TetherSession` 配对成功后会把这台电脑记进主机簿，下次直接 hello）。
+public struct UplinkIrohPairing: Sendable, Equatable {
+    public let endpointId: String
+    public let code: String
+    /// 窗口还剩多少秒（电脑端给的，600 是默认值）。
+    public let expiresInSec: Int
+
+    /// 解析电脑端给的 `pairingString`。
+    ///
+    /// 以 `pairingString` 为准、`endpointId` 字段只作交叉校验：真正能连的是
+    /// "码 + 这个 endpoint"这一对，两者对不上时宁可不信（返回 nil 让上层报错），
+    /// 也不要拿一个连不上的组合去白试 20 秒。
+    public init?(pairingString: String, endpointId: String?, expiresInSec: Int) {
+        let trimmed = pairingString.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parts = trimmed.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)
+        guard parts.count == 2 else { return nil }
+        let endpoint = String(parts[0]).trimmingCharacters(in: .whitespaces)
+        let code = String(parts[1]).trimmingCharacters(in: .whitespaces)
+        guard !endpoint.isEmpty, !code.isEmpty else { return nil }
+        if let declared = endpointId?.trimmingCharacters(in: .whitespaces), !declared.isEmpty,
+           declared != endpoint {
+            return nil
+        }
+        self.endpointId = endpoint
+        self.code = code
+        self.expiresInSec = expiresInSec
+    }
+}
+
+/// 换 iroh 配对窗口时的失败。
+public enum UplinkIrohPairingError: Error, Equatable, Sendable {
+    /// 电脑端没跑 iroh 档（`503 iroh-unavailable`）。
+    /// **这一档就是不可用** —— 别重试，重试只会打出一串 503。
+    case unavailable
+    /// 手上没有可用票据（当前一个地址都不通，或还没换过票）。
+    /// 如实报错：没有票就换不到配对码，假装在重试没有意义。
+    case noTicket
+    /// 状态码意外 / 响应看不懂。
+    case failed(String)
+}
+
+extension UplinkIrohPairingError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .unavailable:
+            return String(localized: "电脑端没有启用 iroh 兜底档。")
+        case .noTicket:
+            return String(localized: "现在一个地址都不通，换不到 iroh 配对码。请先回到能连上这台电脑的网络。")
+        case .failed(let reason):
+            return String(localized: "换 iroh 配对码失败：\(reason)")
+        }
+    }
+}
+
+// MARK: - 探测结果
+
+/// 一次探测的结果。
+///
+/// 为什么不是 `Int?`：`nil` 把"超时""被拒""根本没网""对面是别的电脑"全糊成一种，
+/// 而它们的修法完全不同（换网络 / 起网关 / 开权限 / 重新配对）。
+/// 真机排障时只有一句"所有档位都探测失败"，等于什么都没说。
+public enum UplinkProbeResult: Sendable, Equatable {
+    case reachable(rttMilliseconds: Int)
+    case unreachable(UplinkProbeFailure)
+
+    public var rtt: Int? {
+        if case .reachable(let rtt) = self { return rtt }
+        return nil
+    }
+
+    public var failure: UplinkProbeFailure? {
+        if case .unreachable(let failure) = self { return failure }
+        return nil
+    }
+}
+
+/// 探测失败的原因。分类是**主要目的**，文案只是它的投影。
+public enum UplinkProbeFailure: Sendable, Equatable {
+    /// 超时：多半不在同一网络、iOS「本地网络」权限没开，或者 VPN 把包吞了。
+    case timedOut(milliseconds: Int)
+    /// 地址可达但连接被拒：端口没在监听（网关没起），或者被防火墙挡了。
+    case refused(milliseconds: Int)
+    /// 手机自己就没网（飞行模式、蜂窝关了、Wi-Fi 没连上）。
+    case offline(milliseconds: Int)
+    /// 名字解析不到（DNS / mDNS）。
+    case unknownHost(milliseconds: Int)
+    /// 地址通了，但对面是**另一台**电脑（`hostId` 对不上）。
+    case hostMismatch(milliseconds: Int)
+    /// 其余：TLS 失败、5xx、响应不是 JSON……
+    case other(milliseconds: Int, reason: String)
+
+    /// 粗分类。`summary(for:)` 与诊断页都按它分支。
+    public enum Category: String, Sendable, Equatable {
+        case timeout, refused, offline, dns, mismatch, other
+    }
+
+    public var category: Category {
+        switch self {
+        case .timedOut: return .timeout
+        case .refused: return .refused
+        case .offline: return .offline
+        case .unknownHost: return .dns
+        case .hostMismatch: return .mismatch
+        case .other: return .other
+        }
+    }
+
+    public var milliseconds: Int {
+        switch self {
+        case .timedOut(let ms), .refused(let ms), .offline(let ms),
+             .unknownHost(let ms), .hostMismatch(let ms), .other(let ms, _):
+            return ms
+        }
+    }
+
+    /// 日志里的形状：`timedOut(832ms)`。**不本地化** —— 排障时要能直接 grep
+    /// URLError 的语义，翻成中文反而对不上系统日志。
+    public var logLabel: String {
+        switch self {
+        case .timedOut(let ms): return "timedOut(\(ms)ms)"
+        case .refused(let ms): return "refused(\(ms)ms)"
+        case .offline(let ms): return "offline(\(ms)ms)"
+        case .unknownHost(let ms): return "unknownHost(\(ms)ms)"
+        case .hostMismatch(let ms): return "hostMismatch(\(ms)ms)"
+        case .other(let ms, let reason): return "error(\(reason))(\(ms)ms)"
+        }
+    }
+
+    /// 给用户的一句话（含"下一步该做什么"）。诊断页逐档显示。
+    public var advice: String {
+        switch self {
+        case .timedOut:
+            return String(localized: "超时：可能不在同一网络、iOS「本地网络」权限没开，或者 VPN 拦了请求。")
+        case .refused:
+            return String(localized: "连接被拒：地址是通的，但那个端口上没有服务（电脑端网关没起，或被防火墙挡了）。")
+        case .offline:
+            return String(localized: "手机当前没有网络连接。")
+        case .unknownHost:
+            return String(localized: "解析不到这个地址（DNS / mDNS 没回应）。")
+        case .hostMismatch:
+            return String(localized: "这个地址上是另一台电脑，不是已配对的那台。")
+        case .other(_, let reason):
+            return String(localized: "探测失败：\(reason)")
+        }
+    }
+
+    /// 把 `URLError` 归到上面几类。
+    ///
+    /// 映射表是按 iOS 实测的错误码写的：`URLSession` 在"同网段但端口没开"时给
+    /// `.cannotConnectToHost`（不是 `.timedOut`），在"本地网络权限没给"时给
+    /// `.timedOut`（iOS 静默丢包），两者必须分开，否则用户会照着错的建议去改。
+    public init(urlError: URLError, milliseconds: Int) {
+        switch urlError.code {
+        case .timedOut:
+            self = .timedOut(milliseconds: milliseconds)
+        case .cannotConnectToHost:
+            self = .refused(milliseconds: milliseconds)
+        case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed,
+             .internationalRoamingOff, .callIsActive:
+            self = .offline(milliseconds: milliseconds)
+        case .cannotFindHost, .dnsLookupFailed:
+            self = .unknownHost(milliseconds: milliseconds)
+        default:
+            self = .other(milliseconds: milliseconds, reason: "\(urlError.code.rawValue)")
+        }
+    }
+
+    /// 整体失败时的一句话：**按最可执行的那一类给建议**。
+    ///
+    /// 优先级是 offline → timeout → refused → dns：
+    /// "手机没网"能解释其余一切，先说它才不会被后面那些噪音带偏。
+    public static func summary(for failures: [UplinkProbeFailure]) -> String {
+        guard !failures.isEmpty else {
+            return String(localized: "没有可探测的地址。")
+        }
+        let count = String(failures.count)
+        let categories = Set(failures.map(\.category))
+        if categories.contains(.offline) {
+            return String(localized: "\(count) 个地址都没试通：手机现在没有网络。先确认 Wi-Fi 或蜂窝数据是开的。")
+        }
+        if categories.contains(.timeout) {
+            return String(localized: "\(count) 个地址都超时了：可能不在同一网络、iOS「本地网络」权限没开，或者 VPN 把请求劫持了。")
+        }
+        if categories.contains(.refused) {
+            return String(localized: "\(count) 个地址都拒绝连接：电脑上的网关可能没在跑，或者被防火墙挡了。")
+        }
+        if categories.contains(.dns) {
+            return String(localized: "\(count) 个地址都解析不到：多半是 DNS 或 VPN 的问题。")
+        }
+        if categories.contains(.mismatch) {
+            return String(localized: "\(count) 个地址上都不是已配对的那台电脑，请重新配对。")
+        }
+        return String(localized: "\(count) 个地址都不通，原因见下方每一档的说明。")
     }
 }
 

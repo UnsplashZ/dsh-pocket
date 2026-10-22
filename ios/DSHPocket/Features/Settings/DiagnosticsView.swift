@@ -96,6 +96,7 @@ struct DiagnosticsView: View {
         if model.settings.transportMode == .uplink {
             Section {
                 LabeledContent("当前档位", value: currentTierLabel)
+                LabeledContent("当前网络", value: model.uplink.networkKind.resolvedLabel)
                 LabeledContent("网关地址") {
                     Text(model.uplink.baseURL?.absoluteString ?? String(localized: "未选档"))
                         .font(.caption.monospaced())
@@ -106,19 +107,51 @@ struct DiagnosticsView: View {
                 if let remaining = model.uplink.ticketRemainingSeconds {
                     LabeledContent("票据", value: String(localized: "还剩 \(String(remaining)) 秒"))
                 }
-
-                ForEach(model.uplink.tierStatuses) { status in
-                    HStack(spacing: Token.Spacing.tight) {
-                        Label(status.tier.kind.label, systemImage: status.tier.kind.symbol)
-                        Spacer()
-                        if !status.enabled {
-                            Text("已关闭")
-                                .font(.caption2)
+                // iroh 与"网关档"是**两条独立的路**，绝不能合成一个"已连接"：
+                // 用户要知道"现在走的是局域网"、"iroh 已经配好了但没在用"。
+                if let endpoint = model.uplinkPairing?.irohEndpointId {
+                    LabeledContent("iroh 兜底") {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(model.irohPairedEndpoint == endpoint ? "已配对" : "未配对")
+                                .foregroundStyle(model.irohPairedEndpoint == endpoint ? .green : .secondary)
+                            Text(String(endpoint.prefix(12)) + "…")
+                                .font(.caption2.monospaced())
                                 .foregroundStyle(.tertiary)
                         }
-                        Text(status.rttMilliseconds.map { "\($0) ms" } ?? "—")
-                            .font(.caption.monospaced())
-                            .foregroundStyle(status.isCurrent ? .primary : .secondary)
+                    }
+                }
+
+                ForEach(model.uplink.tierStatuses) { status in
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: Token.Spacing.tight) {
+                            Label(status.tier.kind.label, systemImage: status.tier.kind.symbol)
+                            Spacer()
+                            if !status.enabled {
+                                Text("已关闭")
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                            }
+                            Text(status.rttMilliseconds.map { "\($0) ms" } ?? "—")
+                                .font(.caption.monospaced())
+                                .foregroundStyle(status.isCurrent ? .primary : .secondary)
+                        }
+                        Text(status.tier.url.absoluteString)
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        // **为什么不通**比"通不通"更有用：超时 / 被拒 / 认错电脑
+                        // 的修法完全不同，只写一句"探测失败"等于什么都没说。
+                        if let reason = status.skipReason {
+                            Text(reason)
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        } else if let failure = status.failure {
+                            Text(failure.advice)
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                     .accessibilityElement(children: .combine)
                 }
@@ -144,14 +177,19 @@ struct DiagnosticsView: View {
             } header: {
                 Text("多路接入")
             } footer: {
-                Text("地址清单来自电脑端的配对串。RTT 是最近一次探测的结果，「—」表示这次没测到（另一档先通了）。")
+                Text("地址清单来自电脑端的配对串，探测全不通时还会用 Bonjour 找一次电脑现在的地址。RTT 是最近一次探测的结果，「—」表示这次没测到（另一档先通了，或当前网络下不可达）。")
             }
         }
     }
 
+    /// 多路接入模式下"当前用哪一档"。
+    ///
+    /// 网关档全不可达时会落到 iroh —— 那时 `currentTier` 是 nil，但**连接是好的**。
+    /// 直接显示"未选档"会让人以为没连上，所以这里要如实说是 iroh 兜底。
     private var currentTierLabel: String {
-        guard let kind = model.uplink.currentTier?.kind else { return String(localized: "未选档") }
-        return kind.resolvedLabel
+        if let kind = model.uplink.currentTier?.kind { return kind.resolvedLabel }
+        if model.connection.isConnected { return String(localized: "iroh 兜底") }
+        return String(localized: "未选档")
     }
 
     private var transportSection: some View {
@@ -337,7 +375,15 @@ struct DiagnosticsView: View {
         lines.append(String(localized: "mux：\(muxLabel)"))
         if model.settings.transportMode == .uplink {
             lines.append(String(localized: "档位：\(currentTierLabel)"))
+            lines.append(String(localized: "网络：\(model.uplink.networkKind.resolvedLabel)"))
             lines.append(String(localized: "网关：\(model.uplink.baseURL?.absoluteString ?? "—")"))
+            for status in model.uplink.tierStatuses {
+                let state = status.rttMilliseconds.map { "\($0)ms" }
+                    ?? status.skipReason
+                    ?? status.failure?.logLabel
+                    ?? "—"
+                lines.append("\(status.tier.kind.rawValue) \(status.tier.url.absoluteString) \(state)")
+            }
         }
         if let diagnostics = model.diagnostics {
             lines.append(String(localized: "路径：\(pathLabel)"))

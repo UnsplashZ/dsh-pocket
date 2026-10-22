@@ -140,7 +140,7 @@ struct SettingsSheet: View {
         } header: {
             Text("连接方式")
         } footer: {
-            Text("「多路接入」会先并行探测电脑给出的所有地址（局域网、Tailscale、ZeroTier、自建中转），谁先通就用谁；一条都不通时自动退回 iroh。")
+            Text("「自动（多路接入）」是推荐项：一个配对串同时配好局域网 / Tailscale / ZeroTier / 自建中转**和 iroh 兜底**，哪条通走哪条。在外面（蜂窝网络）时自动用 iroh。「仅 iroh」只为已有配对记录的老用户与排障保留。")
         }
     }
 
@@ -191,6 +191,18 @@ struct SettingsSheet: View {
         ForEach(UplinkTierKind.networkKinds) { kind in
             Toggle(isOn: tierBinding(kind)) {
                 Label(kind.label, systemImage: kind.symbol)
+            }
+        }
+
+        if let endpoint = model.uplinkPairing?.irohEndpointId {
+            LabeledContent("iroh 兜底") {
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(model.irohPairedEndpoint == endpoint ? "已配对" : "未配对")
+                        .foregroundStyle(model.irohPairedEndpoint == endpoint ? .green : .secondary)
+                    Text(String(endpoint.prefix(12)) + "…")
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.tertiary)
+                }
             }
         }
 
@@ -283,10 +295,12 @@ struct SettingsSheet: View {
                     }
                 }
             }
+            // 一个 `dshuplink://` 配对串已经同时包含 iroh 兜底，通常不需要再单独加一次。
+            // 这里保留给老用户（已有 iroh 配对记录）与排障，所以**不**再叫"添加电脑"。
             Button {
                 showPairing = true
             } label: {
-                Label("添加电脑", systemImage: "qrcode")
+                Label("用 iroh 单独添加电脑（遗留）", systemImage: "qrcode")
             }
         } header: {
             Text("主机")

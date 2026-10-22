@@ -286,8 +286,18 @@ public final class AppSettings {
         // 迁移：老版本只有 devDirectEnabled 这个开关。
         if let raw = defaults.string(forKey: Key.transportMode), let mode = TransportMode(rawValue: raw) {
             self.transportMode = mode
+        } else if defaults.bool(forKey: Key.devDirect) {
+            // 老版本只有 devDirectEnabled 这个开关：打开过就要迁移成 .devDirect
+            self.transportMode = .devDirect
+        } else if defaults.string(forKey: Key.activeHost) == nil {
+            // **全新安装**（没存过连接方式、也没配过电脑）：默认「自动（多路接入）」。
+            // 一个配对串就能同时配好局域网/虚拟组网与 iroh 兜底，比让用户先走
+            // 只有 iroh 的老路更符合现在的玩法。
+            self.transportMode = .uplink
         } else {
-            self.transportMode = defaults.bool(forKey: Key.devDirect) ? .devDirect : .remote
+            // 已经配过电脑的老用户：**不能**改他的模式。他手里只有一个 iroh 配对，
+            // 切成 uplink 会让他在粘新配对串之前彻底连不上 —— 那是回归，不是升级。
+            self.transportMode = .remote
         }
         self.gatewayURL = defaults.string(forKey: Key.gatewayURL) ?? ""
         self.gatewayToken = defaults.string(forKey: Key.gatewayToken) ?? ""

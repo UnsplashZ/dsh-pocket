@@ -340,6 +340,102 @@ export async function detectSingBox({
   }
 }
 
+/**
+ * 解析 `sing-box api tailscale peer list` 的表格输出。
+ *
+ * 实测输出（制表符分隔三列）：
+ * ```
+ * sfm-mac.tail3d9dd2.ts.net	100.64.16.30	yes
+ * sfm-iphone-1.tail3d9dd2.ts.net	100.86.75.36	yes
+ * steamdeck.tail3d9dd2.ts.net	100.94.194.87	no
+ * ```
+ *
+ * 只取 IPv4 + 在线的那几行。**注意这里分不出"哪一行是自己"** —— CLI 只给 peers
+ * 的名字与地址，`status` 只给 State/Network。所以真正的"我是哪个地址"由上层用
+ * hostId 探一遍来确认（见 `resolveOwnTailnetAddresses`）。
+ *
+ * @returns {Array<{fqdn: string, ip: string, online: boolean}>}
+ */
+export function parseTailscalePeerList(text) {
+  if (typeof text !== 'string') return []
+  const out = []
+  for (const line of text.split('\n')) {
+    const cells = line.trim().split(/\s+/)
+    if (cells.length < 2) continue
+    const ip = cells.find((cell) => parseIPv4(cell) !== null)
+    if (ip === undefined) continue
+    // 第一列是 FQDN；末列是 yes/no（有的版本没有这一列，那就当作在线）
+    const online = cells.length >= 3 ? /^y/i.test(cells[cells.length - 1]) : true
+    if (!out.some((entry) => entry.ip === ip)) out.push({ fqdn: cells[0], ip, online })
+  }
+  return out
+}
+
+/**
+ * 通过 sing-box 的 API 服务拿到本机的 tailnet 地址。
+ *
+ * 解决的是这个死结：sing-box 的 `tailscale` endpoint 是**用户态 tsnet**，tailnet IP
+ * 不出现在任何网卡上（`ifconfig` 里没有 100.x），所以网卡枚举与 `tailscale` CLI 两条
+ * 老路都失效；而状态目录是 root 0600 且含机器密钥，不该为探测去放开。
+ *
+ * 官方给的出口是 API 服务：`services: [{type:"api", listen:"127.0.0.1:19091", secret:"…"}]`，
+ * 之后 `sing-box api tailscale peer list` 就能列出所有节点地址。
+ *
+ * 但 CLI 只列 peers，**不告诉你哪一行是自己** —— 所以最后一步是自证：
+ * 逐个候选地址打自己的 `/uplink/ping`，谁的 `hostId` 与本地一致，谁就是本机地址。
+ * 这一步顺带证明了"这个地址真的能到网关"，比任何名字匹配都可靠。
+ *
+ * @param {object} options
+ * @param {Function} options.run 命令执行器（`createRunner()`）
+ * @param {string} options.cliPath sing-box 可执行文件路径
+ * @param {string} options.apiUrl 例如 `http://127.0.0.1:19091`
+ * @param {string} options.apiSecret API 服务的 secret
+ * @param {number} options.port 网关端口
+ * @param {string} options.hostId 本机 hostId（用于自证）
+ * @param {Function} [options.fetchImpl]
+ * @returns {Promise<{available: boolean, addresses: string[], reason: string|null, peers: Array}>}
+ */
+export async function resolveOwnTailnetAddresses({
+  run,
+  cliPath,
+  apiUrl,
+  apiSecret,
+  port,
+  hostId,
+  fetchImpl = globalThis.fetch,
+  timeoutMs = 1200,
+} = {}) {
+  const empty = (reason) => ({ available: false, addresses: [], reason, peers: [] })
+  if (typeof run !== 'function' || !cliPath || !apiUrl || !apiSecret) return empty('not-configured')
+
+  const listing = await run(cliPath, ['api', 'tailscale', 'peer', 'list', '--url', apiUrl, '--secret', apiSecret])
+  if (!listing.ok) return empty(`cli-failed:${(listing.stderr || '').trim().slice(0, 80) || listing.code}`)
+  const peers = parseTailscalePeerList(listing.stdout)
+  if (peers.length === 0) return empty('no-peers')
+
+  const online = peers.filter((peer) => peer.online)
+  const matches = []
+  await Promise.all(online.map(async (peer) => {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      const response = await fetchImpl(`http://${peer.ip}:${port}/uplink/ping`, {
+        signal: controller.signal,
+        headers: { connection: 'close' },
+      })
+      if (!response.ok) return
+      const body = await response.json()
+      if (body?.ok === true && body.hostId === hostId) matches.push(peer.ip)
+    } catch {
+      // 打不通就是"这个地址不是我们"或"还没起来"，都不是错误
+    } finally {
+      clearTimeout(timer)
+    }
+  }))
+  if (matches.length === 0) return { available: false, addresses: [], reason: 'self-not-reachable', peers }
+  return { available: true, addresses: matches.sort(), reason: null, peers }
+}
+
 /** 默认路由走哪张网卡 —— 用来判断"是不是换网了"。 */
 export async function detectDefaultInterface({ run } = {}) {
   const result = await run('route', ['-n', 'get', 'default'])

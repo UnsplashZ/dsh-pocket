@@ -20,7 +20,7 @@ import { createCookieSource } from './lib/cookie.js'
 import { createGateway } from './lib/gateway.js'
 import { ADMIN_PATHS, DETECT_CACHE_MS } from './lib/constants.js'
 import { buildDescriptor, encodePairingPayload, publicIdentity } from './lib/descriptor.js'
-import { createRunner, detectEnvironment, detectFrpc } from './lib/detect.js'
+import { createRunner, detectEnvironment, detectFrpc, resolveOwnTailnetAddresses } from './lib/detect.js'
 import { createAdvertiser } from './lib/publish.js'
 import { ensureCertificate } from './lib/tls.js'
 import { createFrpTier } from './lib/tiers/frp.js'
@@ -153,7 +153,44 @@ function apply(ctx, rawConfig = {}) {
     if (!force && envCache.value !== null && now - envCache.at < DETECT_CACHE_MS) return envCache.value
     if (envInFlight !== null) return envInFlight
     envInFlight = detectEnvironment({ run, singbox: config.singbox })
-      .then((value) => {
+      .then(async (value) => {
+        // sing-box 的 tailnet：网卡上看不到（用户态 tsnet），只能问它的 API 服务，
+        // 再用"打自己的 /uplink/ping 看 hostId 对不对"来自证哪个地址是本机。
+        if (config.singbox.cliPath !== '' && config.singbox.apiUrl !== '' && config.singbox.apiSecret !== '') {
+          const resolved = await resolveOwnTailnetAddresses({
+            run,
+            cliPath: config.singbox.cliPath,
+            apiUrl: config.singbox.apiUrl,
+            apiSecret: config.singbox.apiSecret,
+            port: actualPort,
+            hostId,
+          })
+          value.singboxTailnet = {
+            available: resolved.available,
+            addresses: resolved.addresses,
+            reason: resolved.reason,
+            peers: resolved.peers.length,
+          }
+          if (resolved.available) {
+            const merged = new Set([...(value.tailscale?.addresses ?? []), ...resolved.addresses])
+            value.tailscale = {
+              ...(value.tailscale ?? {}),
+              available: true,
+              addresses: [...merged],
+              via: 'singbox',
+              // 官方 CLI 没装时 reason 会是 not-installed，但这条地址是 sing-box 给的，
+              // 留着那个 reason 只会让人以为"不可用" —— 这里清掉。
+              reason: null,
+            }
+          } else if (value.tailscale?.available !== true) {
+            value.tailscale = {
+              ...(value.tailscale ?? {}),
+              available: false,
+              addresses: [],
+              reason: `singbox:${resolved.reason}`,
+            }
+          }
+        }
         envCache = { at: Date.now(), value }
         return value
       })
@@ -237,8 +274,9 @@ function apply(ctx, rawConfig = {}) {
     }
 
     if (enabled.tailscale) {
+      const source = env.tailscale?.via === 'singbox' ? 'singbox-api' : 'tailscale-cli'
       const detected = env.tailscale?.available === true
-        ? env.tailscale.addresses.map((address) => ({ address, source: 'tailscale-cli' }))
+        ? env.tailscale.addresses.map((address) => ({ address, source }))
         : []
       collect('tailscale', detected, config.tiers.tailscale.addresses)
     }
@@ -575,6 +613,7 @@ function apply(ctx, rawConfig = {}) {
           tailscale: env.tailscale ?? { available: false },
           zerotier: env.zerotier ?? { available: false },
           singBox: env.singBox ?? null,
+          singboxTailnet: env.singboxTailnet ?? null,
         },
         // source 很重要：排障时第一个要问的就是"这个地址哪来的"
         tiers: tiers.map(({ kind, url, prio, endpointId, source, address }) => ({
