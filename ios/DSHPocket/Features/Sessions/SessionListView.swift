@@ -342,18 +342,27 @@ struct SessionListView: View {
                 .accessibilityElement(children: .combine)
             }
 
-            // 行样式而不是大胶囊：List 里 `.borderedProminent` 会被撑成整行宽，
-            // 视觉上像个横幅而不是一个动作。
-            Button {
-                if let hostId = model.settings.activeHostId, !hostId.isEmpty {
-                    Task { await model.connect(hostId: hostId, pairingCode: nil) }
-                } else {
-                    onPair()
+            // 连接中**不出现按钮**：状态行已经写着「正在连接电脑」，再放一个禁用的
+            // 「正在连接…」等于同一句话说两遍（用户报的就是这个）。
+            // 这里换成一行进度指示 —— 它给的是"还在动"这个额外信息，不是复述状态。
+            if isConnecting {
+                // 只有 spinner：文案已经在上面那行说了，这里再写一遍就是重复。
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                // 行样式而不是大胶囊：List 里 `.borderedProminent` 会被撑成整行宽，
+                // 视觉上像个横幅而不是一个动作。
+                Button {
+                    if let hostId = model.settings.activeHostId, !hostId.isEmpty {
+                        Task { await model.connect(hostId: hostId, pairingCode: nil) }
+                    } else {
+                        onPair()
+                    }
+                } label: {
+                    Label(disconnectedActionTitle, systemImage: disconnectedActionSymbol)
                 }
-            } label: {
-                Label(disconnectedActionTitle, systemImage: disconnectedActionSymbol)
             }
-            .disabled(isConnecting)
         }
     }
 
@@ -387,7 +396,7 @@ struct SessionListView: View {
     }
 
     private var disconnectedActionTitle: String {
-        if isConnecting { return String(localized: "正在连接…") }
+        // 连接中不会显示按钮（见上），所以这里不再有"正在连接…"这个分支。
         if let hostId = model.settings.activeHostId, !hostId.isEmpty {
             return String(localized: "重新连接")
         }

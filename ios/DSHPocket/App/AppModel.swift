@@ -593,6 +593,17 @@ public final class AppModel {
             logs.log(.debug, "已在后台，跳过多路接入探测")
             return String(localized: "已退到后台，跳过这次连接")
         }
+        // **还没配对就不要制造"连接失败"**。
+        //
+        // 全新安装（或刚清空配对记录）时 pairing 为 nil，如果照常往下走，探测拿不到任何
+        // 地址 → `.failed("还没有配对这台电脑…")` → 首页一打开就是"连接失败"。
+        // 用户什么都没做错，只是还没配对；那应该是中性的"未连接 / 连接电脑"。
+        guard uplink.isPaired else {
+            isConnecting = false
+            setConnection(.idle)
+            logs.log(.debug, "还没有配对这台电脑，跳过连接（等用户粘贴配对串）")
+            return nil
+        }
         if !silent {
             pendingApprovals.removeAll()
             pendingQuestions.removeAll()
