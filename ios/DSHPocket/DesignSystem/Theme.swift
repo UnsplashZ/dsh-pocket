@@ -33,6 +33,31 @@ public enum Token {
         public static let chip: CGFloat = 8
     }
 
+    // MARK: 字号（语义，只有四档）
+
+    /// 设置页/诊断页这类"表单 + 状态"界面的字号**只有四档**。
+    ///
+    /// 为什么要有这个：这两个页面曾经把 `caption` / `caption2` / `footnote` /
+    /// 默认 `body` 混着用，配对串输入框甚至比它周围的标签小两号 —— 看起来就是
+    /// "参差不齐"。根因不是手滑，而是**没有一套可引用的语义档位**，每加一行都靠感觉挑。
+    ///
+    /// 规则：
+    ///   · 行标题 / 按钮 / 输入框 / 开关标签 → **默认 body**（不写 `.font`，别自己挑）；
+    ///   · 值旁边的标识符（主机 id、endpoint id、URL、版本号）→ `identifier`（等宽）；
+    ///   · 状态补充说明、灰字提示 → `secondary`；
+    ///   · 错误、footer 里的操作指引 → `note`；
+    ///   · 页面内的小标题 → `sectionTitle`。
+    public enum Typography {
+        /// 等宽 + caption：只给**标识符**用（id、地址、版本号）。
+        public static let identifier = Font.caption.monospaced()
+        /// 次要说明：状态补充、灰字提示。
+        public static let secondary = Font.caption
+        /// 提示与错误：footer 的操作指引、失败原因。
+        public static let note = Font.footnote
+        /// 页内小标题。
+        public static let sectionTitle = Font.subheadline.weight(.semibold)
+    }
+
     /// 触摸目标下限。任何可点元素都要 ≥ 这个值（含 `contentShape`）。
     public static let minimumHitTarget: CGFloat = 44
 

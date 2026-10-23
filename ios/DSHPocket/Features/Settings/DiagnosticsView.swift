@@ -67,7 +67,7 @@ struct DiagnosticsView: View {
                 }
             }
             if case .failed(let message) = model.connection {
-                Text(message).font(.footnote).foregroundStyle(.red)
+                Text(message).font(Token.Typography.note).foregroundStyle(.red)
             }
             LabeledContent("会话流（mux）", value: muxLabel)
             LabeledContent("本地代理", value: model.diagnostics?.proxyURL ?? String(localized: "未启动"))
@@ -80,7 +80,7 @@ struct DiagnosticsView: View {
             }
             LabeledContent("本机端点 ID") {
                 Text(model.localEndpointId.isEmpty ? "—" : String(model.localEndpointId.prefix(16)) + "…")
-                    .font(.caption.monospaced())
+                    .font(Token.Typography.identifier)
                     .foregroundStyle(.secondary)
             }
         }
@@ -97,7 +97,7 @@ struct DiagnosticsView: View {
         if model.settings.transportMode != .uplink {
             Section {
                 Text("这台手机还在用旧的 iroh 配对。建议到「设置 → 多路接入」里重新粘贴一次配对串：之后局域网 / 虚拟组网会更快，iroh 仍然作为兜底。")
-                    .font(.footnote)
+                    .font(Token.Typography.note)
                     .fixedSize(horizontal: false, vertical: true)
             } header: {
                 Text("建议重新配对")
@@ -122,7 +122,7 @@ struct DiagnosticsView: View {
                 LabeledContent("当前网络", value: model.uplink.networkKind.resolvedLabel)
                 LabeledContent("网关地址") {
                     Text(model.uplink.currentTier?.url.absoluteString ?? String(localized: "未选档"))
-                        .font(.caption.monospaced())
+                        .font(Token.Typography.identifier)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -131,7 +131,7 @@ struct DiagnosticsView: View {
                 // tailnet / 公网 IP 的明文 http 会被 -1022 拒掉（见 UplinkLocalProxy）。
                 LabeledContent("本地代理") {
                     Text(model.uplink.baseURL?.absoluteString ?? "—")
-                        .font(.caption.monospaced())
+                        .font(Token.Typography.identifier)
                         .foregroundStyle(.secondary)
                 }
                 if let remaining = model.uplink.ticketRemainingSeconds {
@@ -147,13 +147,13 @@ struct DiagnosticsView: View {
                             Text(irohStatusLabel)
                                 .foregroundStyle(model.irohStatus.isPaired ? .green : .secondary)
                             Text(String(endpoint.prefix(12)) + "…")
-                                .font(.caption2.monospaced())
+                                .font(Token.Typography.identifier)
                                 .foregroundStyle(.tertiary)
                         }
                     }
                     if case .unpaired(let reason) = model.irohStatus {
                         Text(reason.advice)
-                            .font(.caption2)
+                            .font(Token.Typography.secondary)
                             .foregroundStyle(.tertiary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -166,15 +166,15 @@ struct DiagnosticsView: View {
                             Spacer()
                             if !status.enabled {
                                 Text("已关闭")
-                                    .font(.caption2)
+                                    .font(Token.Typography.secondary)
                                     .foregroundStyle(.tertiary)
                             }
                             Text(status.rttMilliseconds.map { "\($0) ms" } ?? "—")
-                                .font(.caption.monospaced())
+                                .font(Token.Typography.identifier)
                                 .foregroundStyle(status.isCurrent ? .primary : .secondary)
                         }
                         Text(status.tier.url.absoluteString)
-                            .font(.caption2.monospaced())
+                            .font(Token.Typography.identifier)
                             .foregroundStyle(.tertiary)
                             .lineLimit(1)
                             .truncationMode(.middle)
@@ -182,11 +182,11 @@ struct DiagnosticsView: View {
                         // 的修法完全不同，只写一句"探测失败"等于什么都没说。
                         if let reason = status.skipReason {
                             Text(reason)
-                                .font(.caption2)
+                                .font(Token.Typography.secondary)
                                 .foregroundStyle(.tertiary)
                         } else if let failure = status.failure {
                             Text(failure.advice)
-                                .font(.caption2)
+                                .font(Token.Typography.secondary)
                                 .foregroundStyle(.orange)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -196,13 +196,13 @@ struct DiagnosticsView: View {
 
                 if let reason = model.uplink.lastSwitchReason {
                     Text(reason)
-                        .font(.footnote)
+                        .font(Token.Typography.note)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if let error = model.uplink.lastError {
                     Text(error)
-                        .font(.footnote)
+                        .font(Token.Typography.note)
                         .foregroundStyle(.red)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -228,7 +228,7 @@ struct DiagnosticsView: View {
 
                 if let irohFallbackResult {
                     Text(irohFallbackResult)
-                        .font(.caption2)
+                        .font(Token.Typography.secondary)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -310,9 +310,9 @@ struct DiagnosticsView: View {
                     Image(systemName: result.symbol)
                         .foregroundStyle(result.tone.color)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(result.title).font(.subheadline)
+                        Text(result.title).font(Token.Typography.sectionTitle)
                         Text(result.detail)
-                            .font(.caption)
+                            .font(Token.Typography.secondary)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -339,14 +339,14 @@ struct DiagnosticsView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: Token.Spacing.hairline) {
                         Text(entry.level.label)
-                            .font(.caption2.monospaced())
+                            .font(Token.Typography.identifier)
                             .foregroundStyle(color(for: entry.level))
                         Text(Format.time(entry.time))
-                            .font(.caption2.monospaced())
+                            .font(Token.Typography.identifier)
                             .foregroundStyle(.tertiary)
                     }
                     Text(entry.message)
-                        .font(.caption.monospaced())
+                        .font(Token.Typography.identifier)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .accessibilityElement(children: .combine)

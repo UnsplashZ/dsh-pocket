@@ -98,16 +98,16 @@ struct ArchivedSessionsView: View {
                 .lineLimit(1)
             if !summary.subtitle.isEmpty {
                 Text(summary.subtitle)
-                    .font(.subheadline)
+                    .font(Token.Typography.sectionTitle)
                     .foregroundStyle(.secondary)
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? 1 : 2)
             }
             HStack(spacing: Token.Spacing.tight) {
                 Text(summary.workspaceName)
-                    .font(.caption2)
+                    .font(Token.Typography.secondary)
                     .foregroundStyle(.tertiary)
                 Text(Format.relativeTime(summary.updatedAt))
-                    .font(.caption2)
+                    .font(Token.Typography.secondary)
                     .foregroundStyle(.tertiary)
             }
         }

@@ -116,7 +116,7 @@ struct HostSettingsView: View {
                             Text(modelLabel(namespace))
                                 .foregroundStyle(.primary)
                             if let effort = namespace.value.string("reasoningEffort"), !effort.isEmpty {
-                                Text(effort).font(.caption2).foregroundStyle(.secondary)
+                                Text(effort).font(Token.Typography.secondary).foregroundStyle(.secondary)
                             }
                         }
                     } label: {
@@ -234,7 +234,7 @@ struct HostSettingsView: View {
                         .lineLimit(1)
                     if bundle.optional {
                         Text("实验性")
-                            .font(.caption2)
+                            .font(Token.Typography.secondary)
                             .padding(.horizontal, 5)
                             .padding(.vertical, 1)
                             .background(Color(.tertiarySystemFill), in: Capsule())
@@ -244,13 +244,13 @@ struct HostSettingsView: View {
                 // 说明是这一层最有价值的东西 —— 标题之外得知道它是干嘛的。
                 if let summary = bundle.summary, !summary.isEmpty {
                     Text(summary)
-                        .font(.caption)
+                        .font(Token.Typography.secondary)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if bundle.title != bundle.name {
                     Text(bundle.name)
-                        .font(.caption2.monospaced())
+                        .font(Token.Typography.identifier)
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -273,7 +273,7 @@ struct HostSettingsView: View {
                 .accessibilityLabel(Text(bundle.title))
             } else {
                 Image(systemName: "lock")
-                    .font(.caption)
+                    .font(Token.Typography.secondary)
                     .foregroundStyle(.tertiary)
                     .accessibilityLabel(Text(bundle.readOnlyExplanation ?? String(localized: "不可修改")))
             }
@@ -390,15 +390,15 @@ struct PluginDetailView: View {
                 // 大部分插件的 title 就等于 moduleName —— 那就别显示两遍。
                 if plugin.title != plugin.moduleName {
                     Text(plugin.moduleName)
-                        .font(.caption2.monospaced())
+                        .font(Token.Typography.identifier)
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
                 if let reason = plugin.readOnlyExplanation {
-                    Text(reason).font(.caption2).foregroundStyle(.tertiary)
+                    Text(reason).font(Token.Typography.secondary).foregroundStyle(.tertiary)
                 } else if plugin.enabled, plugin.fiberPhase != "active" {
-                    Text(plugin.statusLabel).font(.caption2).foregroundStyle(.orange)
+                    Text(plugin.statusLabel).font(Token.Typography.secondary).foregroundStyle(.orange)
                 }
             }
             Spacer(minLength: Token.Spacing.tight)
@@ -416,7 +416,7 @@ struct PluginDetailView: View {
                 .accessibilityLabel(Text(plugin.title))
             } else {
                 Image(systemName: "lock")
-                    .font(.caption)
+                    .font(Token.Typography.secondary)
                     .foregroundStyle(.tertiary)
                     .accessibilityLabel(Text(plugin.readOnlyExplanation ?? String(localized: "不可修改")))
             }
@@ -527,7 +527,7 @@ struct DefaultModelPickerSheet: View {
                             HStack(alignment: .firstTextBaseline, spacing: Token.Spacing.tight) {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(entry.name)
-                                    Text(entry.id).font(.caption2.monospaced()).foregroundStyle(.tertiary)
+                                    Text(entry.id).font(Token.Typography.identifier).foregroundStyle(.tertiary)
                                 }
                                 Spacer(minLength: Token.Spacing.tight)
                                 if provider == group.id, chosenModel == entry.id {

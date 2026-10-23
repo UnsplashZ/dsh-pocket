@@ -82,7 +82,7 @@ struct SettingsSheet: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(String(localized: "开发者模式：") + model.settings.transportMode.resolvedLabel)
                         Text("正常使用请改回「多路接入」")
-                            .font(.caption)
+                            .font(Token.Typography.secondary)
                             .foregroundStyle(.secondary)
                     }
                 } icon: {
@@ -125,14 +125,16 @@ struct SettingsSheet: View {
                 VStack(alignment: .trailing, spacing: 2) {
                     Text(pairing.displayName)
                     Text(String(pairing.hostId.prefix(8)) + "…")
-                        .font(.caption2.monospaced())
+                        .font(Token.Typography.identifier)
                         .foregroundStyle(.tertiary)
                 }
             }
         }
 
+        // **不要给它单独挑字号**：Form 里的输入框跟周围标签一样用默认 body。
+        // 之前这里写了 `.caption.monospaced()`，比同一行里的"粘贴配对串"标签小两号，
+        // 视觉上就是"参差不齐"（用户报的就是这个）。
         TextField("粘贴电脑上显示的配对串（dshuplink://…）", text: $pairingText)
-            .font(.caption.monospaced())
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
             .onSubmit { submitPairing() }
@@ -144,7 +146,7 @@ struct SettingsSheet: View {
 
         if let pairingError {
             Text(pairingError)
-                .font(.footnote)
+                .font(Token.Typography.note)
                 .foregroundStyle(.red)
         }
 
@@ -160,7 +162,7 @@ struct SettingsSheet: View {
                     Text(model.irohPairedEndpoint == endpoint ? "已配对" : "未配对")
                         .foregroundStyle(model.irohPairedEndpoint == endpoint ? .green : .secondary)
                     Text(String(endpoint.prefix(12)) + "…")
-                        .font(.caption2.monospaced())
+                        .font(Token.Typography.identifier)
                         .foregroundStyle(.tertiary)
                 }
             }
@@ -392,7 +394,7 @@ struct SettingsSheet: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("连接与协议")
                         Text(model.connection.label)
-                            .font(.caption)
+                            .font(Token.Typography.secondary)
                             .foregroundStyle(.secondary)
                     }
                 } icon: {
@@ -447,8 +449,8 @@ struct LicenseView: View {
                 ForEach(components, id: \.0) { component in
                     VStack(alignment: .leading, spacing: 2) {
                         Text(component.0).font(.body.weight(.medium))
-                        Text(component.1).font(.caption).foregroundStyle(.secondary)
-                        Text(component.2).font(.caption2.monospaced()).foregroundStyle(.tertiary)
+                        Text(component.1).font(Token.Typography.secondary).foregroundStyle(.secondary)
+                        Text(component.2).font(Token.Typography.identifier).foregroundStyle(.tertiary)
                     }
                 }
             } footer: {
@@ -473,7 +475,7 @@ struct PrivacyView: View {
 
             Section {
                 Text("电脑端的已知边界")
-                    .font(.headline)
+                    .font(Token.Typography.sectionTitle)
                 Text("已经能在你电脑上执行代码的人，可以伪造回环 Host 通过栅栏、自签配对码，把自己配成一台「手机」。")
             } footer: {
                 Text("所以：**不要把本 App 用在你同时跑不可信代码的电脑上。**")
@@ -481,7 +483,7 @@ struct PrivacyView: View {
 
             Section {
                 Text("手机端的已知边界")
-                    .font(.headline)
+                    .font(Token.Typography.sectionTitle)
                 Text("App 内的本地代理只监听 127.0.0.1，但手机上其它 App 可以连上它，而且端口可以由主机 ID 推算出来。")
             } footer: {
                 Text("一期如实告知；后续可加一个进程内的随机握手令牌（需要电脑端配合）。")

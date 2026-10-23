@@ -149,6 +149,30 @@ All notable changes to this project are documented here.
 
 ---
 
+## [0.5.7] — 2026-10-23
+
+设置页排版收口：字号只有四档，且由令牌产出。
+
+### Fixed
+
+- **设置页字体参差不齐**。根因不是某处手滑，而是**没有一套可引用的语义字号** ——
+  两个页面里 `caption` / `caption2` / `footnote` / 默认 `body` 混着用，
+  配对串输入框甚至比同一行的标签小两号（`.caption.monospaced()`），
+  段内小标题又用 `.headline`（比真正的 Section header 还大）。
+  现在 `Token.Typography` 提供四档语义字号，设置页/诊断页/电脑设置/归档页全部改用：
+
+  | 档位 | 用途 |
+  |---|---|
+  | 默认 `body`（不写 `.font`） | 行标题、按钮、输入框、开关标签 |
+  | `Typography.identifier` | 标识符：主机 id、endpoint id、URL、版本号（等宽 caption） |
+  | `Typography.secondary` | 状态补充说明、灰字提示（caption） |
+  | `Typography.note` | 错误、footer 里的操作指引（footnote） |
+  | `Typography.sectionTitle` | 页内小标题（subheadline semibold） |
+
+  以后加一行只要挑档位，不用凭感觉写字号。
+
+---
+
 ## [0.5.6] — 2026-10-23
 
 iroh 兜底真的能配上了：主机簿不再压过显式配对码。
