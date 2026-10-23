@@ -671,16 +671,22 @@ public final class AppModel {
         // `iroh 配对失败：上一次连接还在进行中`。
         await irohPairing.drain()
 
-        // 码已经过期/用掉、iroh 又没配上：
-        //   · **手上有票** → 别拦，让下面的编排去 `/uplink/iroh-pairing` 静默换新码；
-        //   · 没有票（网关全不通）→ 这时 iroh 是唯一通路，也确实没别的办法，
-        //     才给一句可执行的话。其余情况一律不弹"配对码已过期"。
-        if Self.isIrohTheOnlyPath(gatewayReachable: false, irohPaired: irohStatus.isPaired || irohPairedEndpoint == endpoint),
-           pairing?.irohCodeExpired(now: Date()) == true,
-           uplink.baseURL == nil {
-            logs.log(.warning, "iroh 是唯一通路且配对码已过期（endpointId=\(endpoint.prefix(16))…）")
-            setConnection(.failed(Self.irohOnlyPathMessage))
-            return Self.irohOnlyPathMessage
+        // **不要"先判断再尝试"**。
+        //
+        // 这里原本有一道闸：`iroh 未配对 && 配对码已过期 && 没有票` → 直接放弃并提示
+        // "重新生成配对串"。真机上它把一条本来能走的路堵死了：
+        //   电脑端 paired.json 里明明记着这台手机（配过一次就是永久），
+        //   但手机端那道闸只认**本地**记录 —— 重装、或任何一次"隧道被拒"的作废，
+        //   都会让本地记录变成"未配对"，于是明明已经配好的电脑也被判成"没配"，
+        //   连一次握手都不试就报错。
+        //
+        // 现在一律**先试**（一次握手 ~1s，比让用户去电脑上重新生成配对串便宜得多）：
+        //   · 真配过 → 首行 hello 直接通过；
+        //   · 没配过但码还有效 → pair 成功；
+        //   · 都没成 → 编排回来告诉我们原因，**那时**才决定要不要给可执行文案。
+        let codeExpired = pairing?.irohCodeExpired(now: Date()) == true
+        if codeExpired, uplink.baseURL == nil {
+            logs.log(.info, "iroh：配对码已过期且没有票，仍然先试一次握手（电脑端可能已经认得这台手机）")
         }
 
         let outcome = await UplinkIrohFallback.run(
