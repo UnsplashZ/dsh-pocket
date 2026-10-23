@@ -473,6 +473,32 @@ public struct UplinkIrohPairing: Sendable, Equatable {
     }
 }
 
+/// 电脑端 iroh 白名单里的一台设备（`GET /uplink/iroh-devices`）。
+public struct UplinkIrohDevice: Equatable, Sendable {
+    public let id: String
+    public let name: String
+
+    public init(id: String, name: String) {
+        self.id = id
+        self.name = name
+    }
+}
+
+/// 查白名单的结果。
+///
+/// `unavailable` 与"名单里没有"**必须分开**：503 是"我不知道"（电脑端没跑 iroh 档），
+/// 把它当成"未配对"会让 App 白白去要码 —— 而那个码很可能早就用掉了。
+public enum UplinkIrohDevices: Equatable, Sendable {
+    case listed([UplinkIrohDevice])
+    /// 电脑端没跑 iroh 档（503）。**不是**"未配对"。
+    case unavailable
+
+    public func contains(_ endpointId: String) -> Bool {
+        guard case .listed(let devices) = self else { return false }
+        return devices.contains { $0.id == endpointId }
+    }
+}
+
 /// 换 iroh 配对窗口时的失败。
 public enum UplinkIrohPairingError: Error, Equatable, Sendable {
     /// 电脑端没跑 iroh 档（`503 iroh-unavailable`）。

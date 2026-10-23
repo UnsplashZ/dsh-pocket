@@ -137,14 +137,22 @@ struct DiagnosticsView: View {
                 // iroh 与"网关档"是**两条独立的路**，绝不能合成一个"已连接"：
                 // 用户要知道"现在走的是局域网"、"iroh 已经配好了但没在用"。
                 if let endpoint = model.uplinkPairing?.irohEndpointId {
+                    // 三种状态 + 来源，别混成一个"已连接"：
+                    //   已配对（电脑端确认）/ 已配对（本地记录）/ 未配对 + 灰字原因。
                     LabeledContent("iroh 兜底") {
                         VStack(alignment: .trailing, spacing: 2) {
-                            Text(model.irohPairedEndpoint == endpoint ? "已配对" : "未配对")
-                                .foregroundStyle(model.irohPairedEndpoint == endpoint ? .green : .secondary)
+                            Text(irohStatusLabel)
+                                .foregroundStyle(model.irohStatus.isPaired ? .green : .secondary)
                             Text(String(endpoint.prefix(12)) + "…")
                                 .font(.caption2.monospaced())
                                 .foregroundStyle(.tertiary)
                         }
+                    }
+                    if case .unpaired(let reason) = model.irohStatus {
+                        Text(reason.advice)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
 
@@ -213,6 +221,15 @@ struct DiagnosticsView: View {
     ///
     /// 网关档全不可达时会落到 iroh —— 那时 `currentTier` 是 nil，但**连接是好的**。
     /// 直接显示"未选档"会让人以为没连上，所以这里要如实说是 iroh 兜底。
+    /// 「iroh 兜底」那一行的主文案。
+    private var irohStatusLabel: String {
+        switch model.irohStatus {
+        case .pairedByComputer: return String(localized: "已配对（电脑端确认）")
+        case .pairedLocally: return String(localized: "已配对（本地记录）")
+        case .unpaired: return String(localized: "未配对")
+        }
+    }
+
     private var currentTierLabel: String {
         if let kind = model.uplink.currentTier?.kind { return kind.resolvedLabel }
         if model.connection.isConnected { return String(localized: "iroh 兜底") }

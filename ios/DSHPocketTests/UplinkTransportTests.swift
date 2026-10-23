@@ -440,6 +440,188 @@ final class UplinkTransportTests: XCTestCase {
         }
     }
 
+
+    // MARK: ① 白名单自检（GET /uplink/iroh-devices）
+
+    /// 自检命中：电脑端名单里有我们 → **一个配对码都不要**（决策层直接 skip）。
+    func testSelfCheckListedSkipsPairing() {
+        let action = UplinkIrohSelfCheck.action(
+            check: .listed, hasCode: true, codeExpired: false, hasTicket: true
+        )
+        XCTAssertEqual(action, .skip, "已经在白名单里就不该再碰码")
+        // 连"码已经过期"也不影响：照样 skip（这正是那条噪音的根治）。
+        XCTAssertEqual(
+            UplinkIrohSelfCheck.action(check: .listed, hasCode: true, codeExpired: true, hasTicket: false),
+            .skip
+        )
+    }
+
+    /// 自检未命中（明确没有）+ 码新鲜 → 用码配；码过期 + 有票 → 换新码；都没 → 放弃（不弹错）。
+    func testSelfCheckActionsWhenNotListed() {
+        XCTAssertEqual(
+            UplinkIrohSelfCheck.action(check: .notListed, hasCode: true, codeExpired: false, hasTicket: false),
+            .pairWithCode,
+            "5G 下唯一不需要 HTTP 的路"
+        )
+        XCTAssertEqual(
+            UplinkIrohSelfCheck.action(check: .notListed, hasCode: true, codeExpired: true, hasTicket: true),
+            .refresh,
+            "码过期但有票：静默换一张"
+        )
+        XCTAssertEqual(
+            UplinkIrohSelfCheck.action(check: .notListed, hasCode: true, codeExpired: true, hasTicket: false),
+            .giveUp,
+            "码过期又没票：什么都不做（不影响当前连接），别弹错"
+        )
+        XCTAssertEqual(
+            UplinkIrohSelfCheck.action(check: .skipped, hasCode: false, codeExpired: false, hasTicket: true),
+            .refresh
+        )
+    }
+
+    /// 503 是"不知道"，**不能**把本地记录的"已配对"翻成未配对。
+    func testUnavailableCheckKeepsLocalRecord() {
+        XCTAssertEqual(
+            IrohFallbackStatus.resolve(check: .disabled, endpointId: "ep", locallyPaired: true),
+            .pairedLocally,
+            "电脑端没跑 iroh 档时，本地说配过就还是配过"
+        )
+        XCTAssertEqual(
+            IrohFallbackStatus.resolve(check: .disabled, endpointId: "ep", locallyPaired: false),
+            .unpaired(reason: .irohDisabled)
+        )
+        XCTAssertEqual(
+            IrohFallbackStatus.resolve(check: .skipped, endpointId: "ep", locallyPaired: true),
+            .pairedLocally
+        )
+    }
+
+    /// 诊断页三种状态的取值规则。
+    func testIrohStatusResolution() {
+        XCTAssertEqual(
+            IrohFallbackStatus.resolve(check: .listed, endpointId: "ep", locallyPaired: false),
+            .pairedByComputer
+        )
+        XCTAssertEqual(
+            IrohFallbackStatus.resolve(check: .skipped, endpointId: "ep", locallyPaired: true),
+            .pairedLocally
+        )
+        XCTAssertEqual(
+            IrohFallbackStatus.resolve(check: .notListed, endpointId: "ep", locallyPaired: true),
+            .unpaired(reason: .notAuthorized),
+            "电脑端明确说没有 → 本地记录作废，以电脑端为准"
+        )
+        XCTAssertEqual(
+            IrohFallbackStatus.resolve(check: .skipped, endpointId: nil, locallyPaired: false),
+            .unpaired(reason: .notAuthorized)
+        )
+        // 三种状态各自都有文案，且未配对的那几种互不相同。
+        XCTAssertTrue(IrohFallbackStatus.pairedByComputer.isPaired)
+        XCTAssertTrue(IrohFallbackStatus.pairedLocally.isPaired)
+        XCTAssertFalse(IrohFallbackStatus.unpaired(reason: .noTicket).isPaired)
+        XCTAssertNotEqual(
+            IrohFallbackStatus.IrohUnpairedReason.codeExpired.advice,
+            IrohFallbackStatus.IrohUnpairedReason.noTicket.advice
+        )
+        XCTAssertNotEqual(
+            IrohFallbackStatus.IrohUnpairedReason.irohDisabled.advice,
+            IrohFallbackStatus.IrohUnpairedReason.notAuthorized.advice
+        )
+    }
+
+    /// 只有"网关全不通 + iroh 未配对"才算"唯一通路"，才值得说"重新生成配对串"。
+    @MainActor
+    func testIrohOnlyPathDecision() {
+        XCTAssertTrue(AppModel.isIrohTheOnlyPath(gatewayReachable: false, irohPaired: false))
+        XCTAssertFalse(AppModel.isIrohTheOnlyPath(gatewayReachable: true, irohPaired: false),
+                       "网关还通着：兜底没配好不影响连接，不该弹错")
+        XCTAssertFalse(AppModel.isIrohTheOnlyPath(gatewayReachable: false, irohPaired: true),
+                       "iroh 已配对：那就不是问题")
+    }
+
+    /// `irohDevices()` 打的是哪条路由、带什么头、三种响应怎么归类。
+    @MainActor
+    func testIrohDevicesRequestAndParsing() async throws {
+        let suite = UserDefaults(suiteName: "test-uplink-devices-\(UUID().uuidString)")!
+        defer { suite.removePersistentDomain(forName: suite.description) }
+        let server = UplinkTests.StubServer([
+            (200, #"{"ok":true,"ticket":"t1","ttl":900000}"#),
+            (200, #"{"ok":true,"devices":[{"id":"cc8a1078","name":"iPhone"},{"id":"other","name":"Mac"}]}"#),
+        ])
+        let store = UplinkCredentialStore(secrets: EphemeralSecretStore(), defaults: suite)
+        let session = UplinkSession(
+            store: store,
+            settings: AppSettings(defaults: suite),
+            probe: { _, _ in .reachable(rttMilliseconds: 3) },
+            send: { request in try await server.send(request) },
+            discover: { _ in [] },
+            network: UplinkNetworkMonitor(fixed: .wifi),
+            now: { Date() }
+        )
+        store.save(UplinkPairing(
+            hostId: "host-1", name: "Mac", port: 18788, deviceId: "d",
+            secret: "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+            urls: ["http://10.0.0.5:18788"], irohEndpointId: "cc8a1078", issuedAt: 1
+        )!)
+        let connected = await session.connect()
+        XCTAssertNotNil(connected)
+
+        let devices = try await session.irohDevices()
+        XCTAssertTrue(devices.contains("cc8a1078"), "自检要能认出本机")
+        XCTAssertFalse(devices.contains("nope"))
+
+        let request = try XCTUnwrap(server.requests.last)
+        XCTAssertEqual(request.url?.path, "/uplink/iroh-devices")
+        XCTAssertEqual(request.httpMethod, "GET")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer t1")
+    }
+
+    /// 503 → `.unavailable`（"不知道"），**不是**"名单为空"。
+    @MainActor
+    func testIrohDevicesUnavailableOn503() async throws {
+        let suite = UserDefaults(suiteName: "test-uplink-devices-\(UUID().uuidString)")!
+        defer { suite.removePersistentDomain(forName: suite.description) }
+        let server = UplinkTests.StubServer([
+            (200, #"{"ok":true,"ticket":"t1","ttl":900000}"#),
+            (503, #"{"ok":false,"reason":"iroh-unavailable"}"#),
+        ])
+        let store = UplinkCredentialStore(secrets: EphemeralSecretStore(), defaults: suite)
+        let session = UplinkSession(
+            store: store,
+            settings: AppSettings(defaults: suite),
+            probe: { _, _ in .reachable(rttMilliseconds: 3) },
+            send: { request in try await server.send(request) },
+            discover: { _ in [] },
+            network: UplinkNetworkMonitor(fixed: .wifi),
+            now: { Date() }
+        )
+        store.save(UplinkPairing(
+            hostId: "host-1", name: "Mac", port: 18788, deviceId: "d",
+            secret: "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+            urls: ["http://10.0.0.5:18788"], irohEndpointId: "cc8a1078", issuedAt: 1
+        )!)
+        let connected = await session.connect()
+        XCTAssertNotNil(connected)
+
+        let devices = try await session.irohDevices()
+        XCTAssertEqual(devices, .unavailable)
+        XCTAssertFalse(devices.contains("cc8a1078"), "503 不能当成\"名单里有\"，也不能当成\"名单为空\"")
+    }
+
+    /// "已配对"记录跟着 endpointId 走：换电脑自动作废。
+    @MainActor
+    func testIrohPairedRecordIsTiedToEndpoint() {
+        let suite = UserDefaults(suiteName: "test-uplink-paired-\(UUID().uuidString)")!
+        defer { suite.removePersistentDomain(forName: suite.description) }
+        let store = UplinkCredentialStore(secrets: EphemeralSecretStore(), defaults: suite)
+        XCTAssertFalse(store.isIrohPaired("ep-1"))
+        store.saveIrohPaired("ep-1")
+        XCTAssertTrue(store.isIrohPaired("ep-1"))
+        XCTAssertFalse(store.isIrohPaired("ep-2"), "换了电脑（endpoint 变了）就作废")
+        store.clearIrohPaired()
+        XCTAssertFalse(store.isIrohPaired("ep-1"))
+    }
+
     // MARK: ③ iroh 兜底的计划 / 单飞
 
     /// 有档可达 → 推迟（预热）；全不可达 → 立刻用码配。这条是产品决策的钉子。

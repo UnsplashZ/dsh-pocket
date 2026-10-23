@@ -1171,6 +1171,14 @@ EN: dict[str, str] = {
     "已配对": "Paired",
     "未配对": "Not paired",
     "电脑端没有启用 iroh 兜底档。": "The iroh fallback is not enabled on your computer.",
+    "已配对（电脑端确认）": "Paired (confirmed by your computer)",
+    "已配对（本地记录）": "Paired (local record)",
+    "配对码已用过或过期，需要一张新的。": "The pairing code was used or has expired; a new one is needed.",
+    "现在连不上网关，暂时换不到新的配对码（不影响当前连接）。":
+        "No gateway is reachable right now, so a new pairing code cannot be fetched (your current connection is unaffected).",
+    "电脑端的 iroh 白名单里没有这台手机。": "This phone is not in your computer’s iroh allow-list.",
+    "现在连不上这台电脑，iroh 兜底也还没配好。请在电脑上重新生成配对串，再回到 App 里粘贴一次。":
+        "This computer is unreachable and the iroh fallback is not paired yet. Generate a new pairing link on your computer and paste it here again.",
     "换不到 iroh 配对码": "Could not get an iroh pairing code",
     "换 iroh 配对码失败：%@": "Could not get an iroh pairing code: %@",
     "现在一个地址都不通，换不到 iroh 配对码。请先回到能连上这台电脑的网络。":

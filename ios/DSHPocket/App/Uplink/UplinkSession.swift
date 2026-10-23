@@ -577,6 +577,52 @@ public final class UplinkSession {
         return issued
     }
 
+    /// 查电脑端的 iroh 白名单（`GET /uplink/iroh-devices`，要票）。
+    ///
+    /// 这条是"已经配过就永不再要码"的依据：电脑端的白名单在
+    /// `$DSH_HOME/uplink/iroh/paired.json`，重装/重启都不丢；而 App 容器里的
+    /// `hosts.json` 会被重装清掉。所以**以电脑端为准**，别信本地记录。
+    public func irohDevices() async throws -> UplinkIrohDevices {
+        guard let baseURL else { throw UplinkIrohPairingError.noTicket }
+        var request = URLRequest(url: Self.endpoint(baseURL, "uplink/iroh-devices"))
+        request.httpMethod = "GET"
+        request.timeoutInterval = 10
+
+        let (data, response) = try await sendWithTicket(request)
+        switch response.statusCode {
+        case 200:
+            break
+        case 503:
+            // 电脑端没跑 iroh 档。这是"不知道"，**不能**当成"未配对"。
+            return .unavailable
+        default:
+            throw UplinkIrohPairingError.failed("http-\(response.statusCode)")
+        }
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              object["ok"] as? Bool == true,
+              let raw = object["devices"] as? [[String: Any]] else {
+            throw UplinkIrohPairingError.failed("bad-body")
+        }
+        let devices = raw.compactMap { item -> UplinkIrohDevice? in
+            guard let id = item["id"] as? String, !id.isEmpty else { return nil }
+            return UplinkIrohDevice(id: id, name: item["name"] as? String ?? "")
+        }
+        return .listed(devices)
+    }
+
+    /// 记下"电脑端确认已配对"（连同 endpointId 一起存；endpointId 变了就作废）。
+    public func markIrohPaired(_ endpointId: String) {
+        store.saveIrohPaired(endpointId)
+    }
+
+    public func clearIrohPaired() {
+        store.clearIrohPaired()
+    }
+
+    public func isIrohPairedLocally(_ endpointId: String) -> Bool {
+        store.isIrohPaired(endpointId)
+    }
+
     /// 带票据的请求。**401 时清掉缓存、重换一次票再重试**；第二次还是 401 才算失败。
     ///
     /// 为什么只重试一次：401 有两种成因 —— "票据过期 / 电脑端轮换了密钥"（重换就好）

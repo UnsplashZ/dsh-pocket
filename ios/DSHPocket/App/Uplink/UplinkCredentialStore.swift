@@ -36,6 +36,13 @@ public final class UplinkCredentialStore {
         static let irohRelay = "uplink.irohRelay"
         /// 配对串里带的一次性码 + 过期时间。**必须持久化**：用户粘完配对串
         /// 未必当场就能把 iroh 配上（比如那次 App 被杀了），重启后码还在就能补上。
+        /// 电脑端**确认过**已配对的 iroh endpointId。
+        ///
+        /// 为什么要存：重装 App 会清掉容器里的 `hosts.json`，于是手机以为没配对、
+        /// 又去要码、又撞协议错误。电脑端的白名单（`paired.json`）不会丢，
+        /// 所以自检命中之后把它记在这里 —— 此后**永不再要码**。
+        /// 和 endpointId 绑在一起：换了电脑（endpointId 变了）就自动作废。
+        static let irohPairedEndpointId = "uplink.irohPairedEndpointId"
         static let irohCode = "uplink.irohCode"
         static let irohExpiresAt = "uplink.irohExpiresAt"
         /// Bonjour 发现到的地址（带时间戳）。**不进 Keychain**：地址不是秘密，
@@ -128,6 +135,22 @@ public final class UplinkCredentialStore {
         return (tiers, Date(timeIntervalSince1970: stamp))
     }
 
+    // MARK: iroh 已配对（电脑端确认）
+
+    public func saveIrohPaired(_ endpointId: String) {
+        defaults.set(endpointId, forKey: Key.irohPairedEndpointId)
+    }
+
+    /// 只有"存的那台 == 现在这台"才算已配对（换电脑自动作废）。
+    public func isIrohPaired(_ endpointId: String) -> Bool {
+        guard let stored = defaults.string(forKey: Key.irohPairedEndpointId) else { return false }
+        return stored == endpointId
+    }
+
+    public func clearIrohPaired() {
+        defaults.removeObject(forKey: Key.irohPairedEndpointId)
+    }
+
     public func clearDiscovered() {
         defaults.removeObject(forKey: Key.discovered)
         defaults.removeObject(forKey: Key.discoveredAt)
@@ -136,6 +159,7 @@ public final class UplinkCredentialStore {
     public func clear() {
         for key in [Key.hostId, Key.hostName, Key.port, Key.urls, Key.issuedAt,
                     Key.tiers, Key.irohEndpointId, Key.irohRelay, Key.irohCode, Key.irohExpiresAt,
+                    Key.irohPairedEndpointId,
                     Key.discovered, Key.discoveredAt] {
             defaults.removeObject(forKey: key)
         }

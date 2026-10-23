@@ -125,6 +125,111 @@ public enum UplinkIrohPlan: Equatable, Sendable {
     }
 }
 
+/// 一次"电脑端白名单自检"的结果。
+///
+/// `disabled`（503）与 `notListed`（明确没有）必须分开：前者是"不知道"，
+/// 把它当成"未配对"就会白白去要码（而码很可能早就用掉了）。
+public enum UplinkIrohCheck: Equatable, Sendable {
+    /// 电脑端名单里**有**这台手机。
+    case listed
+    /// 电脑端名单里**明确没有**。
+    case notListed
+    /// 电脑端没跑 iroh 档（503）—— 不知道。
+    case disabled
+    /// 没查（没连上网关 / 配对串里没有 endpoint）。
+    case skipped
+}
+
+/// 诊断页与决策层共用的"iroh 兜底状态"。
+public enum IrohFallbackStatus: Equatable, Sendable {
+    /// 电脑端确认过（`GET /uplink/iroh-devices` 里点名有我们）。
+    case pairedByComputer
+    /// 本地记录说配过，但这次没能自检（比如没连上网关）。
+    case pairedLocally
+    /// 没配上，附一句灰字说明。
+    case unpaired(reason: IrohUnpairedReason)
+
+    public enum IrohUnpairedReason: String, Sendable, Equatable {
+        /// 配对码用过/过期，需要新码。
+        case codeExpired
+        /// 没有可用票据（一个网关档都不通），换不到新码。
+        case noTicket
+        /// 电脑端没跑 iroh 档（503）。
+        case irohDisabled
+        /// 电脑端白名单里没有这台手机。
+        case notAuthorized
+
+        public var advice: String {
+            switch self {
+            case .codeExpired:
+                return String(localized: "配对码已用过或过期，需要一张新的。")
+            case .noTicket:
+                return String(localized: "现在连不上网关，暂时换不到新的配对码（不影响当前连接）。")
+            case .irohDisabled:
+                return String(localized: "电脑端没有启用 iroh 兜底档。")
+            case .notAuthorized:
+                return String(localized: "电脑端的 iroh 白名单里没有这台手机。")
+            }
+        }
+    }
+
+    /// 由"自检结果 + 本地记录"推出来。
+    ///
+    /// 关键规则：**`disabled` / `skipped` 不能把"本地记录说配过"翻成未配对** ——
+    /// 那会让 App 在拿不到证据的时候去要码。
+    public static func resolve(
+        check: UplinkIrohCheck,
+        endpointId: String?,
+        locallyPaired: Bool
+    ) -> IrohFallbackStatus {
+        guard endpointId != nil else { return .unpaired(reason: .notAuthorized) }
+        switch check {
+        case .listed:
+            return .pairedByComputer
+        case .notListed:
+            // 电脑端明确说没有 → 本地记录作废，以电脑端为准。
+            return .unpaired(reason: .notAuthorized)
+        case .disabled:
+            return locallyPaired ? .pairedLocally : .unpaired(reason: .irohDisabled)
+        case .skipped:
+            return locallyPaired ? .pairedLocally : .unpaired(reason: .noTicket)
+        }
+    }
+
+    public var isPaired: Bool {
+        switch self {
+        case .pairedByComputer, .pairedLocally: return true
+        case .unpaired: return false
+        }
+    }
+}
+
+/// 自检之后该做什么。**纯决策**：单测能直接断言"自检命中 → 一个码都不要"。
+public enum UplinkIrohSelfCheck {
+    public enum Action: Equatable, Sendable {
+        /// 电脑端白名单里已经有我们：**不请求任何配对码、不尝试配对**。
+        case skip
+        /// 配对串里的码还新鲜：直接用（不需要任何 HTTP）。
+        case pairWithCode
+        /// 码过期/没有，但手上有票：走 `/uplink/iroh-pairing` 换一张（静默）。
+        case refresh
+        /// 没码也没票：什么都不做 —— **不影响当前连接**，也别弹错。
+        case giveUp
+    }
+
+    public static func action(
+        check: UplinkIrohCheck,
+        hasCode: Bool,
+        codeExpired: Bool,
+        hasTicket: Bool
+    ) -> Action {
+        // 自检的优先级最高：已经在名单里就再也不该碰码（这是"配对码过期"噪音的根治）。
+        if check == .listed { return .skip }
+        if hasCode, !codeExpired { return .pairWithCode }
+        return hasTicket ? .refresh : .giveUp
+    }
+}
+
 /// 单飞：并发调用合并成一次。
 ///
 /// 为什么需要：真机日志 `iroh 配对失败：上一次连接还在进行中` 就是两条路
