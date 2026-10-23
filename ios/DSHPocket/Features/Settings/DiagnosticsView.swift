@@ -126,22 +126,21 @@ struct DiagnosticsView: View {
     private var uplinkSection: some View {
         if model.settings.transportMode == .uplink {
             Section {
-                LabeledContent("当前档位", value: currentTierLabel)
+                // 「网关地址 / 本地代理」原来是两整行，都是同一条路线的细节；
+                // 并成档位下面一行说明，既少两行、也把"走哪条路"表达得更完整。
+                LabeledContent("当前档位") {
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(currentTierLabel)
+                            .font(Token.Typography.value)
+                            .foregroundStyle(.secondary)
+                        Text(routeSubline)
+                            .font(Token.Typography.secondary)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
                 LabeledContent("当前网络", value: model.uplink.networkKind.resolvedLabel)
-                LabeledContent("网关地址") {
-                    Text(model.uplink.currentTier?.url.absoluteString ?? String(localized: "未选档"))
-                        .font(Token.Typography.identifier)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-                // 协议层实际打的是这个回环地址：ATS 只放行本地地址，
-                // tailnet / 公网 IP 的明文 http 会被 -1022 拒掉（见 UplinkLocalProxy）。
-                LabeledContent("本地代理") {
-                    Text(model.uplink.baseURL?.absoluteString ?? "—")
-                        .font(Token.Typography.identifier)
-                        .foregroundStyle(.secondary)
-                }
                 if let remaining = model.uplink.ticketRemainingSeconds {
                     LabeledContent("票据", value: String(localized: "还剩 \(String(remaining)) 秒"))
                 }
@@ -167,39 +166,32 @@ struct DiagnosticsView: View {
                     }
                 }
 
+                // **每个档位固定两级**：L1 名称 + 右侧耗时；L2 一行"地址 · 原因"。
+                //
+                // 早先这里是三级（图标+名称 / 地址 / 原因），而且只有这几行带图标，
+                // 于是同一页里别的行都只有一两行、这几行三行，高低不齐看着就乱。
+                // 地址与原因合成一行之后，每档都是两行，扫一眼就能横着比。
                 ForEach(model.uplink.tierStatuses) { status in
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: Token.Spacing.tight) {
-                            Label(status.tier.kind.label, systemImage: status.tier.kind.symbol)
+                            Text(status.tier.kind.resolvedLabel)
+                                .font(Token.Typography.value)
                             Spacer()
                             if !status.enabled {
                                 Text("已关闭")
                                     .font(Token.Typography.secondary)
                                     .foregroundStyle(.tertiary)
+                            } else {
+                                Text(status.rttMilliseconds.map { "\($0) ms" } ?? "—")
+                                    .font(Token.Typography.value.monospacedDigit())
+                                    .foregroundStyle(status.isCurrent ? .primary : .secondary)
                             }
-                            Text(status.rttMilliseconds.map { "\($0) ms" } ?? "—")
-                                .font(Token.Typography.identifier)
-                                .foregroundStyle(status.isCurrent ? .primary : .secondary)
                         }
-                        // 与下一行的"为什么不通"用同一档字号与字形：
-                        // 一个等宽一个不等宽时，中文那句会显大，同一行里看着不齐。
-                        Text(status.tier.url.absoluteString)
+                        Text(tierSubline(status))
                             .font(Token.Typography.secondary)
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(tierSublineTone(status))
                             .lineLimit(1)
                             .truncationMode(.middle)
-                        // **为什么不通**比"通不通"更有用：超时 / 被拒 / 认错电脑
-                        // 的修法完全不同，只写一句"探测失败"等于什么都没说。
-                        if let reason = status.skipReason {
-                            Text(reason)
-                                .font(Token.Typography.secondary)
-                                .foregroundStyle(.tertiary)
-                        } else if let failure = status.failure {
-                            Text(failure.advice)
-                                .font(Token.Typography.secondary)
-                                .foregroundStyle(.orange)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
                     }
                     .accessibilityElement(children: .combine)
                 }
@@ -271,6 +263,33 @@ struct DiagnosticsView: View {
         case .pairedLocally: return String(localized: "已配对（本地记录）")
         case .unpaired: return String(localized: "未配对")
         }
+    }
+
+    /// 档位行的第二行：地址 + 原因，压成一行。
+    private func tierSubline(_ status: UplinkSession.TierStatus) -> String {
+        let address = status.tier.url.absoluteString
+            .replacingOccurrences(of: "http://", with: "")
+            .replacingOccurrences(of: "https://", with: "")
+        if let reason = status.skipReason { return "\(address) · \(reason)" }
+        if let failure = status.failure { return "\(address) · \(failure.advice)" }
+        return address
+    }
+
+    /// 颜色用 `AnyShapeStyle`：`.secondary` / `.tertiary` 是层级样式、不是 `Color`，
+    /// 混在一个返回 `Color` 的函数里编不过。
+    private func tierSublineTone(_ status: UplinkSession.TierStatus) -> AnyShapeStyle {
+        if status.failure != nil { return AnyShapeStyle(Color.orange) }
+        return status.isCurrent ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary)
+    }
+
+    /// 档位下面那行说明：网关 → 本地代理。
+    ///
+    /// 网关是"手机打到的地址"，本地代理是"协议层实际打的回环地址"（ATS 只放行回环，
+    /// 见 UplinkLocalProxy）。两者对排障都重要，但都不值得各占一整行。
+    private var routeSubline: String {
+        let gateway = model.uplink.currentTier?.url.host ?? String(localized: "未选档")
+        let proxy = model.uplink.baseURL?.port.map(String.init) ?? "—"
+        return String(localized: "网关 \(gateway) · 代理 127.0.0.1:\(proxy)")
     }
 
     private var currentTierLabel: String {
