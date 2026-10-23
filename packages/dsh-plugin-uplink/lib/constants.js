@@ -32,6 +32,15 @@ export const DESCRIPTOR_PATH = '/uplink/descriptor'
  */
 export const IROH_PAIRING_PATH = '/uplink/iroh-pairing'
 
+/**
+ * iroh 已配对设备清单（**要票**，走网关）。
+ *
+ * 手机拿它自检："我的 iroh 身份是不是已经在电脑端白名单里了？"
+ * 是 → **永远不需要再要配对码**，那条"配对码已过期"的报错也就不会出现。
+ * 手机自己的主机簿在 App 容器里，重装即失；这份在电脑端，才是权威。
+ */
+export const IROH_DEVICES_PATH = '/uplink/iroh-devices'
+
 /** 管理路由（挂在 dsh 自己的 webServer 上，仅回环可达）。 */
 export const ADMIN_PATHS = Object.freeze({
   state: '/uplink/state',

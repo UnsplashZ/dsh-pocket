@@ -529,6 +529,14 @@ function apply(ctx, rawConfig = {}) {
           tiers,
         })
       },
+      listIrohDevices: async () => {
+        if (irohTier === null || irohTier.status().running !== true) return null
+        if (Date.now() - irohDevicesCache.at > 5000) {
+          const listed = await irohTier.listDevices()
+          if (listed !== null) irohDevicesCache = { at: Date.now(), list: listed }
+        }
+        return irohDevicesCache.list
+      },
       // 手机用票据换一次 iroh 配对窗口：配对码 600 秒就过期，不能塞进配对串里
       openIrohPairing: async () => {
         if (irohTier === null || irohTier.status().running !== true) return null

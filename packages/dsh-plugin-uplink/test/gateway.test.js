@@ -465,3 +465,38 @@ test('iroh 不可用时给 503，而不是让手机拿着空配对码去试', as
     await gateway.close()
   }
 })
+
+test('iroh 白名单：没票 401，有票拿到清单（手机据此自检"还要不要码"）', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'uplink-gw-'))
+  const store = new DeviceStore(join(dir, 'state.json'))
+  await store.load()
+  const gateway = createGateway({
+    target: { host: '127.0.0.1', port: 1 },
+    store,
+    cookie: { get: () => ({ cookie: 'session=x', authority: '127.0.0.1:1' }) },
+    identity: { hostId: 'h', name: 'n', version: '0' },
+    logger: { info: () => {}, warn: () => {} },
+    listIrohDevices: async () => [{ id: 'a'.repeat(64), name: 'iPhone' }],
+  })
+  const bound = await gateway.listen({ port: 0, bind: '127.0.0.1' })
+  try {
+    assert.equal((await fetch(`http://127.0.0.1:${bound.port}/uplink/iroh-devices`)).status, 401)
+
+    const device = await store.createDevice('手机')
+    const ts = Date.now()
+    const nonce = `n-${Math.random().toString(16).slice(2)}`
+    const proof = DeviceStore.proofFor({ secret: device.secret, deviceId: device.deviceId, ts, nonce })
+    const auth = await (await fetch(`http://127.0.0.1:${bound.port}/uplink/auth`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ deviceId: device.deviceId, ts, nonce, proof }),
+    })).json()
+    const response = await fetch(`http://127.0.0.1:${bound.port}/uplink/iroh-devices`, {
+      headers: { authorization: `Bearer ${auth.ticket}` },
+    })
+    assert.equal(response.status, 200)
+    const body = await response.json()
+    assert.deepEqual(body.devices, [{ id: 'a'.repeat(64), name: 'iPhone' }])
+  } finally {
+    await gateway.close()
+  }
+})

@@ -15,7 +15,7 @@
  */
 import http from 'node:http'
 import https from 'node:https'
-import { AUTH_PATH, DESCRIPTOR_PATH, IROH_PAIRING_PATH, PUBLIC_PATHS } from './constants.js'
+import { AUTH_PATH, DESCRIPTOR_PATH, IROH_DEVICES_PATH, IROH_PAIRING_PATH, PUBLIC_PATHS } from './constants.js'
 import { publicIdentity } from './descriptor.js'
 
 /** hop-by-hop 头不能透传（RFC 7230 §6.1），否则连接语义会错乱。 */
@@ -123,6 +123,8 @@ export function createGateway({
    * 要票：配对码等于"把我加成一台受信设备"，只能给已配对的手机。
    */
   openIrohPairing = null,
+  /** 列 iroh 已配对设备（`() => [{id, name}] | null`）。要票：让手机能自检"我还要不要码"。 */
+  listIrohDevices = null,
   /**
    * 可选的自签 TLS。传 `{key, cert}`（PEM 内容，不是路径）就起 https，
    * 否则起明文 http —— 局域网默认明文是刻意的：ATS 不挡 IP 字面量，
@@ -261,6 +263,22 @@ export function createGateway({
       if (!authorized.ok) {
         stats.unauthorized += 1
         json(res, 401, { ok: false, reason: authorized.reason })
+        return
+      }
+
+      // iroh 白名单：手机自检用 —— 已经在名单里就永远不需要再要配对码
+      if (path === IROH_DEVICES_PATH && listIrohDevices !== null) {
+        try {
+          const list = await listIrohDevices()
+          if (list === null) {
+            json(res, 503, { ok: false, reason: 'iroh-unavailable' })
+            return
+          }
+          json(res, 200, { ok: true, devices: list.map(({ id, name }) => ({ id, name })) })
+        } catch (error) {
+          stats.lastError = `iroh-devices: ${error?.message ?? error}`
+          json(res, 500, { ok: false, reason: 'iroh-devices-failed' })
+        }
         return
       }
 
