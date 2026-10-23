@@ -7,8 +7,6 @@ struct SettingsSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
 
-    @State private var showPairing = false
-    @State private var renamingHost: TetherHostRecord?
     /// 多路接入的配对串输入框。
     @State private var pairingText = ""
     @State private var pairingError: String?
@@ -35,7 +33,6 @@ struct SettingsSheet: View {
                 developerModeSection
                 #endif
                 connectionSection
-                hostsSection
                 hostSettingsSection
                 cacheSection
                 archivedSection
@@ -52,7 +49,6 @@ struct SettingsSheet: View {
                     Button("完成") { dismiss() }
                 }
             }
-            .sheet(isPresented: $showPairing) { PairingSheet() }
             // **必须挂在最外层**，不能挂在 `Section` 上。
             // 挂在 section 上时，`connection` 一变（重连）整个 Form 重建、
             // section 的身份跟着变，已经呈现的 sheet 会被拆掉 ——
@@ -68,22 +64,15 @@ struct SettingsSheet: View {
                 if UserDefaults.standard.bool(forKey: "DSHShowHostSettings") { showHostSettingsFromDebug = true }
             }
             #endif
-            .alert("重命名主机", isPresented: Binding(
-                get: { renamingHost != nil },
-                set: { if !$0 { renamingHost = nil } }
-            )) {
-                RenameHostAlert(host: renamingHost, model: model, onDone: { renamingHost = nil })
-                    .onAppear { _ = renamingHost }
-            }
         }
     }
 
     #if DEBUG
     // MARK: 开发者模式提示
 
-    /// 连接方式已经不在设置页里暴露（产品上默认且只用 iroh）。
-    /// 但开发者仍可用 defaults 打开另两种模式 —— 没有这块的话，
-    /// 改完 defaults 之后界面上没有任何地方能看出来，也没法改回去。
+    /// 开发者模式（`.devDirect` / `.directGateway`）不在设置页里暴露，
+    /// 只能用 `defaults write` 打开 —— 没有这块的话，改完之后界面上
+    /// 没有任何地方能看出来，也没法改回去。
     @ViewBuilder
     private var developerModeSection: some View {
         // `.uplink` 是正经的用户选项，不是开发者模式 —— 别给它挂"请改回去"的横幅。
@@ -92,15 +81,15 @@ struct SettingsSheet: View {
                 Label {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(String(localized: "开发者模式：") + model.settings.transportMode.resolvedLabel)
-                        Text("正常使用请改回「远端连接（iroh）」")
+                        Text("正常使用请改回「多路接入」")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 } icon: {
                     Image(systemName: "hammer")
                 }
-                Button("改回 iroh") {
-                    model.settings.transportMode = .remote
+                Button("改回多路接入") {
+                    model.settings.transportMode = .uplink
                     Task { await model.activateConfiguredTransport() }
                 }
             } header: {
@@ -110,50 +99,21 @@ struct SettingsSheet: View {
     }
     #endif
 
-    // MARK: 连接方式
+    // MARK: 多路接入
 
-    /// 「自动（多路接入）」/「仅 iroh」二选一。
+    /// 唯一的配对入口：粘贴 `dshuplink://…`。
     ///
-    /// 为什么值得给用户选：多路接入走局域网/虚拟组网时比 iroh 中转快得多，
-    /// 但前提是电脑端开了 uplink 插件；没开的人选"仅 iroh"能少一轮 800ms 的探测。
+    /// 0.5.2 起 App 里**只有多路接入这一种连接方式**（产品决定）：
+    /// 一个配对串同时配好局域网 / Tailscale / ZeroTier / 自建中转**和 iroh 兜底**，
+    /// 哪条通走哪条。所以这里没有"连接方式"可选，也不再引导用户为 iroh 单独配对。
     private var connectionSection: some View {
-        @Bindable var settings = model.settings
-
-        return Section {
-            // 开发者模式（devDirect / directGateway）下不渲染这个 Picker：
-            // 它的两个 tag 都匹配不上，界面上会出现"什么都没选中"的空行。
-            if settings.transportMode == .remote || settings.transportMode == .uplink {
-                Picker(selection: connectionMode) {
-                    Label("自动（多路接入）", systemImage: "arrow.triangle.branch")
-                        .tag(TransportMode.uplink)
-                    Label("仅 iroh", systemImage: "point.3.connected.trianglepath.dotted")
-                        .tag(TransportMode.remote)
-                } label: {
-                    Text("连接方式")
-                }
-                .pickerStyle(.inline)
-                .labelsHidden()
-            }
-            if settings.transportMode == .uplink {
-                uplinkRows
-            }
+        Section {
+            uplinkRows
         } header: {
-            Text("连接方式")
+            Text("多路接入")
         } footer: {
-            Text("「自动（多路接入）」是推荐项：一个配对串同时配好局域网 / Tailscale / ZeroTier / 自建中转**和 iroh 兜底**，哪条通走哪条。在外面（蜂窝网络）时自动用 iroh。「仅 iroh」只为已有配对记录的老用户与排障保留。")
+            Text("一个配对串同时配好局域网 / Tailscale / ZeroTier / 自建中转**和 iroh 兜底**，哪条通走哪条。在外面（蜂窝网络）时自动用 iroh。配对串在电脑端的「连接手机」里生成。")
         }
-    }
-
-    /// 切换连接方式后立刻按新配置重建，而不是等下一次冷启动。
-    private var connectionMode: Binding<TransportMode> {
-        Binding(
-            get: { model.settings.transportMode },
-            set: { next in
-                guard next != model.settings.transportMode else { return }
-                model.settings.transportMode = next
-                Task { await model.activateConfiguredTransport() }
-            }
-        )
     }
 
     // MARK: 多路接入
@@ -252,61 +212,6 @@ struct SettingsSheet: View {
                 pairingError = failure
             } else {
                 pairingText = ""
-            }
-        }
-    }
-
-    // MARK: 主机
-
-    private var hostsSection: some View {
-        Section {
-            if model.hosts.isEmpty {
-                Text("还没有配对过任何电脑。")
-                    .foregroundStyle(.secondary)
-            }
-            ForEach(model.hosts) { host in
-                Button {
-                    Task { await model.connect(hostId: host.id, pairingCode: nil) }
-                } label: {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(host.label).font(.body).foregroundStyle(.primary)
-                            Text(host.shortId)
-                                .font(.caption2.monospaced())
-                                .foregroundStyle(.tertiary)
-                        }
-                        Spacer()
-                        if model.settings.activeHostId == host.id, model.connection.isConnected {
-                            StatusBadge(String(localized: "当前"), symbol: "checkmark.circle.fill", tone: .success)
-                        }
-                    }
-                }
-                .buttonStyle(.plain)
-                .swipeActions {
-                    Button(role: .destructive) {
-                        Task { await model.forgetHost(host.id) }
-                    } label: {
-                        Label("忘记", systemImage: "trash")
-                    }
-                    Button {
-                        renamingHost = host
-                    } label: {
-                        Label("重命名", systemImage: "pencil")
-                    }
-                }
-            }
-            // 一个 `dshuplink://` 配对串已经同时包含 iroh 兜底，通常不需要再单独加一次。
-            // 这里保留给老用户（已有 iroh 配对记录）与排障，所以**不**再叫"添加电脑"。
-            Button {
-                showPairing = true
-            } label: {
-                Label("用 iroh 单独添加电脑（遗留）", systemImage: "qrcode")
-            }
-        } header: {
-            Text("主机")
-        } footer: {
-            if !model.localEndpointId.isEmpty {
-                Text("这台手机的设备 ID：\(String(model.localEndpointId.prefix(16)))…\n电脑端按这把公钥授权；删掉它需要重新配对。")
             }
         }
     }
@@ -522,27 +427,6 @@ struct SettingsSheet: View {
             Text("关于")
         } footer: {
             Text("DSH Pocket 是独立社区项目，与 DeepSeek 官方无隶属关系。")
-        }
-    }
-}
-
-/// 主机重命名的输入框（单独一个视图，避免在 alert 里做绑定地狱）。
-private struct RenameHostAlert: View {
-    let host: TetherHostRecord?
-    let model: AppModel
-    let onDone: () -> Void
-
-    @State private var text = ""
-
-    @ViewBuilder
-    var body: some View {
-        TextField("名称", text: $text)
-        Button("取消", role: .cancel) { onDone() }
-        Button("保存") {
-            if let host {
-                Task { await model.renameHost(host.id, label: text) }
-            }
-            onDone()
         }
     }
 }

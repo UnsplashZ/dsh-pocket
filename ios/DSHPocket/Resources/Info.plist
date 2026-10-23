@@ -75,8 +75,6 @@
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>把电脑端返回的图片保存到你的相册。</string>
 
-	<key>NSCameraUsageDescription</key>
-	<string>用相机扫描电脑上显示的配对二维码，完成与你自己电脑的配对。</string>
 
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>

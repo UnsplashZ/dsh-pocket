@@ -265,6 +265,20 @@ public actor TetherSession {
             logger?.log("已连接并起好本地代理（本地代理启动 \(proxyMS)ms）：\(base.absoluteString)")
             return base
         } catch {
+            // 与电脑端对齐"已配对"记录。
+            //
+            // 电脑端回"没有配对窗口 / 窗口过期" = 它不认识我们（我们记着已配对，
+            // 它那边清过数据）。这时必须把本地那条记录清掉 —— 否则下一次首行
+            // 还是 hello，会永远撞 `close(1, "protocol")`，而用户只看到"连不上"。
+            // 反过来（我们没记录、它认识我们）由 `TetherFirstMessageRecovery` 自愈，
+            // 成功之后下面的 `hostBook.upsert` 会把记录补上。
+            if case .pairingFailed(let failure)? = error as? TetherError,
+               failure == .noWindow || failure == .expired,
+               hostBook.host(id: hostId) != nil {
+                hostBook.remove(id: hostId)
+                hostBook.save()
+                logger?.log("电脑端没有配对窗口，已清掉本地的「已配对」记录（下次会重新要配对码）")
+            }
             let policy = (error as? TetherError)?.policy ?? .retry
             await teardown()
             if policy == .cancelled {

@@ -55,6 +55,11 @@ public struct NotificationPreferences: Sendable, Equatable {
 /// 电脑端给出的地址清单（局域网 / Tailscale / ZeroTier / 自建中转），
 /// 谁先通就用谁；一条都不通才降级回 iroh。它不是"开发模式"，所以在设置页里可见。
 ///
+/// **0.5.2 起只有 `.uplink` 是用户可见的模式**（产品决定：一个 uplink 同时管
+/// 局域网 / 虚拟组网 / iroh 兜底，不再让用户选"另一条 iroh 路"）。
+/// `.remote` / `.devDirect` / `.directGateway` 保留**解码能力**（老值不能让 App 崩），
+/// 但所有可见路径都会迁移到 `.uplink` —— 例外见 `resolvedTransportMode`。
+///
 /// 另外两种是**开发者模式**，只在 DEBUG 构建里通过 `UserDefaults` 打开：
 /// ```bash
 /// xcrun simctl spawn booted defaults write cc.unsplashz.dshpocket settings.transportMode -string devDirect
@@ -91,6 +96,31 @@ public enum TransportMode: String, CaseIterable, Identifiable, Sendable {
         case .devDirect: return "laptopcomputer"
         case .directGateway: return "network"
         case .uplink: return "arrow.triangle.branch"
+        }
+    }
+
+    /// 老版本存下来的连接方式要不要迁移。
+    ///
+    /// 三条规则（都有单测）：
+    ///   · 有 uplink 配对材料 → `.uplink`（正常升级路径）；
+    ///   · 没有 uplink 配对、但有 iroh 主机记录 → **继续 `.remote`**：
+    ///     老用户升级后不该因为"还没重新配对"就断线。UI 上不给他任何旧入口，
+    ///     只在诊断页提示一句"建议重新配对以启用多路接入"；
+    ///   · 什么都没有（全新安装）→ `.uplink`。
+    ///
+    /// 开发者模式（`.devDirect` / `.directGateway`）原样保留 —— 那是 DEBUG 下
+    /// 用 `defaults write` 打开的，迁移它只会让人找不到自己的配置。
+    public static func resolvedTransportMode(
+        stored: TransportMode,
+        hasUplinkPairing: Bool,
+        hasIrohHost: Bool
+    ) -> TransportMode {
+        switch stored {
+        case .uplink, .devDirect, .directGateway:
+            return stored
+        case .remote:
+            if hasUplinkPairing { return .uplink }
+            return hasIrohHost ? .remote : .uplink
         }
     }
 

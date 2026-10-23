@@ -25,6 +25,7 @@ struct DiagnosticsView: View {
     var body: some View {
         List {
             connectionSection
+            legacySection
             uplinkSection
             transportSection
             selfCheckSection
@@ -82,6 +83,25 @@ struct DiagnosticsView: View {
         }
     }
 
+    // MARK: 老用户提示
+
+    /// 还在用旧 iroh 配对的老用户：**不给旧 UI，只在这里提示一句**。
+    ///
+    /// 为什么不自动迁过去：迁移需要 uplink 配对材料，而那要用户去电脑上生成一次。
+    /// 自动迁移等于"升级后连不上"，所以这里只建议、不强制。
+    @ViewBuilder
+    private var legacySection: some View {
+        if model.settings.transportMode != .uplink {
+            Section {
+                Text("这台手机还在用旧的 iroh 配对。建议到「设置 → 多路接入」里重新粘贴一次配对串：之后局域网 / 虚拟组网会更快，iroh 仍然作为兜底。")
+                    .font(.footnote)
+                    .fixedSize(horizontal: false, vertical: true)
+            } header: {
+                Text("建议重新配对")
+            }
+        }
+    }
+
     // MARK: 多路接入
 
     /// 只在"多路接入"模式下显示。
@@ -98,11 +118,18 @@ struct DiagnosticsView: View {
                 LabeledContent("当前档位", value: currentTierLabel)
                 LabeledContent("当前网络", value: model.uplink.networkKind.resolvedLabel)
                 LabeledContent("网关地址") {
-                    Text(model.uplink.baseURL?.absoluteString ?? String(localized: "未选档"))
+                    Text(model.uplink.currentTier?.url.absoluteString ?? String(localized: "未选档"))
                         .font(.caption.monospaced())
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
+                }
+                // 协议层实际打的是这个回环地址：ATS 只放行本地地址，
+                // tailnet / 公网 IP 的明文 http 会被 -1022 拒掉（见 UplinkLocalProxy）。
+                LabeledContent("本地代理") {
+                    Text(model.uplink.baseURL?.absoluteString ?? "—")
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
                 }
                 if let remaining = model.uplink.ticketRemainingSeconds {
                     LabeledContent("票据", value: String(localized: "还剩 \(String(remaining)) 秒"))
@@ -376,7 +403,8 @@ struct DiagnosticsView: View {
         if model.settings.transportMode == .uplink {
             lines.append(String(localized: "档位：\(currentTierLabel)"))
             lines.append(String(localized: "网络：\(model.uplink.networkKind.resolvedLabel)"))
-            lines.append(String(localized: "网关：\(model.uplink.baseURL?.absoluteString ?? "—")"))
+            lines.append(String(localized: "网关：\(model.uplink.currentTier?.url.absoluteString ?? "—")"))
+            lines.append(String(localized: "本地代理：\(model.uplink.baseURL?.absoluteString ?? "—")"))
             for status in model.uplink.tierStatuses {
                 let state = status.rttMilliseconds.map { "\($0)ms" }
                     ?? status.skipReason

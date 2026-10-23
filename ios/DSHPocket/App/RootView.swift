@@ -12,7 +12,7 @@ import SwiftUI
 ///  │     ├─ sidebar: SessionListView
 ///  │     └─ detail:  SessionView 或 ContentUnavailableView("选择一个会话")
 ///  └─ 模态（全部用系统 sheet）
-///        PairingSheet / SettingsSheet / FilesSheet / 首次启动说明页
+///        SettingsSheet（配对也在这里）/ FilesSheet / 首次启动说明页
 /// ```
 ///
 /// 规则：**不自绘导航栏、不做抽屉/汉堡菜单、不抢系统手势**。返回手势与转场一律系统默认。
@@ -21,7 +21,6 @@ struct RootView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var path: [SessionSummary] = []
-    @State private var showPairing = false
     @State private var showSettings = false
     @State private var showWelcome = false
 
@@ -34,9 +33,6 @@ struct RootView: View {
             } else {
                 stackLayout
             }
-        }
-        .sheet(isPresented: $showPairing) {
-            PairingSheet()
         }
         .sheet(isPresented: $showSettings) {
             SettingsSheet()
@@ -62,7 +58,8 @@ struct RootView: View {
         NavigationStack(path: $path) {
             SessionListView(
                 onSelect: { path.append($0) },
-                onPair: { showPairing = true },
+                // 0.5.2 起只有一个配对入口：设置页里粘 `dshuplink://…`。
+                onPair: { showSettings = true },
                 onSettings: { showSettings = true }
             )
             #if DEBUG
@@ -91,7 +88,8 @@ struct RootView: View {
         NavigationSplitView {
             SessionListView(
                 onSelect: { selection = $0 },
-                onPair: { showPairing = true },
+                // 0.5.2 起只有一个配对入口：设置页里粘 `dshuplink://…`。
+                onPair: { showSettings = true },
                 onSettings: { showSettings = true }
             )
             .navigationTitle("会话")

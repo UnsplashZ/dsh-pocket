@@ -14,6 +14,10 @@ import Observation
 ///
 /// **协议层一行不改**：对 DSHKit 来说，这里最终只是"一个 baseURL + 一个 Authorization 头"。
 ///
+/// 注意 `baseURL` 是**本地回环代理**（`http://127.0.0.1:<port>`），不是远端地址：
+/// ATS 只放行本地地址，Tailscale 的 100.64/10 与公网 IP 的明文 http 会被 -1022 拒掉。
+/// 远端地址在 `currentTier.url` 里，只用于展示与日志。
+///
 /// 为什么把探测与 HTTP 都做成可注入的闭包：单测要能在毫秒级验证"选最快""粘滞优先"
 /// "401 只重换一次"，而这些在真实网络里既慢又不可控（见 `UplinkTests`）。
 @MainActor
@@ -82,6 +86,9 @@ public final class UplinkSession {
     private let now: () -> Date
     /// 网络类型监控。**只用来筛掉物理上不可达的档**，不参与选档策略。
     private let network: UplinkNetworkMonitor
+    /// `127.0.0.1:<port>` → 选中那一档。所有 HTTP / WebSocket 都从这里出去
+    /// （ATS 只放行回环，见 `UplinkLocalProxy` 的说明）。
+    private let proxy = UplinkLocalProxy()
 
     private var ticket: String?
     private var ticketExpiry: Date?
@@ -93,7 +100,9 @@ public final class UplinkSession {
         // 用闭包字面量而不是直接引用静态方法：直接引用会被推断成
         // 非 `@Sendable` 的函数值（编译告警），而这两者都要跨任务组使用。
         probe: @escaping Probe = { tier, hostId in
-            await UplinkSession.httpProbe(tier: tier, expectedHostId: hostId)
+            // **不能用 URLSession 探**：ATS 会把 100.64/10（Tailscale）与公网 IP
+            // 的明文 http 判成 -1022，那两档就永远探不通。Network 框架不过 ATS。
+            await UplinkTCPProbe.ping(tier: tier, expectedHostId: hostId, timeout: probeTimeout)
         },
         send: @escaping Send = { request in
             try await UplinkSession.urlSessionSend(request)
@@ -130,12 +139,12 @@ public final class UplinkSession {
 
     /// 采纳一段配对串。失败返回 nil，并把原因放进 `lastError`。
     @discardableResult
-    public func adopt(_ text: String) -> UplinkPairing? {
+    public func adopt(_ text: String) async -> UplinkPairing? {
         guard let pairing = UplinkPairing.parse(text) else {
             lastError = UplinkError.badPairing.errorDescription
             return nil
         }
-        reset()
+        await reset()
         store.save(pairing)
         // 换了一台电脑（或同一台重新配对）：上一台的 lastGood 不再有意义。
         settings.uplinkLastGoodTier = nil
@@ -145,9 +154,9 @@ public final class UplinkSession {
         return pairing
     }
 
-    public func forget() {
+    public func forget() async {
         store.clear()
-        reset()
+        await reset()
         settings.uplinkLastGoodTier = nil
         settings.uplinkStickyUntil = nil
     }
@@ -336,8 +345,22 @@ public final class UplinkSession {
         return cached.tiers
     }
 
-    /// 选定了档位之后：换票、落 lastGood、暴露基址。
+    /// 选定了档位之后：起本地代理 → 换票 → 落 lastGood → 暴露基址。
     private func settle(on tier: UplinkTier, rtt: Int, reason: String?) async -> UplinkTier? {
+        guard let target = UplinkLocalProxy.Target(url: tier.url) else {
+            lastError = String(localized: "这一档的地址解析不出 host/port，已跳过。")
+            lastSwitchReason = lastError
+            return nil
+        }
+        do {
+            // 先把回环代理指向这一档：之后的换票、RPC、WebSocket 全部经过它。
+            baseURL = try await proxy.start(target: target)
+        } catch {
+            lastError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            lastSwitchReason = lastError
+            logger?.log(.warning, "[uplink] 本地代理起不来（\(tier.kind.rawValue)）：\(lastError ?? "—")")
+            return nil
+        }
         currentTier = tier
         tierRTTs[tier.kind.rawValue] = rtt
         do {
@@ -347,12 +370,13 @@ public final class UplinkSession {
             //（被撤销 / 电脑端重装过插件 / 两边时钟差太多）。
             // **不静默降级** —— 换条路能不能用是 AppModel 的决定，这里只如实报告。
             currentTier = nil
+            baseURL = nil
+            await proxy.stop()
             lastError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             lastSwitchReason = lastError
             logger?.log(.warning, "[uplink] 换票失败（\(tier.kind.rawValue)）：\(lastError ?? "—")")
             return nil
         }
-        baseURL = tier.url
         settings.uplinkLastGoodTier = tier.kind.rawValue
         settings.uplinkStickyUntil = now().addingTimeInterval(Self.stickyWindow)
         if let reason { lastSwitchReason = reason }
@@ -361,15 +385,17 @@ public final class UplinkSession {
         return tier
     }
 
-    /// 退到后台：基址立刻作废（`isReady` 跟着为假），但**留着票据** ——
-    /// 15 分钟的有效期让回前台重连少一次换票往返。
-    public func suspend() {
+    /// 退到后台：基址立刻作废（`isReady` 跟着为假）、代理收掉，
+    /// 但**留着票据** —— 15 分钟的有效期让回前台重连少一次换票往返。
+    public func suspend() async {
         baseURL = nil
         currentTier = nil
+        await proxy.stop()
     }
 
     /// 彻底清空（切换配对 / 断开连接时）。
-    public func reset() {
+    public func reset() async {
+        await proxy.stop()
         baseURL = nil
         currentTier = nil
         ticket = nil
@@ -411,7 +437,9 @@ public final class UplinkSession {
     /// 长期密钥不上网，只用来算这一条应答（`auth.js` 的设计要点）。
     @discardableResult
     public func exchangeTicket() async throws -> String {
-        guard let tier = currentTier, let pairing = store.loadPairing() else {
+        // 走 `baseURL`（回环代理），不是 `tier.url` —— 远端可能是 tailnet / 公网 IP，
+        // 直连会被 ATS 判 -1022。
+        guard let baseURL, let pairing = store.loadPairing() else {
             throw UplinkError.noTierAvailable
         }
         let ts = Int64(now().timeIntervalSince1970 * 1000)
@@ -427,7 +455,7 @@ public final class UplinkSession {
             let nonce: String
             let proof: String
         }
-        var request = URLRequest(url: Self.endpoint(tier.url, "uplink/auth"))
+        var request = URLRequest(url: Self.endpoint(baseURL, "uplink/auth"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(
@@ -471,10 +499,10 @@ public final class UplinkSession {
     /// 前提是**手上有一张能用的票**：票据只能在已配对、且当前可达的地址上换到。
     /// 一个地址都不通时这里直接抛 `.noTicket` —— 假装在重试没有意义。
     public func requestIrohPairing() async throws -> UplinkIrohPairing {
-        guard let tier = currentTier, baseURL != nil else {
+        guard let baseURL else {
             throw UplinkIrohPairingError.noTicket
         }
-        var request = URLRequest(url: Self.endpoint(tier.url, "uplink/iroh-pairing"))
+        var request = URLRequest(url: Self.endpoint(baseURL, "uplink/iroh-pairing"))
         request.httpMethod = "POST"
         request.timeoutInterval = 10
 
@@ -641,46 +669,6 @@ public final class UplinkSession {
     }
 
     // MARK: 默认实现
-
-    /// `GET <url>/uplink/ping` → `{ok, hostId, v}`（免票）。
-    ///
-    /// **必须核对 hostId**：同一网段里可能有好几台跑 dsh 的电脑，
-    /// 连错人比连不上更糟（会把配对串里的 secret 交给别人算应答）。
-    public nonisolated static func httpProbe(
-        tier: UplinkTier,
-        expectedHostId: String
-    ) async -> UplinkProbeResult {
-        var request = URLRequest(url: endpoint(tier.url, "uplink/ping"))
-        request.timeoutInterval = probeTimeout
-        request.cachePolicy = .reloadIgnoringLocalCacheData
-        let started = Date()
-        func elapsed() -> Int { max(1, Int(Date().timeIntervalSince(started) * 1000)) }
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse else {
-                return .unreachable(.other(milliseconds: elapsed(), reason: "not-http"))
-            }
-            guard http.statusCode == 200 else {
-                // 网关活着但回了个错（502 = 它转发不到 dsh）。这不是"网络不通"，
-                // 分类要如实反映，否则用户会去查 Wi-Fi。
-                return .unreachable(.other(milliseconds: elapsed(), reason: "http-\(http.statusCode)"))
-            }
-            guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  object["ok"] as? Bool == true else {
-                return .unreachable(.other(milliseconds: elapsed(), reason: "bad-body"))
-            }
-            // hostId 对不上 = 这个地址上是**另一台**电脑（同一网段常见）。
-            // 这不是"连不上"，是"连错人"，文案必须分开。
-            if let got = object["hostId"] as? String, got != expectedHostId {
-                return .unreachable(.hostMismatch(milliseconds: elapsed()))
-            }
-            return .reachable(rttMilliseconds: elapsed())
-        } catch let error as URLError {
-            return .unreachable(UplinkProbeFailure(urlError: error, milliseconds: elapsed()))
-        } catch {
-            return .unreachable(.other(milliseconds: elapsed(), reason: "transport"))
-        }
-    }
 
     public nonisolated static func urlSessionSend(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         let (data, response) = try await URLSession.shared.data(for: request)

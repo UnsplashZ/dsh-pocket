@@ -135,11 +135,36 @@ actor TetherLink: TetherStreamFactory {
     func connect(hostEndpointId: String, pairingCode: String?) async throws {
         try await connect(
             hostEndpointId: hostEndpointId,
-            firstMessage: pairingCode.map { .pair(code: $0) } ?? .hello
+            firstMessage: pairingCode.map { .pair(code: $0) } ?? .hello,
+            pairingCode: pairingCode
         )
     }
 
-    func connect(hostEndpointId: String, firstMessage: TetherFirstMessage) async throws {
+    /// 连上电脑。首行选错（`close(1, "protocol")`）时**自动取反重试一次**，
+    /// 见 `TetherFirstMessageRecovery`。
+    ///
+    /// 为什么必须在这里做：手机侧"是否已配对"的记录（`hosts.json`）与电脑端白名单
+    /// 会不一致（重装 App 清掉了记录、Keychain 身份还在是最常见的形状），
+    /// 而首行是**电脑端唯一能看出我们判错的地方**。放在这一层，两个方向都能自愈，
+    /// 上层不用知道"到底是记录丢了还是电脑端清了数据"。
+    func connect(
+        hostEndpointId: String,
+        firstMessage: TetherFirstMessage,
+        pairingCode: String? = nil
+    ) async throws {
+        let result = try await TetherFirstMessageRecovery.run(
+            first: firstMessage,
+            pairingCode: pairingCode
+        ) { message in
+            try await self.attemptConnect(hostEndpointId: hostEndpointId, firstMessage: message)
+        }
+        if result.used != firstMessage {
+            logger?.log("首行被判协议错误，已取反重试成功（\(TetherFirstMessageRecovery.label(firstMessage)) → \(TetherFirstMessageRecovery.label(result.used))）")
+        }
+    }
+
+    /// 真正建一次连。**失败不自愈** —— 自愈在 `connect` 那一层做一次就够。
+    private func attemptConnect(hostEndpointId: String, firstMessage: TetherFirstMessage) async throws {
         guard !connecting else { throw TetherError.transport(String(localized: "已有一次连接正在进行")) }
         guard let peerBytes = TetherProxyPort.bytes(fromHex: hostEndpointId), peerBytes.count == 32 else {
             throw TetherError.invalidEndpointId(hostEndpointId)

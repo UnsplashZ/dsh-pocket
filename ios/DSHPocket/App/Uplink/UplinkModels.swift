@@ -532,12 +532,18 @@ public enum UplinkProbeFailure: Sendable, Equatable {
     case unknownHost(milliseconds: Int)
     /// 地址通了，但对面是**另一台**电脑（`hostId` 对不上）。
     case hostMismatch(milliseconds: Int)
+    /// 被 iOS 的 ATS 拦了（`-1022`）。
+    ///
+    /// 这一类的存在本身就是一条"防回归"提示：明文 http 只对**本地**地址放行，
+    /// Tailscale 的 100.64/10 与公网 IP 都会被拒。uplink 的请求现在全走本地回环代理，
+    /// 所以**不该再出现**；真出现了，日志里要能一眼看出是 ATS 而不是"网络不通"。
+    case appTransportSecurity(milliseconds: Int)
     /// 其余：TLS 失败、5xx、响应不是 JSON……
     case other(milliseconds: Int, reason: String)
 
     /// 粗分类。`summary(for:)` 与诊断页都按它分支。
     public enum Category: String, Sendable, Equatable {
-        case timeout, refused, offline, dns, mismatch, other
+        case timeout, refused, offline, dns, mismatch, ats, other
     }
 
     public var category: Category {
@@ -547,6 +553,7 @@ public enum UplinkProbeFailure: Sendable, Equatable {
         case .offline: return .offline
         case .unknownHost: return .dns
         case .hostMismatch: return .mismatch
+        case .appTransportSecurity: return .ats
         case .other: return .other
         }
     }
@@ -554,7 +561,8 @@ public enum UplinkProbeFailure: Sendable, Equatable {
     public var milliseconds: Int {
         switch self {
         case .timedOut(let ms), .refused(let ms), .offline(let ms),
-             .unknownHost(let ms), .hostMismatch(let ms), .other(let ms, _):
+             .unknownHost(let ms), .hostMismatch(let ms), .appTransportSecurity(let ms),
+             .other(let ms, _):
             return ms
         }
     }
@@ -568,6 +576,7 @@ public enum UplinkProbeFailure: Sendable, Equatable {
         case .offline(let ms): return "offline(\(ms)ms)"
         case .unknownHost(let ms): return "unknownHost(\(ms)ms)"
         case .hostMismatch(let ms): return "hostMismatch(\(ms)ms)"
+        case .appTransportSecurity(let ms): return "appTransportSecurity(\(ms)ms)"
         case .other(let ms, let reason): return "error(\(reason))(\(ms)ms)"
         }
     }
@@ -585,6 +594,8 @@ public enum UplinkProbeFailure: Sendable, Equatable {
             return String(localized: "解析不到这个地址（DNS / mDNS 没回应）。")
         case .hostMismatch:
             return String(localized: "这个地址上是另一台电脑，不是已配对的那台。")
+        case .appTransportSecurity:
+            return String(localized: "被 iOS 的 ATS 拦下了（明文 http 只放行本地地址）。这是 App 的 bug：uplink 的请求应当走本地回环代理。")
         case .other(_, let reason):
             return String(localized: "探测失败：\(reason)")
         }
@@ -606,6 +617,8 @@ public enum UplinkProbeFailure: Sendable, Equatable {
             self = .offline(milliseconds: milliseconds)
         case .cannotFindHost, .dnsLookupFailed:
             self = .unknownHost(milliseconds: milliseconds)
+        case .appTransportSecurityRequiresSecureConnection:
+            self = .appTransportSecurity(milliseconds: milliseconds)
         default:
             self = .other(milliseconds: milliseconds, reason: "\(urlError.code.rawValue)")
         }
@@ -623,6 +636,9 @@ public enum UplinkProbeFailure: Sendable, Equatable {
         let categories = Set(failures.map(\.category))
         if categories.contains(.offline) {
             return String(localized: "\(count) 个地址都没试通：手机现在没有网络。先确认 Wi-Fi 或蜂窝数据是开的。")
+        }
+        if categories.contains(.ats) {
+            return String(localized: "\(count) 个地址被 iOS 的 ATS 拦下了：uplink 的请求应该走本地回环代理，这是 App 的 bug，请把诊断日志发给我们。")
         }
         if categories.contains(.timeout) {
             return String(localized: "\(count) 个地址都超时了：可能不在同一网络、iOS「本地网络」权限没开，或者 VPN 把请求劫持了。")

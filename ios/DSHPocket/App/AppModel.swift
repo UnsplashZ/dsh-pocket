@@ -312,6 +312,7 @@ public final class AppModel {
             sessions = DSHClient.decodeSessionList(cached)
             if !sessions.isEmpty { logs.log(.info, "会话列表来自缓存（\(sessions.count) 条）") }
         }
+        migrateTransportModeIfNeeded()
         startTransportSupervisor()
         startConnectionWatchdog()
         // 多路接入要先知道"现在是什么网络"，否则蜂窝下会去探私有地址白等 800ms
@@ -428,7 +429,7 @@ public final class AppModel {
         coordinator.setRemoteBaseURL(nil)
         coordinator.setUplinkBaseURL(nil)
         // 基址作废、票据留着（15 分钟内回前台能省一次换票往返）。
-        uplink.suspend()
+        await uplink.suspend()
         // 后台不保留"已连接"的外观：宁可显示未连接，也不做"假在线"。
         if needsConnect { setConnection(.idle) }
     }
@@ -610,10 +611,12 @@ public final class AppModel {
             return await fallbackToIroh(reason: reason, silent: silent)
         }
 
-        coordinator.setUplinkBaseURL(tier.url)
+        // **交给协议层的是回环代理**，不是远端地址：ATS 只放行本地地址，
+        // tailnet(100.64/10) 与公网 IP 的明文 http 会被 -1022 拒掉。
+        coordinator.setUplinkBaseURL(uplink.baseURL)
         let elapsed = Int(Date().timeIntervalSince(started) * 1000)
         // 这一行是排查"到底走了哪条路"的唯一入口（用户报障时先看它）。
-        logs.log(.info, "传输档位=\(tier.kind.rawValue)（\(tier.url.absoluteString)），探测+换票用时 \(elapsed)ms")
+        logs.log(.info, "传输档位=\(tier.kind.rawValue)（\(tier.url.absoluteString) → \(uplink.baseURL?.absoluteString ?? "—")），探测+换票用时 \(elapsed)ms")
         await activateClient(modeLabel: String(localized: "多路接入"))
         return nil
     }
@@ -703,6 +706,24 @@ public final class AppModel {
     /// "码过期了，去重新生成配对串"这句话只有一处定义 —— 两个分支必须说同一句话，
     /// 否则用户在不同路径上看到两种说法。
     static let pairingCodeExpiredMessage = String(localized: "配对码已过期。请在电脑上重新生成配对串（电脑端的「连接手机」里点一次生成），然后重新粘贴。")
+
+    /// 把老版本的 `.remote` 迁到 `.uplink`（**只在有 uplink 配对材料时**）。
+    ///
+    /// 为什么必须在这里做、而不是 `AppSettings.init` 里：那里拿不到"有没有 uplink
+    /// 配对材料"和"有没有 iroh 主机记录"，只能瞎猜。猜错的代价是**老用户升级后断线**。
+    ///
+    /// 迁移只改内存里的值（下次写入时自然落盘），并且**只做一次判断**：
+    /// 用户之后怎么改都不会被反复改写 —— 因为 `.uplink` 是终态，规则里直接返回。
+    private func migrateTransportModeIfNeeded() {
+        let resolved = TransportMode.resolvedTransportMode(
+            stored: settings.transportMode,
+            hasUplinkPairing: uplink.isPaired,
+            hasIrohHost: !hosts.isEmpty
+        )
+        guard resolved != settings.transportMode else { return }
+        logs.log(.info, "连接方式迁移：\(settings.transportMode.rawValue) → \(resolved.rawValue)")
+        settings.transportMode = resolved
+    }
 
     /// 多路接入降级到 iroh 时用哪个 endpointId。
     ///
@@ -851,7 +872,7 @@ public final class AppModel {
         case .uplink:
             // 用户在设置里改了档位开关 / 点了「重新探测」：上一档的基址先作废再探。
             coordinator.setUplinkBaseURL(nil)
-            uplink.reset()
+            await uplink.reset()
             await connectUplink(hostId: settings.activeHostId ?? "", silent: true)
         case .remote:
             guard let hostId = settings.activeHostId, !hostId.isEmpty else { return }
@@ -866,7 +887,7 @@ public final class AppModel {
 
     /// 粘贴一段配对串。返回错误文案（`nil` = 已配对并开始连接）。
     func adoptUplinkPairing(_ text: String) async -> String? {
-        guard let pairing = uplink.adopt(text) else {
+        guard let pairing = await uplink.adopt(text) else {
             return uplink.lastError ?? UplinkError.badPairing.errorDescription
         }
         uplinkPairing = pairing
@@ -906,7 +927,7 @@ public final class AppModel {
 
     /// 忘掉已配对的多路接入主机（连带把传输方式退回 iroh）。
     func forgetUplinkPairing() async {
-        uplink.forget()
+        await uplink.forget()
         uplinkPairing = nil
         coordinator.setUplinkBaseURL(nil)
         if settings.transportMode == .uplink {
@@ -1139,7 +1160,7 @@ public final class AppModel {
         await tether.disconnect()
         coordinator.setRemoteBaseURL(nil)
         coordinator.setUplinkBaseURL(nil)
-        uplink.reset()
+        await uplink.reset()
         setConnection(.idle)
         diagnostics = nil
         hostRelease = nil

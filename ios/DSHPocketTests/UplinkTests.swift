@@ -329,7 +329,9 @@ final class UplinkTests: XCTestCase {
         XCTAssertEqual(session.currentTier?.kind, .tailscale)
         XCTAssertEqual(session.tierRTTs["lan"], 150, "没选中的档位也要留下 RTT，诊断页要显示")
         XCTAssertEqual(session.tierRTTs["tailscale"], 10)
-        XCTAssertEqual(session.baseURL?.absoluteString, "http://100.64.0.1:18788")
+        // baseURL 是**回环代理**（ATS 只放行本地地址），远端地址在 currentTier 里。
+        XCTAssertEqual(session.baseURL?.host, "127.0.0.1")
+        XCTAssertEqual(session.currentTier?.url.absoluteString, "http://100.64.0.1:18788")
         XCTAssertNil(session.lastError)
     }
 
@@ -715,10 +717,13 @@ final class UplinkTests: XCTestCase {
         coordinator.setUplinkBaseURL(uplink.baseURL)
 
         // 两档 RTT 相同（都是 3ms）时按档位优先级 —— 局域网优先，与电脑端一致。
+        // 交给协议层的是**回环代理**：ATS 只放行本地地址（tailnet / 公网 IP 会 -1022）。
         let base = try await coordinator.baseURL()
-        XCTAssertEqual(base.absoluteString, "http://10.0.0.5:18788")
+        XCTAssertEqual(base.host, "127.0.0.1")
+        XCTAssertEqual(uplink.currentTier?.url.absoluteString, "http://10.0.0.5:18788")
         let socket = try await coordinator.webSocketURL()
-        XCTAssertEqual(socket.absoluteString, "ws://10.0.0.5:18788")
+        XCTAssertEqual(socket.scheme, "ws")
+        XCTAssertEqual(socket.host, "127.0.0.1")
         let readyAfter = await coordinator.isReady()
         XCTAssertTrue(readyAfter)
 
@@ -942,7 +947,8 @@ final class UplinkTests: XCTestCase {
         let connected = await session.connect()
         let tier = try XCTUnwrap(connected)
         XCTAssertEqual(tier.url.absoluteString, discovered, "快照地址死了就该用发现到的地址")
-        XCTAssertEqual(session.baseURL?.absoluteString, discovered)
+        XCTAssertEqual(session.currentTier?.url.absoluteString, discovered)
+        XCTAssertEqual(session.baseURL?.host, "127.0.0.1", "协议层拿到的是回环代理")
         // 回写配对材料：下次启动不用再发现一次。
         XCTAssertEqual(store.loadPairing()?.urls.contains(discovered), true)
         XCTAssertEqual(store.loadDiscovered()?.tiers.first?.url.absoluteString, discovered)
@@ -1271,6 +1277,67 @@ final class UplinkTests: XCTestCase {
                        "kind 必须持久化，否则重启后 ZeroTier 会被重新猜成局域网")
         XCTAssertEqual(loaded.irohEndpointId, "cc8a1078",
                        "iroh endpoint 必须持久化，否则降级时只能退回那个已失效的旧身份")
+    }
+
+    // MARK: 连接方式迁移（0.5.2：App 里只保留 uplink）
+
+    /// 三条规则：有 uplink 配对就迁；没有但还有 iroh 主机就留着；
+    /// 什么都没有（全新安装）就走 uplink。
+    func testTransportModeMigrationRules() {
+        // ① 老用户装过一次、也粘过配对串 → 迁到 uplink
+        XCTAssertEqual(
+            TransportMode.resolvedTransportMode(stored: .remote, hasUplinkPairing: true, hasIrohHost: true),
+            .uplink
+        )
+        XCTAssertEqual(
+            TransportMode.resolvedTransportMode(stored: .remote, hasUplinkPairing: true, hasIrohHost: false),
+            .uplink
+        )
+
+        // ② 只有旧的 iroh 配对 → **保持 .remote**，静默继续用 iroh
+        //    （切成 uplink 会让他在粘新配对串之前彻底连不上）
+        XCTAssertEqual(
+            TransportMode.resolvedTransportMode(stored: .remote, hasUplinkPairing: false, hasIrohHost: true),
+            .remote
+        )
+
+        // ③ 全新安装 / 什么都没配 → uplink
+        XCTAssertEqual(
+            TransportMode.resolvedTransportMode(stored: .remote, hasUplinkPairing: false, hasIrohHost: false),
+            .uplink
+        )
+
+        // 幂等：已经是 uplink 的永远不动（否则每次启动都会写一遍）
+        XCTAssertEqual(
+            TransportMode.resolvedTransportMode(stored: .uplink, hasUplinkPairing: false, hasIrohHost: true),
+            .uplink
+        )
+
+        // 开发者模式（defaults write 打开的）不参与迁移
+        XCTAssertEqual(
+            TransportMode.resolvedTransportMode(stored: .devDirect, hasUplinkPairing: true, hasIrohHost: true),
+            .devDirect
+        )
+        XCTAssertEqual(
+            TransportMode.resolvedTransportMode(stored: .directGateway, hasUplinkPairing: true, hasIrohHost: true),
+            .directGateway
+        )
+    }
+
+    /// 老值必须仍然能解码（不能因为删了 UI 就让老用户的 defaults 解析失败）。
+    func testLegacyTransportModeRawValuesStillDecode() {
+        XCTAssertEqual(TransportMode(rawValue: "remote"), .remote)
+        XCTAssertEqual(TransportMode(rawValue: "devDirect"), .devDirect)
+        XCTAssertEqual(TransportMode(rawValue: "directGateway"), .directGateway)
+        XCTAssertEqual(TransportMode(rawValue: "uplink"), .uplink)
+    }
+
+    /// 全新安装默认就是 uplink（App 里不再有"另一种连接方式"可选）。
+    @MainActor
+    func testFreshInstallDefaultsToUplink() {
+        let suite = makeSuite()
+        defer { suite.removePersistentDomain(forName: suite.description) }
+        XCTAssertEqual(AppSettings(defaults: suite).transportMode, .uplink)
     }
 }
 

@@ -149,6 +149,44 @@ All notable changes to this project are documented here.
 
 ---
 
+## [0.5.2] — 2026-10-23
+
+把「多路接入」真正跑通：绕过 ATS、只留一个配对入口、iroh 自愈。
+
+### Fixed
+
+- **tailnet 与公网中转地址在 App 内根本发不出去**（`-1022`）。实测三种地址：
+  `10.8.54.221`（RFC1918）放行、`100.64.16.30`（CGNAT/tailnet）被 ATS 拒、
+  `192.168.1.1` 放行但超时 —— `NSAllowsLocalNetworking` 只放行「本地」地址，
+  CGNAT 与公网 IP 都不算本地。**影响面不止 tailscale：frp（公网 IP + 明文 HTTP）
+  同样会死。**
+  修法：uplink 自己起**回环本地代理**（`NWListener` + `NWConnection` 连远端，64KB 回压 +
+  half-close），App 只与 `127.0.0.1` 说话；探测也从 `URLSession` 换成 `NWConnection`
+  （Network 框架不受 ATS 约束）。换档不换端口，URLSession 复用与 WebSocket 不受影响。
+  没有引入 `NSAllowsArbitraryLoads`（项目明确禁止）。
+- **iroh 配对撞 `close(1,"protocol")`**：重装 App 会清掉容器里的 `hosts.json`、但 Keychain
+  身份还在 → 手机以为没配对发 `pair`，电脑端对已配对设备只接受 `hello`。现在收到协议错误
+  就把首行取反**重试一次**（pair ↔ hello），成功即记上；`pair-fail(no-window/expired)`
+  则清掉本地「已配对」记录，避免下次永远撞同一个错误。
+
+### Changed
+
+- **只保留「多路接入」**：删掉设置页的「连接方式」切换、「仅 iroh」、「用 iroh 单独添加
+  电脑（遗留）」以及旧的 `endpointId#code` 配对界面（`PairingSheet` 整个文件删除）。
+  配对入口只剩一个：粘贴 `dshuplink://…`。iroh 退化为 uplink 内部的一个兜底档。
+- 老用户不会因升级断线：读到旧的 `.remote` 且没有 uplink 配对材料时**静默继续走 iroh**
+  （不显示任何旧 UI），只在诊断页提示「建议重新配对以启用多路接入」。
+- 删掉已无使用者的 `NSCameraUsageDescription`（扫码界面移除后没有人再要相机）。
+
+### 验证
+
+App 146 条测试全绿、本地化 686 条通过。其中三条直接钉住这次的根因：
+`testATSBlocksPlainHTTPToNonLocalAddress`（真跑 URLSession 断言 `-1022`，0.03 秒返回
+说明在本地就被拒）、`testATSAllowsLoopback`、`testLocalProxyBindsLoopbackAndForwardsBothWays`。
+另有一组首行自愈的 7 条测试（只重试一次、无码时抛 notPaired、日志不泄漏配对码）。
+
+---
+
 ## [0.5.1] — 2026-10-22
 
 一个 uplink 同时负责局域网 / 虚拟组网 / iroh，并且把「出门在外」真正打通。

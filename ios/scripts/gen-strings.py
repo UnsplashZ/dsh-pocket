@@ -340,40 +340,9 @@ EN: dict[str, str] = {
 
     # 配对
     "连接电脑": "Connect to computer",
-    "扫描电脑上的二维码": "Scan the QR code on your computer",
-    "手动输入配对码": "Enter the pairing code",
-    "这台设备不能扫码": "This device can’t scan codes",
-    "在电脑上打开 DSH 的「连接手机」，它会显示一个二维码和 6 位配对码。":
-        "Open “Connect phone” in DSH on your computer — it shows a QR code and a 6-digit pairing code.",
-    "配对窗口 10 分钟内有效，最多错 3 次。": "The pairing window lasts 10 minutes and allows 3 attempts.",
-    "这台手机的设备 ID": "This phone’s device ID",
-    "电脑端按这把公钥授权给这台手机；换手机或重置身份后需要重新配对。":
-        "Your computer authorizes this phone by this public key. A new phone, or a reset identity, needs pairing again.",
-    "把电脑上的二维码放进取景框": "Point the camera at the QR code on your computer",
-    "可以手动输入 6 位配对码。": "You can type the 6-digit code instead.",
-    "6 位配对码": "6-digit pairing code",
-    "电脑上「连接手机」对话框里显示的那 6 个数字。":
-        "The six digits shown in the “Connect phone” dialog on your computer.",
-    "电脑 ID": "Computer ID",
-    "电脑 ID（可选）": "Computer ID (optional)",
-    "已配对过的电脑会自动填上；第一次配对时也可以整串粘贴到这里。":
-        "A previously paired computer fills this in. You can also paste the whole pairing string here.",
-    "格式是「电脑 ID#配对码」，整串粘进来会自动拆开。":
-        "The format is “computer-id#code”; pasting the whole string splits it automatically.",
-    "粘贴配对串": "Paste the pairing string",
-    "配对码": "Pairing code",
     "连接": "Connect",
-    "正在连接电脑…": "Connecting to your computer…",
-    "配对没有成功": "Pairing didn’t succeed",
-    "再试一次": "Try again",
-    "手动输入": "Enter manually",
-    "这个二维码里没有配对信息。请确认扫的是 DSH「连接手机」显示的那一个。":
-        "That QR code has no pairing information. Make sure you scanned the one from DSH’s “Connect phone”.",
-    "连接没有完成，请再试一次。": "The connection didn’t finish. Please try again.",
     "复制": "Copy",
     "已复制": "Copied",
-    "这台手机的设备 ID：%@…\n电脑端按这把公钥授权；删掉它需要重新配对。":
-        "This phone’s device ID: %@…\nYour computer authorizes by this public key; deleting it requires pairing again.",
 
     # 首次启动
     "把电脑上的会话带到手机上": "Your computer’s sessions, on your phone",
@@ -443,10 +412,6 @@ EN: dict[str, str] = {
     "解析中": "Parsing",
 
     # 设置
-    "主机": "Computers",
-    "还没有配对过任何电脑。": "No computers paired yet.",
-    "添加电脑": "Add computer",
-    "忘记": "Forget",
     "当前": "Current",
     "这台手机的设备 ID：%@": "This phone’s device ID: %@",
     "通知": "Notifications",
@@ -471,7 +436,6 @@ EN: dict[str, str] = {
     "第三方组件": "Third-party components",
     "本项目以 MIT 许可发布。以上组件各自保留原许可与版权声明。":
         "This project is released under the MIT license. Each component above keeps its own license and copyright notice.",
-    "重命名主机": "Rename computer",
     "名称": "Name",
 
     # 隐私页
@@ -513,7 +477,6 @@ EN: dict[str, str] = {
     "DSH Pocket": "DSH Pocket",
     "会话已归档": "Session archived",
     "已归档": "Archived",
-    "这个二维码里没有配对信息。": "That QR code has no pairing information.",
     "正在读取会话…": "Loading sessions…",
     "跳过": "Skip",
     "%lld 分 %lld 秒": "%lld min %lld s",
@@ -555,7 +518,6 @@ EN: dict[str, str] = {
     "这个会话正在跑，DSH 不允许直接归档。先停下它再归档。":
         "This session is running, and DSH won’t archive it as-is. Stop it first, then archive.",
     # 连接方式
-    "连接方式": "Connection",
     "远端连接（iroh）": "Remote (iroh)",
     "开发直连（本机）": "Dev direct (this Mac)",
     "直连网关（Tailscale / 局域网）": "Direct gateway (Tailscale / LAN)",
@@ -765,8 +727,6 @@ EN: dict[str, str] = {
     # 开发者模式（仅 DEBUG）
     "调试": "Debug",
     "开发者模式：": "Developer mode: ",
-    "改回 iroh": "Switch back to iroh",
-    "正常使用请改回「远端连接（iroh）」": "For normal use, switch back to “Remote (iroh)”.",
     # 会话缓存
     "缓存": "Cache",
     "已缓存会话": "Cached sessions",
@@ -1133,8 +1093,6 @@ EN: dict[str, str] = {
 
     # ── 0.5.0 多路接入（uplink）─────────────────────────────────────────
     "多路接入": "Multi-path",
-    "自动（多路接入）": "Automatic (multi-path)",
-    "仅 iroh": "iroh only",
     "局域网": "LAN",
     "自建中转": "Self-hosted relay",
     "已配对的电脑": "Paired computer",
@@ -1149,14 +1107,9 @@ EN: dict[str, str] = {
     "还剩 %@ 秒": "%@ s left",
     "档位：%@": "Path: %@",
     "网关：%@": "Gateway: %@",
-    "「多路接入」会先并行探测电脑给出的所有地址（局域网、Tailscale、ZeroTier、自建中转），谁先通就用谁；一条都不通时自动退回 iroh。":
-        "“Multi-path” probes every address your computer advertises (LAN, Tailscale, ZeroTier, self-hosted relay) in parallel and uses whichever answers first. If none answer, it falls back to iroh.",
-    "地址清单来自电脑端的配对串。RTT 是最近一次探测的结果，「—」表示这次没测到（另一档先通了）。":
-        "The address list comes from the pairing link your computer showed. RTT is from the latest probe; “—” means it was not measured this time (another path answered first).",
     # 错误与诊断
     "上一次探测还在进行中": "A probe is still running",
     "上一次用的 %@ 这次没通，换到 %@": "The previous path %@ did not respond — switched to %@",
-    "所有档位都探测失败（%lld 个地址，用时 %@ms）": "All paths failed to respond (%lld addresses, %@ ms)",
     "所有档位都被关掉了。至少打开一个，或者换回 iroh。":
         "Every path is turned off. Turn one back on, or switch back to iroh.",
     "所有档位都连不上。检查手机和电脑是否在同一网络，或者换一个档位再试。":
@@ -1215,7 +1168,6 @@ EN: dict[str, str] = {
         "None of the %lld addresses are reachable; see the per-path details below.",
     # iroh 兜底
     "iroh 兜底": "iroh fallback",
-    "用 iroh 单独添加电脑（遗留）": "Add a computer over iroh (legacy)",
     "已配对": "Paired",
     "未配对": "Not paired",
     "电脑端没有启用 iroh 兜底档。": "The iroh fallback is not enabled on your computer.",
@@ -1225,8 +1177,22 @@ EN: dict[str, str] = {
         "No address is reachable right now, so an iroh pairing code cannot be fetched. Get back to a network where this computer is reachable.",
     "配对码已过期。请在电脑上重新生成配对串（电脑端的「连接手机」里点一次生成），然后重新粘贴。":
         "The pairing code has expired. Generate a new pairing link on your computer (tap “Connect phone” again) and paste it here.",
-    "「自动（多路接入）」是推荐项：一个配对串同时配好局域网 / Tailscale / ZeroTier / 自建中转**和 iroh 兜底**，哪条通走哪条。在外面（蜂窝网络）时自动用 iroh。「仅 iroh」只为已有配对记录的老用户与排障保留。":
-        "“Automatic (multi-path)” is the recommended option: one pairing link sets up LAN / Tailscale / ZeroTier / self-hosted relay **and the iroh fallback**, and whichever path works is used. On cellular it switches to iroh automatically. “iroh only” is kept for existing pairings and troubleshooting.",
+    # ── 0.5.2：只保留多路接入 / 本地回环代理 / ATS ─────────────────────
+    "建议重新配对": "Pair again to enable multi-path",
+    "改回多路接入": "Switch back to multi-path",
+    "正常使用请改回「多路接入」": "Switch back to “multi-path” for normal use",
+    "这台手机还在用旧的 iroh 配对。建议到「设置 → 多路接入」里重新粘贴一次配对串：之后局域网 / 虚拟组网会更快，iroh 仍然作为兜底。":
+        "This phone still uses the old iroh pairing. Paste a pairing link again under Settings → Multi-path: LAN and virtual networks will be faster, and iroh still works as the fallback.",
+    "一个配对串同时配好局域网 / Tailscale / ZeroTier / 自建中转**和 iroh 兜底**，哪条通走哪条。在外面（蜂窝网络）时自动用 iroh。配对串在电脑端的「连接手机」里生成。":
+        "One pairing link sets up LAN / Tailscale / ZeroTier / self-hosted relay **and the iroh fallback**, and whichever path works is used. On cellular it switches to iroh automatically. Generate the link on your computer under “Connect phone”.",
+    "本地代理：%@": "Local proxy: %@",
+    "本地代理起不来：%@": "Could not start the local proxy: %@",
+    "本地代理的监听被取消": "The local proxy listener was cancelled",
+    "这一档的地址解析不出 host/port，已跳过。": "This path's address has no usable host/port — skipped.",
+    "被 iOS 的 ATS 拦下了（明文 http 只放行本地地址）。这是 App 的 bug：uplink 的请求应当走本地回环代理。":
+        "Blocked by iOS ATS (plain HTTP is only allowed to local addresses). This is an app bug: uplink requests should go through the local loopback proxy.",
+    "%lld 个地址被 iOS 的 ATS 拦下了：uplink 的请求应该走本地回环代理，这是 App 的 bug，请把诊断日志发给我们。":
+        "%lld addresses were blocked by iOS ATS: uplink requests should go through the local loopback proxy. This is an app bug — please send us the diagnostic log.",
     "地址清单来自电脑端的配对串，探测全不通时还会用 Bonjour 找一次电脑现在的地址。RTT 是最近一次探测的结果，「—」表示这次没测到（另一档先通了，或当前网络下不可达）。":
         "The address list comes from the pairing link; when nothing responds the app also runs a Bonjour lookup for the computer’s current address. RTT is from the latest probe; “—” means it was not measured (another path answered first, or it is unreachable on this network).",
 }
