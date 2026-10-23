@@ -98,3 +98,62 @@ public enum UplinkIrohFallback {
         }
     }
 }
+
+/// iroh 兜底在"网关探测结束之后"该怎么处理。
+///
+/// 这是 0.5.3 的产品决策，单独写成一个纯函数是因为它**最容易在改代码时被顺手改坏**：
+///   · 网关有档可达 → **推迟**配对（手上有票，晚点要码也不迟），后台预热即可；
+///   · 网关全不可达 → **立刻**用配对串里的码配（这是唯一不需要 HTTP 的路径，
+///     也是当初修死锁的原因：iroh 不能反过来依赖网关）。
+public enum UplinkIrohPlan: Equatable, Sendable {
+    /// 网关通了：后台趁有票把兜底配好（用 `pairOnly`，不动当前传输）。
+    case prewarm
+    /// 网关全不通：立刻用配对串里的码配 + 连（`fallbackToIroh` 会做）。
+    case pairNow
+    /// 什么都不用做（已经配过 / 没有 endpoint / 没有码）。
+    case none
+
+    public static func resolve(
+        gatewayReachable: Bool,
+        irohAlreadyPaired: Bool,
+        hasIrohEndpoint: Bool,
+        hasPairingCode: Bool
+    ) -> UplinkIrohPlan {
+        guard hasIrohEndpoint, !irohAlreadyPaired else { return .none }
+        if gatewayReachable { return .prewarm }
+        return hasPairingCode ? .pairNow : .none
+    }
+}
+
+/// 单飞：并发调用合并成一次。
+///
+/// 为什么需要：真机日志 `iroh 配对失败：上一次连接还在进行中` 就是两条路
+/// （adopt / 回前台 / 降级）同时想配 iroh 撞出来的。合并之后，第二条直接复用
+/// 第一条的结果，不会再打第二条 `connect`。
+@MainActor
+public final class SingleFlight<Value: Sendable> {
+    private var task: Task<Value, Never>?
+
+    public init() {}
+
+    /// 正在跑就复用；否则用 `operation` 起一个新的。
+    public func run(_ operation: @escaping @MainActor () async -> Value) async -> Value {
+        if let task {
+            return await task.value
+        }
+        let task = Task { @MainActor in await operation() }
+        self.task = task
+        let value = await task.value
+        self.task = nil
+        return value
+    }
+
+    /// 有没有正在跑的任务（调用方要"先等它落定再决定"时用）。
+    public var isRunning: Bool { task != nil }
+
+    /// 等正在跑的那次落定（没有就立刻返回）。
+    public func drain() async {
+        guard let task else { return }
+        _ = await task.value
+    }
+}

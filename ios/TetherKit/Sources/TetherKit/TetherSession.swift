@@ -294,6 +294,34 @@ public actor TetherSession {
         }
     }
 
+    /// **只配对、不建隧道**：把 `hostId` 用 `pairingCode` 换进主机簿，然后立刻断开。
+    ///
+    /// 为什么需要单独一个入口：配对本身只要一次 `pair` 往返，不需要本地代理，
+    /// 更**不该**把当前正在用的传输顶掉 —— 用户抱怨的"每重连一次所有 WS 都断"
+    /// 就是"为了配 iroh 把整条连接重建一遍"的后果。有了它，就可以在网关还连着的时候
+    /// 顺手把 iroh 兜底配好（趁配对串里的码还没过期）。
+    ///
+    /// 返回 `true` 表示电脑端接受了这次配对（已写进主机簿）。
+    @discardableResult
+    public func pairOnly(hostId: String, pairingCode: String) async throws -> Bool {
+        let identity = try ensureIdentity()
+        let link = TetherLink(identity: identity, name: deviceName, logger: logger)
+        do {
+            try await link.connect(hostEndpointId: hostId, firstMessage: .pair(code: pairingCode))
+            var record = hostBook.host(id: hostId)
+                ?? TetherHostRecord(id: hostId, label: String(localized: "电脑 \(hostId.prefix(6))"))
+            record.lastConnectedAt = Date()
+            hostBook.upsert(record)
+            hostBook.save()
+            await link.disconnect()
+            logger?.log("iroh 已配对（只配对，未建隧道）：\(hostId.prefix(12))…")
+            return true
+        } catch {
+            await link.disconnect()
+            throw error
+        }
+    }
+
     /// 取消正在进行的建连（退到后台、或被一次新的连接顶掉时调用）。
     ///
     /// 只标记不终止是不够的：`link.connect` 里的 iroh 调用不响应 Swift 取消，

@@ -192,7 +192,11 @@ extension UplinkProbeFailure {
         switch nwError {
         case .posix(let code):
             switch code {
-            case .ECONNREFUSED:
+            case .ECONNREFUSED, .EPIPE, .ECONNRESET:
+                // 回环上"端口没人监听"有时不是 ECONNREFUSED：连上立刻被 RST，
+                // 紧接着的 write 报 EPIPE(32)；或者直接 ECONNRESET(54)。
+                // 三者语义相同 —— 对端没有服务在听 —— 都归"被拒"，
+                // 否则会掉进 other，界面上看不出真正原因（实测复现过）。
                 self = .refused(milliseconds: milliseconds)
             case .ETIMEDOUT:
                 self = .timedOut(milliseconds: milliseconds)

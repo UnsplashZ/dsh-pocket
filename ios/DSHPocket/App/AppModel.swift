@@ -580,8 +580,11 @@ public final class AppModel {
     /// **不重写状态机**是这次改动的关键取舍：探测成功之后与 `.remote` 就完全一样了
     /// （同一个 `activateClient`、同一条事件流、同一套重连），
     /// 唯一的差别是"基址从哪来"。协议层与界面因此一行都不用动。
+    /// - Parameter force: 打破幂等、真的重建（健康检查失败 / 用户点重新探测 /
+    ///   换网 / 换档）。默认**不**重建 —— 真机日志里"配对完成 + 回前台各连一次"
+    ///   把正在跑的 WebSocket 打断了两次。
     @discardableResult
-    private func connectUplink(hostId: String, silent: Bool) async -> String? {
+    private func connectUplink(hostId: String, silent: Bool, force: Bool = false) async -> String? {
         guard !isConnecting else { return String(localized: "上一次连接还在进行中") }
         isConnecting = true
         // 已经退到后台就不要再起连接（理由同 `connectIroh`）。
@@ -599,7 +602,10 @@ public final class AppModel {
         setConnection(.connecting(hostId: hostId))
 
         let started = Date()
-        let tier = await uplink.connect()
+        let baseBefore = uplink.baseURL
+        let tier = force
+            ? await uplink.reconnect(reason: "explicit")
+            : await uplink.connect()
         // 探测这一段走完了，后面降级到 iroh 时得让 `connectIroh` 能进自己的重入保护。
         isConnecting = false
 
@@ -614,10 +620,20 @@ public final class AppModel {
         // **交给协议层的是回环代理**，不是远端地址：ATS 只放行本地地址，
         // tailnet(100.64/10) 与公网 IP 的明文 http 会被 -1022 拒掉。
         coordinator.setUplinkBaseURL(uplink.baseURL)
+
+        // 幂等命中：基址没变、client 也连着 → **不要重建 client**（重建就会打断 WS）。
+        if let baseBefore, baseBefore == uplink.baseURL, connection.isConnected {
+            logs.log(.debug, "多路接入已在 \(tier.kind.rawValue) 上（\(baseBefore.absoluteString)），跳过重建")
+            return nil
+        }
+
         let elapsed = Int(Date().timeIntervalSince(started) * 1000)
         // 这一行是排查"到底走了哪条路"的唯一入口（用户报障时先看它）。
         logs.log(.info, "传输档位=\(tier.kind.rawValue)（\(tier.url.absoluteString) → \(uplink.baseURL?.absoluteString ?? "—")），探测+换票用时 \(elapsed)ms")
         await activateClient(modeLabel: String(localized: "多路接入"))
+        // 网关通了 = 手上有一张能用 15 分钟的票 → 趁现在把 iroh 兜底也配好
+        //（否则用户走出 Wi-Fi 之后既没有码也没有票，兜底就是空的）。
+        scheduleIrohPrewarm()
         return nil
     }
 
@@ -639,6 +655,10 @@ public final class AppModel {
         }
         let source = pairing?.irohEndpointId == endpoint ? "pairing" : "cached"
         logs.log(.info, "降级 iroh：endpointId=\(endpoint.prefix(16))…（来源：\(source)）")
+
+        // 有配对正在进行就先等它落定（单飞）：否则两条配对会撞成
+        // `iroh 配对失败：上一次连接还在进行中`。
+        await irohPairing.drain()
 
         // 码已经过期、iroh 又没配上：**不要再拿它去撞电脑端**（会记一次失败），
         // 直接说清楚用户该做什么。这是"如实报错、不假装在重试"的具体落点。
@@ -870,10 +890,9 @@ public final class AppModel {
     func activateConfiguredTransport() async {
         switch settings.transportMode {
         case .uplink:
-            // 用户在设置里改了档位开关 / 点了「重新探测」：上一档的基址先作废再探。
-            coordinator.setUplinkBaseURL(nil)
-            await uplink.reset()
-            await connectUplink(hostId: settings.activeHostId ?? "", silent: true)
+            // 用户在设置里改了档位开关 / 点了「重新探测」：这是**显式重建**，
+            // 但**不收代理**（同档重建时端口与在途连接都留着，见 UplinkLocalProxy）。
+            await connectUplink(hostId: settings.activeHostId ?? "", silent: true, force: true)
         case .remote:
             guard let hostId = settings.activeHostId, !hostId.isEmpty else { return }
             await connect(hostId: hostId, pairingCode: nil, silent: true)
@@ -892,37 +911,95 @@ public final class AppModel {
         }
         uplinkPairing = pairing
         settings.transportMode = .uplink
-        // **趁码还新鲜，先把 iroh 配上。** 这一步走 iroh 通道本身，不发任何 HTTP 请求 ——
-        // 5G、局域网完全不可达也能成。它也是"一个配对串搞定全部"的关键：
-        // iroh 是网关档全挂时的兜底，不能反过来依赖网关才拿得到码。
-        await pairIrohFromPairing(pairing)
-        // 然后才按优先级探网关：通就用网关（快），不通就用刚配好的 iroh。
+        // **先探网关，不抢跑 iroh。**
+        //   · 有档可达 → 走网关；iroh 兜底由 `scheduleIrohPrewarm` 在后台补
+        //     （那时手上有票，码过期了也能用 /uplink/iroh-pairing 换新的）；
+        //   · 所有档都不可达 → `connectUplink` 会自动落到 iroh，
+        //     用配对串里的码直接配 —— 那是唯一不需要 HTTP 的路径（5G 也能成）。
         await activateConfiguredTransport()
         return nil
     }
 
-    /// 用配对串里带的码把 iroh 配上（幂等：已经配过就直接记下来）。
+    // MARK: iroh 兜底配对（单飞 + 不抢跑）
+
+    /// 正在进行的 iroh 配对。**单飞**：并发调用合并成一次。
     ///
-    /// 失败**不抛**也不阻断配对流程：码过期/电脑没跑 iroh 都只影响兜底，
-    /// 网关那条路照走。
-    private func pairIrohFromPairing(_ pairing: UplinkPairing) async {
-        guard let endpoint = pairing.irohEndpointId else { return }
+    /// 真机日志里 `iroh 配对失败：上一次连接还在进行中` 就是两条路同时想配 iroh
+    /// 撞出来的（adopt、回前台、降级都可能触发）。
+    private let irohPairing = SingleFlight<Bool>()
+
+    /// 网关连上之后，**在后台**把 iroh 兜底也配好。
+    ///
+    /// 为什么需要（这是"推迟配对"的兜底策略）：配对串里的码只有几分钟。
+    /// 如果只在"网关全不可达"时才去配，那时既没有码（过期了）也没有票
+    /// （网关不可达），两条路同时断 —— 用户从家里走到外面就再也连不上。
+    /// 所以趁**手上有票**的时候顺手配好：用 `pairOnly`（只配对、不建隧道），
+    /// **不会**动当前正在用的传输。
+    private func scheduleIrohPrewarm() {
+        guard let pairing = uplink.pairing else { return }
+        let plan = UplinkIrohPlan.resolve(
+            gatewayReachable: true,
+            irohAlreadyPaired: irohPairedEndpoint != nil,
+            hasIrohEndpoint: pairing.irohEndpointId != nil,
+            hasPairingCode: pairing.irohCode != nil
+        )
+        guard plan == .prewarm, !irohPairing.isRunning else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            // 别和首屏那几条请求抢带宽，也避开"刚连上就折腾"的窗口。
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            _ = await self.irohPairing.run {
+                await self.performIrohPairing(
+                    pairing: pairing, allowRefresh: true, reason: "prewarm"
+                )
+            }
+        }
+    }
+
+    /// 真正的配对动作。两条路，按"码从哪来"分：
+    ///   1. 配对串里的码 —— **不需要任何 HTTP**（5G 下唯一可行的路）；
+    ///   2. 码过期/没有时，用票据换一张（只有网关可达时才成立）。
+    ///
+    /// 用 `pairOnly` 而不是 `connectIroh`：只配对、不建隧道，**不动当前传输**。
+    private func performIrohPairing(
+        pairing: UplinkPairing,
+        allowRefresh: Bool,
+        reason: String
+    ) async -> Bool {
+        guard let endpoint = pairing.irohEndpointId else { return false }
         if await tether.isPaired(hostId: endpoint) {
             irohPairedEndpoint = endpoint
-            return
+            return true
         }
-        guard let code = pairing.irohCode else { return }
-        guard !pairing.irohCodeExpired(now: Date()) else {
-            logs.log(.warning, "配对串里的 iroh 配对码已过期，无法自动配 iroh")
-            return
+        if let code = pairing.irohCode, !pairing.irohCodeExpired(now: Date()) {
+            do {
+                _ = try await tether.pairOnly(hostId: endpoint, pairingCode: code)
+                irohPairedEndpoint = endpoint
+                logs.log(.info, "iroh 已配对（配对串里的码 · \(reason)）：\(endpoint.prefix(16))…")
+                return true
+            } catch {
+                logs.log(.warning, "iroh 配对失败（配对串里的码 · \(reason)）：\(Self.brief(Self.describe(error)))")
+            }
         }
-        logs.log(.info, "用配对串里的码配 iroh：endpointId=\(endpoint.prefix(16))…")
-        if let failure = await connectIroh(hostId: endpoint, pairingCode: code, silent: true) {
-            logs.log(.warning, "iroh 配对失败：\(Self.brief(failure))")
-        } else {
-            irohPairedEndpoint = endpoint
-            logs.log(.info, "iroh 已配对：\(endpoint.prefix(16))…")
+        guard allowRefresh, uplink.baseURL != nil else {
+            logs.log(.info, "iroh 未配对，且没有可刷新票据（\(reason)）")
+            return false
         }
+        do {
+            let issued = try await uplink.requestIrohPairing()
+            _ = try await tether.pairOnly(hostId: issued.endpointId, pairingCode: issued.code)
+            irohPairedEndpoint = issued.endpointId
+            logs.log(.info, "iroh 已配对（票据换的新码 · \(reason)）：\(issued.endpointId.prefix(16))…")
+            return true
+        } catch {
+            logs.log(.warning, "iroh 配对失败（刷新配对码 · \(reason)）：\(Self.brief(Self.describe(error)))")
+            return false
+        }
+    }
+
+    private static func describe(_ error: any Error) -> String {
+        (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
     }
 
     /// 忘掉已配对的多路接入主机（连带把传输方式退回 iroh）。
@@ -1114,8 +1191,9 @@ public final class AppModel {
     private func scheduleTransportReconnect() async {
         guard !isBackgrounded else { return }
         if settings.transportMode == .uplink {
-            // 多路接入没有隧道可退避重建，重连就是重新探测一次。
-            await connectUplink(hostId: settings.activeHostId ?? "", silent: true)
+            // 多路接入没有隧道可退避重建，重连就是重新探测一次（这里必须强制：
+            // 能走到这儿说明传输已经判定失败了）。
+            await connectUplink(hostId: settings.activeHostId ?? "", silent: true, force: true)
             return
         }
         guard settings.transportMode == .remote else { return }

@@ -73,6 +73,9 @@ public final class UplinkSession {
     public var networkKind: UplinkNetworkKind { network.kind }
     /// 票据到期时间（诊断页用）。
     public private(set) var ticketExpiresAt: Date?
+    /// 上次 settle 成功的时间与当时的网络指纹（幂等守卫用）。
+    private var lastSettledAt: Date?
+    private var lastSettledFingerprint: String?
     public private(set) var isConnecting = false
 
     // MARK: 依赖
@@ -171,6 +174,44 @@ public final class UplinkSession {
     ///   2. 否则并行探所有启用档位，取**最快**的那个成功者。
     @discardableResult
     public func connect() async -> UplinkTier? {
+        // **幂等守卫**（真机日志的教训）：配对完成与回前台各触发一次 connect，
+        // 每次都重新探测 + 重建代理 → 正在跑的 WebSocket 被自己人打断
+        //（`mux 断开（连了 1.9s）`）。已经连在同一档、同一网络、还在粘滞窗口内，
+        // 就什么都不做，直接返回当前基址。
+        if let existing = currentTier, baseURL != nil, isSettledRecently, fingerprintMatches {
+            logger?.log(.debug, "[uplink] 已经连在 \(existing.kind.rawValue) 上，跳过这次探测")
+            return existing
+        }
+        return await probeAndSettle()
+    }
+
+    /// **显式重建**：只有四种情况该走它 ——
+    /// 健康检查失败 / 用户点「重新探测」/ 换网（指纹变了）/ 用户换档。
+    ///
+    /// 为什么单独开一个入口而不是给 `connect()` 加参数：幂等是默认行为，
+    /// 谁要打破它就必须**说出来**（调用点一眼能看出这是有意为之）。
+    @discardableResult
+    public func reconnect(reason: String) async -> UplinkTier? {
+        logger?.log(.info, "[uplink] 重建连接：\(reason)")
+        return await probeAndSettle()
+    }
+
+    /// 上次成功 settle 到现在是否还在粘滞窗口内。
+    private var isSettledRecently: Bool {
+        guard let lastSettledAt else { return false }
+        return now().timeIntervalSince(lastSettledAt) < Self.stickyWindow
+    }
+
+    /// 网络"指纹"是否与上次连上时一致。
+    ///
+    /// 只认**网络类型**（Wi-Fi / 蜂窝 / 有线）这一级：这是 `NWPathMonitor` 能稳定
+    /// 给出的信息，也是"换网之后旧地址会失效"最常见的那一类。同一个 Wi-Fi 下换了
+    /// SSID（局域网段变了）不会被发现 —— 那种情况由探测失败后的 Bonjour 重新发现兜住。
+    private var fingerprintMatches: Bool {
+        lastSettledFingerprint == network.kind.rawValue
+    }
+
+    private func probeAndSettle() async -> UplinkTier? {
         guard !isConnecting else {
             lastError = String(localized: "上一次探测还在进行中")
             return nil
@@ -379,6 +420,8 @@ public final class UplinkSession {
         }
         settings.uplinkLastGoodTier = tier.kind.rawValue
         settings.uplinkStickyUntil = now().addingTimeInterval(Self.stickyWindow)
+        lastSettledAt = now()
+        lastSettledFingerprint = network.kind.rawValue
         if let reason { lastSwitchReason = reason }
         lastError = nil
         logger?.log(.info, "[uplink] 选中档位 \(tier.kind.rawValue) \(rtt)ms \(tier.url.absoluteString)")
@@ -390,6 +433,8 @@ public final class UplinkSession {
     public func suspend() async {
         baseURL = nil
         currentTier = nil
+        lastSettledAt = nil
+        lastSettledFingerprint = nil
         await proxy.stop()
     }
 
@@ -398,6 +443,8 @@ public final class UplinkSession {
         await proxy.stop()
         baseURL = nil
         currentTier = nil
+        lastSettledAt = nil
+        lastSettledFingerprint = nil
         ticket = nil
         ticketExpiry = nil
         ticketExpiresAt = nil

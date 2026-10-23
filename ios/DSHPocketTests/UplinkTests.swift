@@ -1279,6 +1279,92 @@ final class UplinkTests: XCTestCase {
                        "iroh endpoint 必须持久化，否则降级时只能退回那个已失效的旧身份")
     }
 
+
+    // MARK: connect 幂等（真机：启动时白折腾 7 秒、WS 被打断两次）
+
+    /// 连续两次 `connect()`：只探一次、代理端口不变、第二次直接返回。
+    @MainActor
+    func testConnectIsIdempotent() async throws {
+        let suite = makeSuite()
+        defer { suite.removePersistentDomain(forName: suite.description) }
+        let counter = Counter()
+        let server = StubServer([(200, Self.authOK)])
+        let (session, store) = makeSession(
+            suite: suite,
+            server: server,
+            probe: { _, _ in counter.count += 1; return .reachable(rttMilliseconds: 5) }
+        )
+        store.save(Self.pairing())
+
+        let firstConnected = await session.connect()
+        let first = try XCTUnwrap(firstConnected)
+        let baseAfterFirst = session.baseURL
+        let requestsAfterFirst = server.requests.count
+        // 一次 connect 会探**每一档**（默认配对串里有 2 个地址），所以看增量。
+        let probesAfterFirst = counter.count
+
+        let secondConnected = await session.connect()
+        let second = try XCTUnwrap(secondConnected)
+        XCTAssertEqual(second, first)
+        XCTAssertEqual(counter.count, probesAfterFirst, "第二次不该再探测")
+        XCTAssertEqual(session.baseURL, baseAfterFirst, "代理端口不该变")
+        XCTAssertEqual(server.requests.count, requestsAfterFirst, "也不该重新换票")
+    }
+
+    /// 显式 `reconnect(reason:)` 会真的重建，但**同一档不换端口**。
+    @MainActor
+    func testReconnectForcesProbeAndKeepsPort() async throws {
+        let suite = makeSuite()
+        defer { suite.removePersistentDomain(forName: suite.description) }
+        let counter = Counter()
+        let server = StubServer([(200, Self.authOK), (200, Self.authOK)])
+        let (session, store) = makeSession(
+            suite: suite,
+            server: server,
+            probe: { _, _ in counter.count += 1; return .reachable(rttMilliseconds: 5) }
+        )
+        store.save(Self.pairing())
+
+        let connected = await session.connect()
+        XCTAssertNotNil(connected)
+        let base = session.baseURL
+        let probesAfterFirst = counter.count
+        let rebuilt = await session.reconnect(reason: "单测")
+        XCTAssertNotNil(rebuilt)
+        XCTAssertGreaterThan(counter.count, probesAfterFirst, "显式重建必须真的再探一次")
+        XCTAssertEqual(session.baseURL, base, "同一档重建不换端口")
+    }
+
+    /// 换网（指纹变了）→ 守卫失效，必须重探。
+    @MainActor
+    func testNetworkChangeBreaksTheGuard() async throws {
+        let suite = makeSuite()
+        defer { suite.removePersistentDomain(forName: suite.description) }
+        let counter = Counter()
+        let monitor = UplinkNetworkMonitor(fixed: .wifi)
+        let server = StubServer([(200, Self.authOK), (200, Self.authOK)])
+        let settings = AppSettings(defaults: suite)
+        let store = UplinkCredentialStore(secrets: EphemeralSecretStore(), defaults: suite)
+        let session = UplinkSession(
+            store: store,
+            settings: settings,
+            probe: { _, _ in counter.count += 1; return .reachable(rttMilliseconds: 5) },
+            send: { request in try await server.send(request) },
+            discover: { _ in [] },
+            network: monitor,
+            now: { Date(timeIntervalSince1970: 1_700_000_000) }
+        )
+        store.save(Self.pairing(urls: ["http://100.64.0.1:18788"]))   // tailscale：蜂窝下也探
+
+        let beforeSwitch = await session.connect()
+        XCTAssertNotNil(beforeSwitch)
+        let probesBefore = counter.count
+        monitor.overrideKind(.cellular)      // 模拟换网
+        let afterSwitch = await session.connect()
+        XCTAssertNotNil(afterSwitch)
+        XCTAssertGreaterThan(counter.count, probesBefore, "换网之后不能复用上一次的结论")
+    }
+
     // MARK: 连接方式迁移（0.5.2：App 里只保留 uplink）
 
     /// 三条规则：有 uplink 配对就迁；没有但还有 iroh 主机就留着；

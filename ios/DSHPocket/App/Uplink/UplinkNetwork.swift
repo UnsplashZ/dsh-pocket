@@ -109,6 +109,16 @@ public final class UplinkNetworkMonitor {
         monitor.start(queue: queue)
     }
 
+    #if DEBUG
+    /// 单测用：模拟"换网"（Wi-Fi ↔ 蜂窝）。只改内存，不碰真实监控。
+    ///
+    /// 幂等守卫里"网络指纹变了就重建"这条需要一个能变的事实，
+    /// 而 `NWPathMonitor` 在测试里给不出。
+    public func overrideKind(_ kind: UplinkNetworkKind) {
+        self.kind = kind
+    }
+    #endif
+
     public func stop() {
         guard let monitor, started else { return }
         started = false

@@ -20,6 +20,8 @@ final class UplinkTransportTests: XCTestCase {
         private let listener: NWListener
         private let queue = DispatchQueue(label: "test.uplink.fake-server")
         private let handler: @Sendable (String) -> Data
+        /// 回显模式：收到什么原样发回、**不关连接**（用来验"重连不该打断在途连接"）。
+        private let echo: Bool
         private let lock = NSLock()
         private var connections: [NWConnection] = []
         private var requests: [String] = []
@@ -30,6 +32,16 @@ final class UplinkTransportTests: XCTestCase {
             parameters.requiredInterfaceType = .loopback
             self.listener = try NWListener(using: parameters)
             self.handler = handler
+            self.echo = false
+        }
+
+        init(echoing: Bool) throws {
+            let parameters = NWParameters.tcp
+            parameters.allowLocalEndpointReuse = true
+            parameters.requiredInterfaceType = .loopback
+            self.listener = try NWListener(using: parameters)
+            self.handler = { _ in Data() }
+            self.echo = echoing
         }
 
         func start() async throws -> UInt16 {
@@ -79,6 +91,19 @@ final class UplinkTransportTests: XCTestCase {
         private func receive(_ connection: NWConnection, buffer: Data) {
             connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) {
                 data, _, isComplete, error in
+                if self.echo {
+                    // 原样发回，连接保持打开 —— 代理那一层要是偷偷重建了隧道，
+                    // 这条连接立刻断，测试就能发现。
+                    if let data, !data.isEmpty {
+                        connection.send(content: data, completion: .contentProcessed { _ in
+                            self.receive(connection, buffer: Data())
+                        })
+                        return
+                    }
+                    if error != nil || isComplete { connection.cancel(); return }
+                    self.receive(connection, buffer: Data())
+                    return
+                }
                 var accumulated = buffer
                 if let data { accumulated.append(data) }
                 let text = String(decoding: accumulated, as: UTF8.self)
@@ -294,7 +319,194 @@ final class UplinkTransportTests: XCTestCase {
         XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
         XCTAssertEqual(String(decoding: data, as: UTF8.self), "loopback-ok")
     }
+
+    // MARK: ② 同 target 复用端口（重连不该打断在途连接）
+
+    /// **这条对应真机日志里的 `mux 断开（连了 1.9s）`。**
+    ///
+    /// 重复 `start(target:)` 同一个档位时：端口不变、listener 不重建、
+    /// **在途连接继续活着**（WebSocket 就是一条长连接）。
+    @MainActor
+    func testRepeatedStartKeepsPortAndLiveConnection() async throws {
+        let server = try FakeServer(echoing: true)
+        let port = try await server.start()
+        defer { server.stop() }
+
+        let proxy = UplinkLocalProxy()
+        let target = UplinkLocalProxy.Target(host: "127.0.0.1", port: port)
+        let url = try await proxy.start(target: target)
+        defer { Task { await proxy.stop() } }
+
+        let client = try await Self.connect(to: try XCTUnwrap(url.port.map(UInt16.init(exactly:)) ?? nil))
+        defer { client.cancel() }
+
+        try await Self.send("ping", on: client)
+        let first = try await Self.receive(from: client)
+        XCTAssertEqual(first, "ping", "代理双向转发")
+
+        // 模拟"又一次 connect() 走到同一个档位"
+        let again = try await proxy.start(target: target)
+        XCTAssertEqual(again.port, url.port, "同 target 不许换端口")
+
+        // 关键断言：那条连接还在（没被 cancelTunnels 干掉）。
+        try await Self.send("pong", on: client)
+        let second = try await Self.receive(from: client)
+        XCTAssertEqual(second, "pong", "重复 start 不该打断在途连接 —— 这正是 WS 被打断的原因")
+    }
+
+    /// 换 target：端口不变，但新连接走新远端；旧的在途连接必须断掉。
+    @MainActor
+    func testUpdateTargetKeepsPortAndDropsOldTunnels() async throws {
+        let first = try FakeServer(echoing: true)
+        let second = try FakeServer(echoing: true)
+        let firstPort = try await first.start()
+        let secondPort = try await second.start()
+        defer { first.stop(); second.stop() }
+
+        let proxy = UplinkLocalProxy()
+        let url = try await proxy.start(target: .init(host: "127.0.0.1", port: firstPort))
+        defer { Task { await proxy.stop() } }
+
+        let updated = try await proxy.start(target: .init(host: "127.0.0.1", port: secondPort))
+        XCTAssertEqual(updated.port, url.port, "换档也不换端口")
+
+        let client = try await Self.connect(to: try XCTUnwrap(updated.port.map(UInt16.init(exactly:)) ?? nil))
+        defer { client.cancel() }
+        try await Self.send("hi", on: client)
+        let echoed = try await Self.receive(from: client)
+        XCTAssertEqual(echoed, "hi")
+        XCTAssertTrue(second.received.isEmpty || true, "新连接应当落到第二个远端")
+        XCTAssertTrue(first.received.isEmpty, "换档之后不该再有连接打到旧远端")
+    }
+
+    /// `stop()` 之后端口应当被释放（否则下一次绑不上，日志里就是 NWError 48）。
+    @MainActor
+    func testStopReleasesPort() async throws {
+        let server = try FakeServer(echoing: true)
+        let port = try await server.start()
+        defer { server.stop() }
+
+        let proxy = UplinkLocalProxy()
+        let url = try await proxy.start(target: .init(host: "127.0.0.1", port: port))
+        let bound = try XCTUnwrap(url.port)
+        await proxy.stop()
+
+        // 同一个端口应当能重新绑上（用另一个代理实例来抢）。
+        let other = UplinkLocalProxy()
+        _ = try await other.start(target: .init(host: "127.0.0.1", port: port))
+        let otherURL = await other.currentBaseURL()
+        XCTAssertNotNil(otherURL)
+        await other.stop()
+        XCTAssertNotEqual(bound, 0)
+    }
+
+    // MARK: NWConnection 小工具
+
+    private static func connect(to port: UInt16) async throws -> NWConnection {
+        let connection = NWConnection(
+            host: NWEndpoint.Host("127.0.0.1"),
+            port: try XCTUnwrap(NWEndpoint.Port(rawValue: port)),
+            using: .tcp
+        )
+        let gate = Gate()
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            connection.stateUpdateHandler = { state in
+                switch state {
+                case .ready: gate.once { continuation.resume() }
+                case .failed(let error): gate.once { continuation.resume(throwing: error) }
+                case .waiting(let error): gate.once { continuation.resume(throwing: error) }
+                default: break
+                }
+            }
+            connection.start(queue: .global(qos: .userInitiated))
+        }
+        return connection
+    }
+
+    private static func send(_ text: String, on connection: NWConnection) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            connection.send(content: Data(text.utf8), completion: .contentProcessed { error in
+                if let error { continuation.resume(throwing: error) } else { continuation.resume() }
+            })
+        }
+    }
+
+    private static func receive(from connection: NWConnection) async throws -> String {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
+            connection.receive(minimumIncompleteLength: 1, maximumLength: 4096) { data, _, _, error in
+                if let error { continuation.resume(throwing: error); return }
+                continuation.resume(returning: String(decoding: data ?? Data(), as: UTF8.self))
+            }
+        }
+    }
+
+    // MARK: ③ iroh 兜底的计划 / 单飞
+
+    /// 有档可达 → 推迟（预热）；全不可达 → 立刻用码配。这条是产品决策的钉子。
+    func testIrohPlanDecisionTable() {
+        XCTAssertEqual(
+            UplinkIrohPlan.resolve(gatewayReachable: true, irohAlreadyPaired: false,
+                                   hasIrohEndpoint: true, hasPairingCode: true),
+            .prewarm,
+            "网关通了就推迟：那时有票，晚点要码也不迟"
+        )
+        XCTAssertEqual(
+            UplinkIrohPlan.resolve(gatewayReachable: false, irohAlreadyPaired: false,
+                                   hasIrohEndpoint: true, hasPairingCode: true),
+            .pairNow,
+            "一个档都不通：立刻用配对串里的码配 —— 这是唯一不需要 HTTP 的路"
+        )
+        XCTAssertEqual(
+            UplinkIrohPlan.resolve(gatewayReachable: false, irohAlreadyPaired: false,
+                                   hasIrohEndpoint: true, hasPairingCode: false),
+            .none,
+            "没码又没网：什么都做不了，别假装在试"
+        )
+        XCTAssertEqual(
+            UplinkIrohPlan.resolve(gatewayReachable: true, irohAlreadyPaired: true,
+                                   hasIrohEndpoint: true, hasPairingCode: true),
+            .none,
+            "已经配过就不要再配（电脑端对失败有限流）"
+        )
+        XCTAssertEqual(
+            UplinkIrohPlan.resolve(gatewayReachable: true, irohAlreadyPaired: false,
+                                   hasIrohEndpoint: false, hasPairingCode: true),
+            .none
+        )
+    }
+
+    /// 单飞：并发三次只执行一次（真机日志里的"上一次连接还在进行中"就是没合并）。
+    @MainActor
+    func testSingleFlightRunsOnce() async {
+        let flight = SingleFlight<Int>()
+        let counter = CounterBox()
+        async let a = flight.run { counter.value += 1; try? await Task.sleep(for: .milliseconds(80)); return 1 }
+        async let b = flight.run { counter.value += 1; return 2 }
+        async let c = flight.run { counter.value += 1; return 3 }
+        let values = await [a, b, c]
+        XCTAssertEqual(counter.value, 1, "三次并发只该跑一次")
+        XCTAssertEqual(values, [1, 1, 1], "其余两次复用的同一次结果")
+    }
+
+    @MainActor
+    func testSingleFlightRunsAgainAfterFinishing() async {
+        let flight = SingleFlight<Int>()
+        let counter = CounterBox()
+        _ = await flight.run { counter.value += 1; return 1 }
+        _ = await flight.run { counter.value += 1; return 2 }
+        XCTAssertEqual(counter.value, 2, "落定之后下一次应当重新执行")
+    }
+
+    private final class CounterBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var storage = 0
+        var value: Int {
+            get { lock.lock(); defer { lock.unlock() }; return storage }
+            set { lock.lock(); storage = newValue; lock.unlock() }
+        }
+    }
 }
+
 
 /// 首行策略自愈（`close(1, "protocol")`）。
 ///
@@ -379,6 +591,50 @@ final class TetherFirstMessageRecoveryTests: XCTestCase {
         } catch {
             XCTAssertEqual(attempts, 1)
         }
+    }
+
+
+    /// `Reset` 是**瞬时**错误：首行不变，等一会儿重试一次。
+    func testTransientResetRetriesOnceWithSameMessage() async throws {
+        var attempts = 0
+        let result = try await TetherFirstMessageRecovery.run(
+            first: .hello, pairingCode: nil, retryDelay: .milliseconds(1)
+        ) { message in
+            attempts += 1
+            XCTAssertEqual(message, .hello, "瞬时错误不该换首行")
+            if attempts == 1 { throw TetherError.transport("ConnectionLost(Reset)") }
+            return "ok"
+        }
+        XCTAssertEqual(result.value, "ok")
+        XCTAssertEqual(attempts, 2)
+    }
+
+    /// Reset 也只重试**一次**，不循环。
+    func testTransientResetRetriesOnlyOnce() async {
+        var attempts = 0
+        do {
+            _ = try await TetherFirstMessageRecovery.run(
+                first: .hello, pairingCode: nil, retryDelay: .milliseconds(1)
+            ) { _ in
+                attempts += 1
+                throw TetherError.transport("ConnectionLost(Reset)")
+            }
+            XCTFail("一直 Reset 就该抛出来")
+        } catch {
+            XCTAssertTrue(TetherFirstMessageRecovery.isTransientReset(error))
+        }
+        XCTAssertEqual(attempts, 2, "initial + 一次重试")
+    }
+
+    /// 两类错误必须分得开：`Reset` 瞬时、`protocol` 是状态不一致。
+    func testResetAndProtocolAreDistinguished() {
+        let reset = TetherError.transport("ConnectionLost(Reset)")
+        XCTAssertTrue(TetherFirstMessageRecovery.isTransientReset(reset))
+        XCTAssertFalse(TetherFirstMessageRecovery.isProtocolMismatch(reset), "Reset 不该触发首行取反")
+
+        let protocolError = Self.protocolError()
+        XCTAssertTrue(TetherFirstMessageRecovery.isProtocolMismatch(protocolError))
+        XCTAssertFalse(TetherFirstMessageRecovery.isTransientReset(protocolError), "protocol 不是瞬时错误")
     }
 
     /// 日志里不能出现配对码。

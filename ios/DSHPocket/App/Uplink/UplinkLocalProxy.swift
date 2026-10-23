@@ -59,18 +59,30 @@ public actor UplinkLocalProxy {
 
     /// 起监听（幂等）并把目标指向 `target`。
     ///
-    /// 已经在监听时**只换目标**：端口保持不变，在途连接全部取消
-    /// （它们还连着上一档，换档之后就是错的路）。
+    /// **同一档：什么都不做。** 端口不变、listener 不重建、**在途连接不动** ——
+    /// 真机日志里 `mux 断开（连了 1.9s）` 就是因为这里每次都被重新绑了一遍，
+    /// 正在跑的 WebSocket 被自己人打断。
+    ///
+    /// 换档：原地换远端（端口保持不变），只断在途连接（它们还连着上一档）。
     @discardableResult
     public func start(target: Target) async throws -> URL {
-        self.target = target
-        if let boundPort, listener != nil {
-            cancelTunnels()
-            return URL(string: "http://127.0.0.1:\(boundPort)")!
+        if let boundPort, listener != nil, let url = URL(string: "http://127.0.0.1:\(boundPort)") {
+            updateTarget(target)
+            return url
         }
+        self.target = target
         let port = try await bind()
         boundPort = port
         return URL(string: "http://127.0.0.1:\(port)")!
+    }
+
+    /// 原地换远端：**端口不变**，只断掉指向旧远端的在途连接。
+    ///
+    /// 同一个 target 时是纯空操作 —— 这条是"重连不该打断 WS"的落点。
+    public func updateTarget(_ target: Target) {
+        guard self.target != target else { return }
+        self.target = target
+        cancelTunnels()
     }
 
     public func stop() {

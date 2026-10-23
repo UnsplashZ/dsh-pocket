@@ -32,18 +32,32 @@ public enum TetherFirstMessageRecovery {
     /// 所以按特征串判 —— 和 `No addressing information available` 那条是同样的取舍：
     /// 宁可多认一种写法，也不要因为 iroh 换了个包装就丢掉自愈能力。
     public static func isProtocolMismatch(_ error: Error) -> Bool {
-        let text: String
-        if let tetherError = error as? TetherError, case .transport(let detail) = tetherError {
-            text = detail
-        } else {
-            text = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-        }
-        let lowered = text.lowercased()
+        let lowered = detailText(error).lowercased()
         guard lowered.contains("protocol") else { return false }
         return lowered.contains("error_code: 1")
             || lowered.contains("error_code:1")
             || lowered.contains("applicationclosed")
             || lowered.contains("application closed")
+    }
+
+    /// 瞬时错误：iroh 的 `ConnectionLost(Reset)`。
+    ///
+    /// 和 `protocol` **完全不是一回事**，日志与处理都必须分开：
+    ///   · `protocol` = 我们"是否已配对"的判断错了 → 重试前必须**换首行**；
+    ///   · `Reset`    = 对端刚重启 / 中继抖了一下 → 首行不变，等 500ms 再来一次。
+    public static func isTransientReset(_ error: Error) -> Bool {
+        let text = detailText(error).lowercased()
+        guard text.contains("reset") else { return false }
+        // `protocol` 优先：它是状态不一致，走取反那条路。
+        return !text.contains("protocol")
+    }
+
+    /// 从错误里抠出可判别的文本。iroh 的 FFI 错误没有结构化字段，只能读文案。
+    private static func detailText(_ error: Error) -> String {
+        if let tetherError = error as? TetherError, case .transport(let detail) = tetherError {
+            return detail
+        }
+        return (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
     }
 
     /// 取反后的首行；不该翻时返回 nil。
@@ -62,22 +76,43 @@ public enum TetherFirstMessageRecovery {
         }
     }
 
-    /// 跑一次；遇到协议错误就取反重试一次，返回最终的值与实际用过的首行。
+    /// 跑一次，最多自愈两次（**每类各一次，互不叠加**）：
+    ///
+    ///   1. `protocol` → 取反首行重试（状态不一致）；
+    ///   2. `Reset` → 等 500ms 用同一个首行重试（瞬时抖动）。
+    ///
+    /// 为什么是"各一次"而不是"各三次"：电脑端对失败有次数限制，而且
+    /// 两台设备都判错时来回翻只会一直撞同一个错误。宁可如实报错让用户重配。
     public static func run<T>(
         first: TetherFirstMessage,
         pairingCode: String?,
+        retryDelay: Duration = .milliseconds(500),
         attempt: (TetherFirstMessage) async throws -> T
     ) async throws -> (value: T, used: TetherFirstMessage) {
-        do {
-            return (try await attempt(first), first)
-        } catch {
-            guard isProtocolMismatch(error) else { throw error }
-            guard let next = flipped(first, pairingCode: pairingCode) else {
-                // 没有码可翻：如实告诉上层"需要配对码"，而不是把一句 iroh 的协议错误
-                // 抛上去（上层据此决定要不要去要码 / 提示重新生成配对串）。
-                throw TetherError.notPaired
+        var used = first
+        var didFlip = false
+        var didRetryTransient = false
+        while true {
+            do {
+                return (try await attempt(used), used)
+            } catch {
+                if isProtocolMismatch(error), !didFlip {
+                    guard let next = flipped(used, pairingCode: pairingCode) else {
+                        // 没有码可翻：如实告诉上层"需要配对码"，而不是把一句 iroh 的
+                        // 协议错误抛上去（上层据此决定要不要去要码 / 提示重新生成配对串）。
+                        throw TetherError.notPaired
+                    }
+                    used = next
+                    didFlip = true
+                    continue
+                }
+                if isTransientReset(error), !didRetryTransient {
+                    didRetryTransient = true
+                    try? await Task.sleep(for: retryDelay)
+                    continue
+                }
+                throw error
             }
-            return (try await attempt(next), next)
         }
     }
 }
