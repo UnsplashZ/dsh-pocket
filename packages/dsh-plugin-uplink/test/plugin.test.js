@@ -6,6 +6,7 @@ import test from 'node:test'
 
 import { apply } from '../index.js'
 import { decodePairingPayload } from '../lib/descriptor.js'
+import { normalizeConfig } from '../lib/config.js'
 
 /**
  * 一个够用的假 cordis ctx：只实现 apply 真正用到的那几样。
@@ -376,4 +377,12 @@ test('虚拟组网（overlay）：TUN 上的私有地址会进清单，来源标
   } finally {
     env.disposeAll()
   }
+})
+
+
+test('overlay 默认关：代理 TUN 的地址不该默认广播（手机打不到，只会白等）', () => {
+  const { config } = normalizeConfig()
+  assert.equal(config.tiers.overlay.enabled, false)
+  assert.equal(config.tiers.lan.enabled, true)
+  assert.equal(config.tiers.tailscale.enabled, true)
 })

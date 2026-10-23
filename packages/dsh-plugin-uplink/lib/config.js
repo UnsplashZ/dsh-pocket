@@ -19,7 +19,11 @@ export const DEFAULTS = Object.freeze({
     zerotier: { enabled: true, addresses: [] },
     // 其它虚拟组网：WireGuard / sing-box 的 system_interface / n2n 之类，
     // 它们只表现为一个 utun 上的私有地址，没有 CLI 可问。
-    overlay: { enabled: true, addresses: [] },
+    //
+    // **默认关**：这类地址里多数是代理 TUN（sing-box / Clash）或容器网桥，
+    // 手机根本打不到，广播出去只会让手机每次白等一次 800ms 超时。
+    // 真在用它（例如 WireGuard 组网）的人显式打开即可。
+    overlay: { enabled: false, addresses: [] },
     frp: {
       enabled: false,
       mode: 'managed',
@@ -152,7 +156,7 @@ export function normalizeConfig(input = {}) {
         addresses: addressList(zerotier.addresses),
       },
       overlay: {
-        enabled: bool(overlay.enabled, true),
+        enabled: bool(overlay.enabled, false),
         addresses: addressList(overlay.addresses),
       },
       frp: {

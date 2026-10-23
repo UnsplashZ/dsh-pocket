@@ -99,6 +99,7 @@ uplink:
       tls: false         # 自签 TLS：局域网也加密（手机侧用 Network 框架固定指纹）
     tailscale: { enabled: true }     # 自动检测，检测不到自动跳过
     zerotier:  { enabled: true }
+    overlay:   { enabled: false }    # TUN 上的私有地址（WireGuard 等），默认关
     frp:
       enabled: false
       mode: managed                  # managed（插件拉起 frpc）| byo（只填公网 URL）
