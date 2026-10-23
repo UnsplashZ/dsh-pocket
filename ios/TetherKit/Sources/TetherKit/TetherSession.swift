@@ -195,9 +195,19 @@ public actor TetherSession {
     ///   · 没记着、但有配对码 → `pair`；
     ///   · 没记着、也没配对码 → 连不上（应该引导用户去配对，而不是发个 hello 撞墙）。
     static func firstMessage(alreadyPaired: Bool, pairingCode: String?) -> TetherFirstMessage? {
+        // **显式给了配对码就发 pair**，不看主机簿。
+        //
+        // 主机簿只是"我们这边以为配过"，它会过时：电脑端清空白名单、撤销设备、
+        // 换机器、白名单重建，都会让它变成错的。而调用方给码，恰恰说明它知道
+        // "电脑端可能不认识我们"。真机上踩到的就是这个：
+        //   主机簿说已配对 → 发 hello → 电脑端白名单里没有它 → close(1,"protocol")
+        //   → 隧道建起来但每个请求都被拒，而且下一轮还是发 hello，无限循环。
+        //
+        // 反过来发错方向是安全的：对**已配对**的电脑发 pair 会被判协议错误，
+        // 而那条路径有首行取反自愈（TetherFirstMessageRecovery）兜住，代价一次握手。
+        if let pairingCode, !pairingCode.isEmpty { return .pair(code: pairingCode) }
         if alreadyPaired { return .hello }
-        guard let pairingCode, !pairingCode.isEmpty else { return nil }
-        return .pair(code: pairingCode)
+        return nil
     }
 
     /// 我们是否已经把这台电脑记在主机簿里。

@@ -149,6 +149,30 @@ All notable changes to this project are documented here.
 
 ---
 
+## [0.5.6] — 2026-10-23
+
+iroh 兜底真的能配上了：主机簿不再压过显式配对码。
+
+### Fixed
+
+- **显式给了配对码，却还是发 `hello`**。TetherKit 决定首行发 `hello` 还是 `pair`
+  时，主机簿（"我们以为配过"）的优先级压过了调用方传进来的码。于是电脑端一清空白名单
+  （或撤销设备、换机器），手机就进入死循环：
+  `主机簿说已配对 → 发 hello → close(1,"protocol") → 隧道建起来但每个请求被拒 → 下一轮还是 hello`。
+  真机日志正是这个形状，而且**从头到尾没有任何"配对"日志** —— 它压根没试。
+  现在：**给了码就发 pair**，主机簿只在没给码时才起作用。反方向（对已配对的电脑发 pair）
+  由首行取反自愈兜住，代价一次握手，比"死隧道"便宜得多。
+- **作废本地记录时要连主机簿一起清**。之前只清 App 自己的 `irohPairedEndpoint`，
+  TetherKit 的 `hosts.json` 还在，下一轮照样发 hello —— 所以那个循环清一次也停不下来。
+  现在一并 `forgetHost`，并同步清掉 `activeHostId`。
+
+### 验证
+
+App 170 条、TetherKit 45 条测试全绿；本地化 695 条通过。
+两条改动各自有单测钉住（`testExplicitCodeWinsOverHostBook`、`testHostBookDrivesTheAlreadyPairedDecision`）。
+
+---
+
 ## [0.5.5] — 2026-10-23
 
 iroh 兜底能用了：本地记录过时不再是死路，并加了手动测试入口。

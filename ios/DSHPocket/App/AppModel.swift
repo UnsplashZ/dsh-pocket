@@ -733,14 +733,14 @@ public final class AppModel {
     /// 判据只有两条，都来自"事实"而不是记录：
     ///   · 当前走的**不是**网关（`uplink.baseURL == nil` → 走的是 iroh 隧道）；
     ///   · 刚拉过的首屏请求失败了（`sessionListError`）。
-    private func invalidateIrohRecordIfTunnelRejected() {
+    private func invalidateIrohRecordIfTunnelRejected() async {
         guard settings.transportMode == .uplink else { return }
         guard Self.shouldInvalidateIrohRecord(
             usesGateway: uplink.baseURL != nil,
             isConnected: connection.isConnected,
             firstRequestFailed: sessionListError != nil
         ) else { return }
-        invalidateIrohLocalRecord(reason: "tunnel-rejected")
+        await invalidateIrohLocalRecord(reason: "tunnel-rejected")
     }
 
     /// "隧道通了但请求被拒"的判据。**只看事实**（走的哪条路 / 连没连上 / 请求成没成），
@@ -754,15 +754,23 @@ public final class AppModel {
     }
 
     /// 清掉"iroh 已配对"的本地记录，让下一次连接重新走配对。
-    private func invalidateIrohLocalRecord(reason: String) {
+    private func invalidateIrohLocalRecord(reason: String) async {
         let endpoint = uplink.pairing?.irohEndpointId
         guard irohPairedEndpoint != nil || endpoint.map({ uplink.isIrohPairedLocally($0) }) == true else {
             return
         }
         irohPairedEndpoint = nil
         uplink.clearIrohPaired()
+        // **主机簿也要清**：TetherKit 用它的 hostBook 决定首行发 hello 还是 pair。
+        // 只清我们自己的标记，下一轮仍会发 hello，然后又被拒 —— 那是个死循环。
+        if let endpoint {
+            // 必须 await：主机簿没清掉的话，下一轮仍会发 hello（TetherKit 就是靠它
+            // 决定首行的），于是又被拒 —— 那是个死循环。
+            await tether.forgetHost(id: endpoint)
+            settings.activeHostId = nil
+        }
         refreshIrohStatus()
-        logs.log(.warning, "iroh 隧道不可用，已清除本地配对记录，下次重配（\(reason)）")
+        logs.log(.warning, "iroh 隧道不可用，已清除本地配对记录与主机簿，下次重配（\(reason)）")
     }
 
     /// 是不是"唯一的可用通路就是 iroh"。
@@ -1258,7 +1266,7 @@ public final class AppModel {
                 // iroh 路径上"需要人工介入"基本就是电脑端不认识我们（协议错误/配对失败）：
                 // 本地记录作废，下一次重新走配对。
                 if settings.transportMode == .uplink, uplink.baseURL == nil {
-                    invalidateIrohLocalRecord(reason: "transport-stop")
+                    await invalidateIrohLocalRecord(reason: "transport-stop")
                 }
                 setConnection(.failed(transportFailureMessage(base: reason, policy: .stop)))
                 logs.log(.warning, "传输断开（第 \(consecutiveTransportFailures) 次，需要人工介入）：\(summary)")
@@ -1478,7 +1486,7 @@ public final class AppModel {
         // iroh 路径特有：隧道建起来了、但首屏请求被拒 = 电脑端不认识我们
         //（白名单被清空 / 换了机器）。这时本地"已配对"记录必须作废，
         // 否则下次还会发 hello、还会得到同一条死隧道。
-        invalidateIrohRecordIfTunnelRejected()
+        await invalidateIrohRecordIfTunnelRejected()
         startListRefreshLoop()
         hostMetadataTask?.cancel()
         hostMetadataTask = Task { [weak self] in

@@ -257,11 +257,16 @@ final class TetherContractTests: XCTestCase {
 
     /// 电脑端的校验是**严格二选一**的，选错就是"连不上"，而且报错信息毫无指向性
     /// （只有 `close(1, b"protocol")`）。所以这条决策必须有单测。
-    func testFirstMessageIsHelloWhenAlreadyPaired() {
-        // 已经配对过：就算用户又填了一次配对码，也只能发 hello。
-        // 这是真机上踩到的坑：配对成功后重开配对页再点一次，发出去的是 pair，
-        // 电脑端 `(paired=true, Pair)` → 协议错误 → 直接断开。
-        XCTAssertEqual(TetherSession.firstMessage(alreadyPaired: true, pairingCode: "123456"), .hello)
+    func testExplicitCodeWinsOverHostBook() {
+        // **显式给了码就发 pair**，主机簿说"已配对"也不管。
+        //
+        // 早先反过来（已配对就只发 hello），理由是"配对成功后重开配对页再点一次
+        // 会发 pair 撞协议错误"。但那个方向现在由首行取反自愈兜住了（代价一次握手），
+        // 而反过来的代价大得多 —— 真机踩到：
+        //   电脑端清空白名单 → 手机主机簿还记着已配对 → 发 hello →
+        //   `close(1,"protocol")` → 隧道建起来但每个请求都被拒，且下一轮还是 hello，
+        //   无限循环。主机簿只是"我们以为"，调用方给码才说明它知道对方可能不认识我们。
+        XCTAssertEqual(TetherSession.firstMessage(alreadyPaired: true, pairingCode: "123456"), .pair(code: "123456"))
         XCTAssertEqual(TetherSession.firstMessage(alreadyPaired: true, pairingCode: nil), .hello)
         XCTAssertEqual(TetherSession.firstMessage(alreadyPaired: true, pairingCode: ""), .hello)
     }
@@ -282,7 +287,9 @@ final class TetherContractTests: XCTestCase {
                        .pair(code: "123456"))
 
         book.upsert(TetherHostRecord(id: hostId, label: "我的 Mac"))
-        XCTAssertEqual(TetherSession.firstMessage(alreadyPaired: book.host(id: hostId) != nil, pairingCode: "123456"),
+        // 主机簿记了它 → 也只有在**没给码**时才用它来决定发 hello；
+        // 给了码就以码为准（见 testExplicitCodeWinsOverHostBook 的理由）。
+        XCTAssertEqual(TetherSession.firstMessage(alreadyPaired: book.host(id: hostId) != nil, pairingCode: nil),
                        .hello)
     }
 
