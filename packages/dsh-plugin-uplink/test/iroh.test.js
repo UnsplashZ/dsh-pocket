@@ -302,3 +302,56 @@ test('setProxyAuth：sidecar 停了之后不再往 stdin 写', async () => {
   assert.equal(tier.setProxyAuth({ cookie: 'a=b', authority: 'h:1' }), false)
   assert.equal(child.stdin.writes.length, before)
 })
+
+test('listDevices：问 sidecar 要白名单（"这台手机配过没有"的权威答案在电脑端）', async () => {
+  const { tier, child } = harness()
+  const starting = tier.start()
+  child.stdout.write(readyLine())
+  await starting
+
+  const pending = tier.listDevices()
+  // 等一行 device-list 写出去，再回一个 devices
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  assert.ok(child.stdin.writes.some((chunk) => chunk.includes('device-list')), '应当写一行 device-list')
+  child.stdout.write(line({
+    type: 'devices',
+    devices: [{ id: 'a'.repeat(64), name: 'iPhone', paired_at: 1792670413 }],
+  }))
+  const devices = await pending
+  assert.equal(devices.length, 1)
+  assert.equal(devices[0].name, 'iPhone')
+  await tier.stop()
+})
+
+test('listDevices：sidecar 没在跑时返回 null，不挂住调用方', async () => {
+  const { tier } = harness()
+  assert.equal(await tier.listDevices({ timeoutMs: 50 }), null)
+})
+
+test('listDevices：sidecar 不回话时按超时返回 null', async () => {
+  const { tier, child } = harness()
+  const starting = tier.start()
+  child.stdout.write(readyLine())
+  await starting
+  assert.equal(await tier.listDevices({ timeoutMs: 60 }), null)
+  await tier.stop()
+})
+
+test('forgetDevice：发 device-forget，并用一次 device-list 确认结果', async () => {
+  const { tier, child } = harness()
+  const starting = tier.start()
+  child.stdout.write(readyLine())
+  await starting
+
+  const target = 'b'.repeat(64)
+  const pending = tier.forgetDevice(target)
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  assert.ok(
+    child.stdin.writes.some((chunk) => chunk.includes('device-forget') && chunk.includes(target)),
+    '应当写一行 device-forget 带上 id',
+  )
+  // 撤销之后白名单里就没有它了
+  child.stdout.write(line({ type: 'devices', devices: [] }))
+  assert.equal(await pending, true)
+  await tier.stop()
+})

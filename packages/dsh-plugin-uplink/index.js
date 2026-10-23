@@ -212,6 +212,8 @@ function apply(ctx, rawConfig = {}) {
   let irohTier = null
   let irohBinaryPath = ''
   let tlsInfo = null
+  /** iroh 已配对设备清单的缓存（`{at, list}`）：state 会被频繁拉，别每次都问 sidecar */
+  let irohDevicesCache = { at: 0, list: [] }
   let actualPort = config.port
   let hostId = ''
   let started = false
@@ -593,6 +595,13 @@ function apply(ctx, rawConfig = {}) {
       const env = await environment()
       const tiers = started ? await buildTiers({ port: actualPort, env }) : []
       const devices = await store.list()
+
+      // iroh 那套白名单也报出来：手机重装会清掉自己的主机簿，但这份在电脑端，
+      // 它才是"这台手机配过 iroh 没有"的权威答案。缓存 5 秒。
+      if (irohTier !== null && irohTier.status().running && Date.now() - irohDevicesCache.at > 5000) {
+        const listed = await irohTier.listDevices()
+        if (listed !== null) irohDevicesCache = { at: Date.now(), list: listed }
+      }
       json(res, 200, {
         version: VERSION,
         hostId,
@@ -622,6 +631,7 @@ function apply(ctx, rawConfig = {}) {
         bonjour: advertiser?.state() ?? { running: false, serviceName: null, lastError: null },
         frp: frpTier?.status() ?? null,
         iroh: irohTier?.status() ?? null,
+        irohDevices: irohDevicesCache.list.map(({ id, name, paired_at }) => ({ id, name, pairedAt: paired_at ?? null })),
         devices: devices.map(({ deviceId, name, createdAt, lastSeen, revoked }) => ({
           deviceId, name, createdAt, lastSeen, revoked,
         })),
@@ -786,6 +796,37 @@ function apply(ctx, rawConfig = {}) {
         return
       }
       json(res, 405, { ok: false, reason: 'method' })
+    },
+  }))
+
+  /** 撤销一台设备的 **iroh** 访问权（uplink 自己那套走 /uplink/devices）。 */
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'exact',
+    path: ADMIN_PATHS.irohDevices,
+    handler: async (req, res) => {
+      if (!isTrustedRequest(req)) {
+        res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' })
+        res.end('forbidden')
+        return
+      }
+      if (req.method !== 'POST') {
+        json(res, 405, { ok: false, reason: 'method' })
+        return
+      }
+      if (irohTier === null || irohTier.status().running !== true) {
+        json(res, 503, { ok: false, reason: 'iroh-unavailable' })
+        return
+      }
+      const body = await readJson(req)
+      const id = typeof body?.id === 'string' ? body.id : ''
+      if (id === '') {
+        json(res, 400, { ok: false, reason: 'missing-id' })
+        return
+      }
+      const forgotten = await irohTier.forgetDevice(id)
+      irohDevicesCache = { at: 0, list: [] }
+      logger.info(`[uplink] ${tt('撤销 iroh 设备：', 'iroh device forgotten: ')}${id}`)
+      json(res, forgotten ? 200 : 500, { ok: forgotten })
     },
   }))
 

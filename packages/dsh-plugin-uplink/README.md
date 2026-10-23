@@ -176,6 +176,20 @@ sing-box 1.11+ 自带 `tailscale` endpoint（用户态 tsnet），**不把 tailn
 运行时也可以用 `POST /uplink/tiers` 临时开关某一档（设置页的勾选框走这条）；
 但它**不落盘**，重启后回到配置文件的值 —— 配置文件才是唯一事实来源。
 
+## 关于"配对码过期"
+
+会过期的是 **iroh 兜底档的一次性配对码**（600 秒，上游 sidecar 的硬限制）；而
+`dshuplink://` 里的 device secret **永不过期**，理论上粘一次就够用一辈子。
+
+而且那个码**只需要用一次**：配对成功后电脑端把设备写进 `$DSH_HOME/uplink/iroh/paired.json`，
+重装 App、重启 dsh 都不会丢。之后手机再连 iroh 走的是 `hello`（不需要码）。
+
+`/uplink/state` 里的 `irohDevices` 就是这份白名单 —— **它才是"这台手机配过 iroh 没有"
+的权威答案**。手机自己的主机簿在 App 容器里，重装就没了，所以不能只信它。
+
+要彻底撤销一台设备的 iroh 访问权：`POST /uplink/iroh-devices {"id": "<endpoint id>"}`；
+网关档那套则用 `/uplink/devices`。两边都撤，才算真的连不上。
+
 ## 鉴权：长期密钥不上明文网络
 
 局域网是明文的。如果手机每次带一个长期 Bearer，嗅到一次就是永久授权。所以：
@@ -212,7 +226,8 @@ dsh 自己的端口（只有本机可达，用于管理）：
 | `GET /uplink/state` | 端口、scheme、TLS 指纹、各档真实状态、环境探测、设备列表、统计、warnings |
 | `POST /uplink/pair` | 开一个配对窗口：`{pairingString, urls, iroh, irohPairing}` |
 | `POST /uplink/tiers` | 运行时开关档位 `{enabled:{lan:false,…}}`，只重启受影响的组件 |
-| `GET/POST /uplink/devices` | 列设备 / 撤销设备 |
+| `GET/POST /uplink/devices` | 列设备 / 撤销设备（**网关档**的白名单） |
+| `POST /uplink/iroh-devices` | 撤销某台设备的 **iroh** 访问权（sidecar 的白名单，与上面那套是两套） |
 | `POST /uplink/rotate` | 轮换签名密钥（踢掉所有在途票据，设备不必重配） |
 | `GET /uplink/probe` | 立刻重新探测网络环境 |
 

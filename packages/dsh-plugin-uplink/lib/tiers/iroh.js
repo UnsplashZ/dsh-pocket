@@ -125,6 +125,10 @@ export function createIrohTier({
   let readyWaiter = null
   /** @type {{resolve: Function, timer: NodeJS.Timeout} | null} */
   let pendingPairing = null
+  /** @type {{resolve: Function, timer: NodeJS.Timeout} | null} */
+  let pendingDevices = null
+  /** 最近一次 sidecar 报告的已配对设备（诊断页要显示"这台手机配过没有"） */
+  let lastDevices = []
 
   function settleReady(result) {
     const waiter = readyWaiter
@@ -132,6 +136,16 @@ export function createIrohTier({
     if (!waiter) return
     clearTimeout(waiter.timer)
     waiter.resolve(result)
+  }
+
+  function settleDevices(list) {
+    lastDevices = Array.isArray(list) ? list : []
+    const waiter = pendingDevices
+    pendingDevices = null
+    if (!waiter) return false
+    clearTimeout(waiter.timer)
+    waiter.resolve(lastDevices)
+    return true
   }
 
   function settlePairing(result) {
@@ -239,10 +253,14 @@ export function createIrohTier({
       case 'proxy-opened':
         info('手机已开始加载界面')
         return
-      case 'devices':
-        // 设备清单目前不参与决策，只记数量，方便排查"为什么这台手机被拒"
-        info(`sidecar 报告了 ${Array.isArray(message.devices) ? message.devices.length : 0} 台已配对设备`)
+      case 'devices': {
+        // 这份清单是**电脑端**的白名单：手机配过没有、叫什么名字，都以它为准。
+        // 诊断页据此显示"iroh 兜底：已配对/未配对"，比只看手机自己的主机簿可靠
+        // （重装 App 会清掉主机簿，但这里不会）。
+        settleDevices(message.devices)
+        info(`sidecar 报告了 ${lastDevices.length} 台已配对设备`)
         return
+      }
       default:
         warn(`未知 sidecar 消息：${JSON.stringify(message)}`)
     }
@@ -507,5 +525,43 @@ export function createIrohTier({
     return true
   }
 
-  return { start, stop, status, openPairing, setProxyAuth }
+  /**
+   * 问 sidecar 要已配对设备清单。
+   *
+   * 为什么要这个：**"这台手机配过 iroh 没有"的权威答案是电脑端这份白名单**，
+   * 不是手机自己的主机簿 —— 重装 App 会清掉主机簿（容器内），但这份白名单
+   * 存在 `--data-dir` 里，重装、重启都不丢。之前插件根本没接这个命令，
+   * 于是"要不要再配一次"只能靠猜。
+   *
+   * @returns {Promise<Array<{id: string, name: string, paired_at?: number}> | null>}
+   */
+  function listDevices({ timeoutMs = 2000 } = {}) {
+    if (running !== true) return Promise.resolve(null)
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        if (pendingDevices?.resolve === resolve) pendingDevices = null
+        resolve(null)
+      }, timeoutMs)
+      timer.unref?.()
+      pendingDevices = { resolve, timer }
+      send({ type: 'device-list' })
+    })
+  }
+
+  /**
+   * 让 sidecar 忘掉一台设备（撤销它的 iroh 访问权）。
+   *
+   * 注意这是**两套撤销**里的一套：uplink 自己的设备表管网关档，
+   * 这里管 iroh 档。两边都要撤，才算"这台手机彻底不能连"。
+   */
+  async function forgetDevice(id, { timeoutMs = 2000 } = {}) {
+    if (running !== true || typeof id !== 'string' || id === '') return false
+    send({ type: 'device-forget', id })
+    // sidecar 没有专门的回执，用一次 device-list 确认结果
+    const after = await listDevices({ timeoutMs })
+    if (after === null) return false
+    return !after.some((device) => device.id === id)
+  }
+
+  return { start, stop, status, openPairing, setProxyAuth, listDevices, forgetDevice }
 }

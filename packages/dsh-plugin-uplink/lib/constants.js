@@ -40,4 +40,5 @@ export const ADMIN_PATHS = Object.freeze({
   rotate: '/uplink/rotate',
   probe: '/uplink/probe',
   tiers: '/uplink/tiers',
+  irohDevices: '/uplink/iroh-devices',
 })
