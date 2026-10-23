@@ -76,7 +76,15 @@ struct DiagnosticsView: View {
                 LabeledContent("RTT", value: "\(rtt) ms")
             }
             if let address = model.diagnostics?.remoteAddress {
-                LabeledContent("远端", value: address)
+                // 远端地址与本机端点 ID 是同一类东西（机器标识符）—— 同一档字号，
+                // 否则同一节里「远端」大、「本机端点 ID」小，看着就是参差不齐。
+                LabeledContent("远端") {
+                    Text(address)
+                        .font(Token.Typography.identifier)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
             }
             LabeledContent("本机端点 ID") {
                 Text(model.localEndpointId.isEmpty ? "—" : String(model.localEndpointId.prefix(16)) + "…")
@@ -173,8 +181,10 @@ struct DiagnosticsView: View {
                                 .font(Token.Typography.identifier)
                                 .foregroundStyle(status.isCurrent ? .primary : .secondary)
                         }
+                        // 与下一行的"为什么不通"用同一档字号与字形：
+                        // 一个等宽一个不等宽时，中文那句会显大，同一行里看着不齐。
                         Text(status.tier.url.absoluteString)
-                            .font(Token.Typography.identifier)
+                            .font(Token.Typography.secondary)
                             .foregroundStyle(.tertiary)
                             .lineLimit(1)
                             .truncationMode(.middle)

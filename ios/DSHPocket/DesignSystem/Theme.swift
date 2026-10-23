@@ -48,7 +48,13 @@ public enum Token {
     ///   · 错误、footer 里的操作指引 → `note`；
     ///   · 页面内的小标题 → `sectionTitle`。
     public enum Typography {
-        /// 等宽 + caption：只给**标识符**用（id、地址、版本号）。
+        /// 人类可读的值（状态、档位、网络类型、毫秒数）—— 和标签同级，**显式声明**。
+        ///
+        /// 为什么要有一个"等于默认值"的令牌：没有它的时候，同一个页面里有些值走默认
+        /// `body`、有些被写成 `caption`，看起来就是"大小各异"。写成令牌之后，
+        /// code review 时能一眼看出"这个值为什么不是 `value`"。
+        public static let value = Font.body
+        /// 等宽 + caption：只给**机器标识符**用（endpoint id、远端地址、URL、版本号）。
         public static let identifier = Font.caption.monospaced()
         /// 次要说明：状态补充、灰字提示。
         public static let secondary = Font.caption

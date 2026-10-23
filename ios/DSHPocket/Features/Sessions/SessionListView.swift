@@ -311,6 +311,37 @@ struct SessionListView: View {
     @ViewBuilder
     private var disconnectedSection: some View {
         Section {
+            if isConnecting {
+                // **一个状态就说一次话**：spinner + 标题 + 一句说明，占一行。
+                // 早先是"状态行 + 分隔线 + 一个孤零零的 spinner + 一个禁用按钮"，
+                // 同一句"正在连接"出现三遍，分隔线下面还挂着一个空转的小菊花。
+                HStack(alignment: .top, spacing: Token.Spacing.tight) {
+                    ProgressView()
+                        .controlSize(.small)
+                        .padding(.top, 3)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(model.connection.label)
+                            .font(.headline)
+                        Text(disconnectedDetail)
+                            .font(Token.Typography.note)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(.vertical, Token.Spacing.hairline)
+                .accessibilityElement(children: .combine)
+            } else {
+                disconnectedIdleRows
+            }
+        }
+    }
+
+    /// 未连接 / 连接失败时的行：状态 + 可选的三步排查 + 动作按钮。
+    @ViewBuilder
+    private var disconnectedIdleRows: some View {
+        // 必须写全 `SwiftUI.Group`：本文件里有一个同名的私有 `Group`（列表分组模型），
+        // 裸写 `Group` 会被解析成那个 struct 的 init。
+        SwiftUI.Group {
             HStack(spacing: Token.Spacing.tight) {
                 Image(systemName: disconnectedSymbol)
                     .font(.title3)
@@ -342,26 +373,16 @@ struct SessionListView: View {
                 .accessibilityElement(children: .combine)
             }
 
-            // 连接中**不出现按钮**：状态行已经写着「正在连接电脑」，再放一个禁用的
-            // 「正在连接…」等于同一句话说两遍（用户报的就是这个）。
-            // 这里换成一行进度指示 —— 它给的是"还在动"这个额外信息，不是复述状态。
-            if isConnecting {
-                // 只有 spinner：文案已经在上面那行说了，这里再写一遍就是重复。
-                ProgressView()
-                    .controlSize(.small)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                // 行样式而不是大胶囊：List 里 `.borderedProminent` 会被撑成整行宽，
-                // 视觉上像个横幅而不是一个动作。
-                Button {
-                    if let hostId = model.settings.activeHostId, !hostId.isEmpty {
-                        Task { await model.connect(hostId: hostId, pairingCode: nil) }
-                    } else {
-                        onPair()
-                    }
-                } label: {
-                    Label(disconnectedActionTitle, systemImage: disconnectedActionSymbol)
+            // 行样式而不是大胶囊：List 里 `.borderedProminent` 会被撑成整行宽，
+            // 视觉上像个横幅而不是一个动作。
+            Button {
+                if let hostId = model.settings.activeHostId, !hostId.isEmpty {
+                    Task { await model.connect(hostId: hostId, pairingCode: nil) }
+                } else {
+                    onPair()
                 }
+            } label: {
+                Label(disconnectedActionTitle, systemImage: disconnectedActionSymbol)
             }
         }
     }
@@ -533,18 +554,21 @@ struct ConnectionIndicator: View {
         }
     }
 
+    /// 顶栏状态文案。
+    ///
+    /// **不要在这里再写一套**：`.connecting` 曾经这里写「正在连接电脑」、
+    /// `ConnectionPhase.label` 写「连接中…」，同一个状态两句话。
+    /// 连接中与未连接都走 `model.connection.label`，这里只补"已连接"时更细的区分。
     private var label: String {
         switch model.connection {
         case .connected:
             return model.muxState.isHealthy
                 ? String(localized: "已连接到电脑")
                 : String(localized: "已连接，正在重连会话流")
-        case .connecting:
-            return String(localized: "正在连接电脑")
         case .failed(let message):
             return String(localized: "连接失败：\(message)")
-        case .idle:
-            return String(localized: "未连接")
+        case .connecting, .idle:
+            return model.connection.label
         }
     }
 }

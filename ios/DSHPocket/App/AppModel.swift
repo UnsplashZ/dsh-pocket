@@ -2354,7 +2354,9 @@ extension ConnectionPhase {
     var label: String {
         switch self {
         case .idle: return String(localized: "未连接")
-        case .connecting: return String(localized: "连接中…")
+        // **只有这一个**连接中文案。曾经这里写「连接中…」、而首页自己又写「正在连接电脑」，
+        // 同一个状态两句话，界面上叠在一起就是"重复"。统一成信息量更大的那句。
+        case .connecting: return String(localized: "正在连接电脑")
         case .connected(let mode): return mode
         case .failed: return String(localized: "连接失败")
         }
