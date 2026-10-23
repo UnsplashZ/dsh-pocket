@@ -154,6 +154,7 @@ EN: dict[str, str] = {
     "未开始": "Not started",
     "连接中": "Connecting",
     "已断开：%@": "Disconnected: %@",
+    "网关 %@ · 代理 127.0.0.1:%@": "Gateway %@ · proxy 127.0.0.1:%@",
     "直连（打洞成功）": "Direct (hole-punched)",
     "中转（仅密文）": "Relay (ciphertext only)",
 
