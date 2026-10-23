@@ -1173,6 +1173,12 @@ EN: dict[str, str] = {
     "电脑端没有启用 iroh 兜底档。": "The iroh fallback is not enabled on your computer.",
     "已配对（电脑端确认）": "Paired (confirmed by your computer)",
     "已配对（本地记录）": "Paired (local record)",
+    "强制用 iroh 兜底试一次": "Try the iroh fallback now",
+    "手动触发 iroh 兜底": "iroh fallback triggered manually",
+    "iroh 兜底已连上": "The iroh fallback is connected",
+    "没连上：%@": "Not connected: %@",
+    "配对串里没有 iroh 信息，测不了兜底。请重新粘贴一次配对串。":
+        "This pairing link has no iroh information, so the fallback cannot be tested. Paste the pairing link again.",
     "配对码已用过或过期，需要一张新的。": "The pairing code was used or has expired; a new one is needed.",
     "现在连不上网关，暂时换不到新的配对码（不影响当前连接）。":
         "No gateway is reachable right now, so a new pairing code cannot be fetched (your current connection is unaffected).",

@@ -441,40 +441,150 @@ final class UplinkTransportTests: XCTestCase {
     }
 
 
+
+    // MARK: ① 本地记录过时（0.5.4 真机：隧道通了但请求全被拒）
+
+    /// **本地记录说"已配对"也不能挡住配对。**
+    ///
+    /// 真机事故：电脑端白名单被清空，手机 `hosts.json` 还记着 → 跳过配对 → 发 hello →
+    /// 电脑端不认识 → 隧道建立但每个请求都被拒，日志里连一次配对尝试都没有。
+    func testFreshCodePairsEvenWhenLocalRecordSaysPaired() {
+        XCTAssertEqual(
+            UplinkIrohSelfCheck.action(
+                check: .skipped, hasCode: true, codeExpired: false, hasTicket: false,
+                locallyPaired: true
+            ),
+            .pairWithCode,
+            "本地记录可以过时 —— 有新鲜码就必须配一次"
+        )
+        XCTAssertEqual(
+            UplinkIrohSelfCheck.action(
+                check: .notListed, hasCode: true, codeExpired: false, hasTicket: false,
+                locallyPaired: true
+            ),
+            .pairWithCode
+        )
+        // 自检**不可用**（503）时同样要配：503 是"不知道"，不是"不用配"。
+        XCTAssertEqual(
+            UplinkIrohSelfCheck.action(
+                check: .disabled, hasCode: true, codeExpired: false, hasTicket: true,
+                locallyPaired: true
+            ),
+            .pairWithCode
+        )
+        // 与"自检命中就 skip"共存：电脑端**确认**过才跳过。
+        XCTAssertEqual(
+            UplinkIrohSelfCheck.action(
+                check: .listed, hasCode: true, codeExpired: false, hasTicket: true,
+                locallyPaired: false
+            ),
+            .skip
+        )
+    }
+
+    // MARK: ② 失败驱动失效
+
+    /// 判据：走的不是网关 + 连着 + 首屏请求失败。
+    @MainActor
+    func testTunnelRejectionInvalidation() {
+        XCTAssertTrue(AppModel.shouldInvalidateIrohRecord(
+            usesGateway: false, isConnected: true, firstRequestFailed: true
+        ))
+        XCTAssertFalse(AppModel.shouldInvalidateIrohRecord(
+            usesGateway: true, isConnected: true, firstRequestFailed: true
+        ), "走网关时请求失败不是 iroh 的问题")
+        XCTAssertFalse(AppModel.shouldInvalidateIrohRecord(
+            usesGateway: false, isConnected: false, firstRequestFailed: true
+        ), "没连上就谈不上「隧道被拒」")
+        XCTAssertFalse(AppModel.shouldInvalidateIrohRecord(
+            usesGateway: false, isConnected: true, firstRequestFailed: false
+        ))
+    }
+
+    /// 清掉记录之后，下一次就**必须重配**（而不是继续发 hello）。
+    @MainActor
+    func testClearedRecordLeadsToRepair() {
+        let suite = UserDefaults(suiteName: "test-uplink-repair-\(UUID().uuidString)")!
+        defer { suite.removePersistentDomain(forName: suite.description) }
+        let store = UplinkCredentialStore(secrets: EphemeralSecretStore(), defaults: suite)
+        store.saveIrohPaired("cc8a1078")
+        XCTAssertTrue(store.isIrohPaired("cc8a1078"))
+
+        store.clearIrohPaired()
+        XCTAssertFalse(store.isIrohPaired("cc8a1078"))
+
+        XCTAssertEqual(
+            UplinkIrohSelfCheck.action(
+                check: .skipped, hasCode: true, codeExpired: false, hasTicket: false,
+                locallyPaired: store.isIrohPaired("cc8a1078")
+            ),
+            .pairWithCode,
+            "记录清掉之后必须重新配对"
+        )
+    }
+
+    // MARK: ③ 手动触发 iroh 兜底
+
+    /// 入口存在、不探测、没有 iroh 身份时给明确的话。
+    @MainActor
+    func testForceIrohFallbackWithoutIdentity() async {
+        let suite = UserDefaults(suiteName: "test-uplink-manual-\(UUID().uuidString)")!
+        defer { suite.removePersistentDomain(forName: suite.description) }
+        let model = AppModel(settings: AppSettings(defaults: suite))
+
+        let message = await model.forceIrohFallback()
+        XCTAssertNotNil(message, "没有 iroh 身份时应当如实报错，而不是假装在连")
+        XCTAssertFalse(message?.isEmpty ?? true)
+        // 它不该去碰档位探测：`uplink` 从未 settle 过。
+        XCTAssertNil(model.uplink.currentTier)
+        XCTAssertNil(model.uplink.baseURL)
+    }
+
     // MARK: ① 白名单自检（GET /uplink/iroh-devices）
 
     /// 自检命中：电脑端名单里有我们 → **一个配对码都不要**（决策层直接 skip）。
     func testSelfCheckListedSkipsPairing() {
         let action = UplinkIrohSelfCheck.action(
-            check: .listed, hasCode: true, codeExpired: false, hasTicket: true
+            check: .listed, hasCode: true, codeExpired: false, hasTicket: true, locallyPaired: false
         )
         XCTAssertEqual(action, .skip, "已经在白名单里就不该再碰码")
         // 连"码已经过期"也不影响：照样 skip（这正是那条噪音的根治）。
         XCTAssertEqual(
-            UplinkIrohSelfCheck.action(check: .listed, hasCode: true, codeExpired: true, hasTicket: false),
-            .skip
+            UplinkIrohSelfCheck.action(
+                check: .listed, hasCode: true, codeExpired: true, hasTicket: false, locallyPaired: true
+            ),
+            .skip,
+            "电脑端确认过就是确认过，码过期也无所谓"
         )
     }
 
     /// 自检未命中（明确没有）+ 码新鲜 → 用码配；码过期 + 有票 → 换新码；都没 → 放弃（不弹错）。
     func testSelfCheckActionsWhenNotListed() {
         XCTAssertEqual(
-            UplinkIrohSelfCheck.action(check: .notListed, hasCode: true, codeExpired: false, hasTicket: false),
+            UplinkIrohSelfCheck.action(
+                check: .notListed, hasCode: true, codeExpired: false, hasTicket: false, locallyPaired: false
+            ),
             .pairWithCode,
             "5G 下唯一不需要 HTTP 的路"
         )
         XCTAssertEqual(
-            UplinkIrohSelfCheck.action(check: .notListed, hasCode: true, codeExpired: true, hasTicket: true),
+            UplinkIrohSelfCheck.action(
+                check: .notListed, hasCode: true, codeExpired: true, hasTicket: true, locallyPaired: false
+            ),
             .refresh,
             "码过期但有票：静默换一张"
         )
         XCTAssertEqual(
-            UplinkIrohSelfCheck.action(check: .notListed, hasCode: true, codeExpired: true, hasTicket: false),
+            UplinkIrohSelfCheck.action(
+                check: .notListed, hasCode: true, codeExpired: true, hasTicket: false, locallyPaired: false
+            ),
             .giveUp,
             "码过期又没票：什么都不做（不影响当前连接），别弹错"
         )
         XCTAssertEqual(
-            UplinkIrohSelfCheck.action(check: .skipped, hasCode: false, codeExpired: false, hasTicket: true),
+            UplinkIrohSelfCheck.action(
+                check: .skipped, hasCode: false, codeExpired: false, hasTicket: true, locallyPaired: false
+            ),
             .refresh
         )
     }

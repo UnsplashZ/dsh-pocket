@@ -13,6 +13,9 @@ struct DiagnosticsView: View {
     /// 传输层此刻的**事实**。和 `model.connection`（界面状态）分开存：
     /// 两者脱节正是已知 bug 的形状（"明明已经连接上了，界面还在连接中"）。
     @State private var transportHealthy: Bool?
+    @State private var isRunningIrohFallback = false
+    /// 「强制用 iroh 兜底」的结果（`nil` = 还没跑过）。
+    @State private var irohFallbackResult: String?
 
     struct CheckResult: Identifiable {
         let id = UUID()
@@ -209,6 +212,26 @@ struct DiagnosticsView: View {
                 } label: {
                     Label("重新探测", systemImage: "arrow.clockwise")
                 }
+
+                // 专门测 iroh 兜底用：跳过档位探测，直接走 iroh。
+                // 不然要测它就得先去关手机的 VPN / sing-box 让网关档"恰好"失败。
+                Button {
+                    Task { await runIrohFallbackProbe() }
+                } label: {
+                    HStack {
+                        Label("强制用 iroh 兜底试一次", systemImage: "bolt.horizontal.circle")
+                        Spacer()
+                        if isRunningIrohFallback { ProgressView().controlSize(.small) }
+                    }
+                }
+                .disabled(isRunningIrohFallback)
+
+                if let irohFallbackResult {
+                    Text(irohFallbackResult)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             } header: {
                 Text("多路接入")
             } footer: {
@@ -221,6 +244,16 @@ struct DiagnosticsView: View {
     ///
     /// 网关档全不可达时会落到 iroh —— 那时 `currentTier` 是 nil，但**连接是好的**。
     /// 直接显示"未选档"会让人以为没连上，所以这里要如实说是 iroh 兜底。
+    /// 手动触发一次 iroh 兜底，并把结果落到界面上。
+    private func runIrohFallbackProbe() async {
+        isRunningIrohFallback = true
+        irohFallbackResult = nil
+        defer { isRunningIrohFallback = false }
+        let failure = await model.forceIrohFallback()
+        irohFallbackResult = failure.map { String(localized: "没连上：\($0)") }
+            ?? String(localized: "iroh 兜底已连上")
+    }
+
     /// 「iroh 兜底」那一行的主文案。
     private var irohStatusLabel: String {
         switch model.irohStatus {

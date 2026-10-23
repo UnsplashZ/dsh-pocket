@@ -674,8 +674,10 @@ public final class AppModel {
 
         let outcome = await UplinkIrohFallback.run(
             endpointId: endpoint,
-            // 配对串里带的码（已经配过就不带：对已配对的电脑发 pair 会被判成协议错误）。
-            pairingCode: irohPairedEndpoint == endpoint ? nil : pairing?.irohCode,
+            // 配对串里带的码。**只有电脑端确认过**才不带（对已配对的电脑发 pair
+            // 会被判协议错误 —— 而那种情况首行取反自愈也会兜住，代价一次握手）。
+            // 本地记录**不**作为"不带码"的依据：电脑端可能刚清空白名单。
+            pairingCode: irohStatus == .pairedByComputer ? nil : pairing?.irohCode,
             connect: { [weak self] hostId, code in
                 guard let self else { return .failed(reason) }
                 guard let failure = await self.connectIroh(
@@ -725,6 +727,43 @@ public final class AppModel {
     /// "码过期了，去重新生成配对串"这句话只有一处定义 —— 两个分支必须说同一句话，
     /// 否则用户在不同路径上看到两种说法。
     static let irohOnlyPathMessage = String(localized: "现在连不上这台电脑，iroh 兜底也还没配好。请在电脑上重新生成配对串，再回到 App 里粘贴一次。")
+
+    /// 隧道活着但请求全被拒 → 本地"已配对"记录不可信，清掉。
+    ///
+    /// 判据只有两条，都来自"事实"而不是记录：
+    ///   · 当前走的**不是**网关（`uplink.baseURL == nil` → 走的是 iroh 隧道）；
+    ///   · 刚拉过的首屏请求失败了（`sessionListError`）。
+    private func invalidateIrohRecordIfTunnelRejected() {
+        guard settings.transportMode == .uplink else { return }
+        guard Self.shouldInvalidateIrohRecord(
+            usesGateway: uplink.baseURL != nil,
+            isConnected: connection.isConnected,
+            firstRequestFailed: sessionListError != nil
+        ) else { return }
+        invalidateIrohLocalRecord(reason: "tunnel-rejected")
+    }
+
+    /// "隧道通了但请求被拒"的判据。**只看事实**（走的哪条路 / 连没连上 / 请求成没成），
+    /// 不看本地记录 —— 记录正是要作废的那个东西。
+    static func shouldInvalidateIrohRecord(
+        usesGateway: Bool,
+        isConnected: Bool,
+        firstRequestFailed: Bool
+    ) -> Bool {
+        !usesGateway && isConnected && firstRequestFailed
+    }
+
+    /// 清掉"iroh 已配对"的本地记录，让下一次连接重新走配对。
+    private func invalidateIrohLocalRecord(reason: String) {
+        let endpoint = uplink.pairing?.irohEndpointId
+        guard irohPairedEndpoint != nil || endpoint.map({ uplink.isIrohPairedLocally($0) }) == true else {
+            return
+        }
+        irohPairedEndpoint = nil
+        uplink.clearIrohPaired()
+        refreshIrohStatus()
+        logs.log(.warning, "iroh 隧道不可用，已清除本地配对记录，下次重配（\(reason)）")
+    }
 
     /// 是不是"唯一的可用通路就是 iroh"。
     ///
@@ -922,6 +961,21 @@ public final class AppModel {
         }
         uplinkPairing = pairing
         settings.transportMode = .uplink
+        // ① **有新鲜码就无条件配一次**（单飞、`pairOnly`、不动传输）。
+        //
+        // 为什么"无条件"（不看本地记录）：电脑端可能刚清空白名单，而手机还记着
+        // "已配对" → 跳过配对 → 发 hello → 隧道通了但每个请求都被拒。
+        // 已经配过的代价只是一次握手（首行取反自愈会把它救回来）。
+        if pairing.canPairIroh(now: Date()) {
+            Task { [weak self] in
+                guard let self else { return }
+                _ = await self.irohPairing.run {
+                    await self.performIrohPairing(
+                        pairing: pairing, allowRefresh: false, reason: "adopt"
+                    )
+                }
+            }
+        }
         // **先探网关，不抢跑 iroh。**
         //   · 有档可达 → 走网关；iroh 兜底由 `scheduleIrohPrewarm` 在后台补
         //     （那时手上有票，码过期了也能用 /uplink/iroh-pairing 换新的）；
@@ -1052,12 +1106,10 @@ public final class AppModel {
         reason: String
     ) async -> Bool {
         guard let endpoint = pairing.irohEndpointId else { return false }
-        // 电脑端已经确认过（自检命中）：一个码都不要，直接收工。
-        if irohStatus == .pairedByComputer || irohPairedEndpoint == endpoint {
-            return true
-        }
-        if await tether.isPaired(hostId: endpoint) {
-            irohPairedEndpoint = endpoint
+        // **只有电脑端确认过**（自检命中）才跳过。本地记录（`irohPairedEndpoint` /
+        // `hosts.json`）**不算数** —— 它一定会过时，而按它跳过会得到一条
+        // "隧道通了但每个请求都被拒"的死连接（0.5.4 真机）。
+        if irohStatus == .pairedByComputer {
             return true
         }
 
@@ -1065,7 +1117,8 @@ public final class AppModel {
             check: irohCheck,
             hasCode: pairing.irohCode != nil,
             codeExpired: pairing.irohCodeExpired(now: Date()),
-            hasTicket: uplink.baseURL != nil
+            hasTicket: uplink.baseURL != nil,
+            locallyPaired: irohPairedEndpoint == endpoint || uplink.isIrohPairedLocally(endpoint)
         )
         switch action {
         case .skip:
@@ -1075,6 +1128,7 @@ public final class AppModel {
                 do {
                     _ = try await tether.pairOnly(hostId: endpoint, pairingCode: code)
                     irohPairedEndpoint = endpoint
+                    refreshIrohStatus()
                     logs.log(.info, "iroh 已配对（配对串里的码 · \(reason)）：\(endpoint.prefix(16))…")
                     return true
                 } catch {
@@ -1095,6 +1149,7 @@ public final class AppModel {
             let issued = try await uplink.requestIrohPairing()
             _ = try await tether.pairOnly(hostId: issued.endpointId, pairingCode: issued.code)
             irohPairedEndpoint = issued.endpointId
+            refreshIrohStatus()
             logs.log(.info, "iroh 已配对（票据换的新码 · \(reason)）：\(issued.endpointId.prefix(16))…")
             return true
         } catch {
@@ -1107,6 +1162,24 @@ public final class AppModel {
 
     private static func describe(_ error: any Error) -> String {
         (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+    }
+
+    /// 诊断页的「强制用 iroh 兜底试一次」：**跳过档位探测**，直接走兜底。
+    ///
+    /// 为什么需要这个入口：用户要专门测 iroh 时，不该被迫去关手机的 VPN / sing-box
+    /// 来让网关档"恰好"探测失败。返回失败原因（`nil` = 连上了）。
+    func forceIrohFallback() async -> String? {
+        logs.log(.info, "[uplink] 手动触发 iroh 兜底")
+        guard Self.irohHostId(pairing: uplink.pairing, activeHostId: settings.activeHostId) != nil else {
+            let message = String(localized: "配对串里没有 iroh 信息，测不了兜底。请重新粘贴一次配对串。")
+            logs.log(.warning, "手动 iroh 兜底：没有可用的 iroh endpointId")
+            setConnection(.failed(message))
+            return message
+        }
+        return await fallbackToIroh(
+            reason: String(localized: "手动触发 iroh 兜底"),
+            silent: true
+        )
     }
 
     /// 忘掉已配对的多路接入主机（连带把传输方式退回 iroh）。
@@ -1182,6 +1255,11 @@ public final class AppModel {
             case .stop:
                 consecutiveTransportFailures += 1
                 stoppedByTerminalFailure = true
+                // iroh 路径上"需要人工介入"基本就是电脑端不认识我们（协议错误/配对失败）：
+                // 本地记录作废，下一次重新走配对。
+                if settings.transportMode == .uplink, uplink.baseURL == nil {
+                    invalidateIrohLocalRecord(reason: "transport-stop")
+                }
                 setConnection(.failed(transportFailureMessage(base: reason, policy: .stop)))
                 logs.log(.warning, "传输断开（第 \(consecutiveTransportFailures) 次，需要人工介入）：\(summary)")
             case .retry:
@@ -1397,6 +1475,10 @@ public final class AppModel {
         // 全花在拉 207 个插件和 28 个插件包上（同期 `session/projections` 只要 34ms，
         // 所以慢的是 host 侧每次重扫，不是网络）。
         await refreshSessions()
+        // iroh 路径特有：隧道建起来了、但首屏请求被拒 = 电脑端不认识我们
+        //（白名单被清空 / 换了机器）。这时本地"已配对"记录必须作废，
+        // 否则下次还会发 hello、还会得到同一条死隧道。
+        invalidateIrohRecordIfTunnelRejected()
         startListRefreshLoop()
         hostMetadataTask?.cancel()
         hostMetadataTask = Task { [weak self] in

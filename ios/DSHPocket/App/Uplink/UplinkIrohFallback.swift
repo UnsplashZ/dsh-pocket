@@ -217,14 +217,23 @@ public enum UplinkIrohSelfCheck {
         case giveUp
     }
 
+    /// - Parameter locallyPaired: 本地"我配过这台电脑"的记录（`hosts.json`）。
+    ///   **故意不参与判断** —— 它一定会过时：电脑端清空白名单、换机器、白名单重建，
+    ///   手机这边都还记着"已配对"。真机事故（0.5.4）就是它导致的：本地说配过 →
+    ///   跳过配对 → 发 `hello` → 电脑端不认识 → **隧道通了但每个请求都被拒**，
+    ///   而日志里连一次配对尝试都没有。
+    ///   参数留着是为了让调用点显式表态，也让单测能钉住"记录说配过也照样配"。
     public static func action(
         check: UplinkIrohCheck,
         hasCode: Bool,
         codeExpired: Bool,
-        hasTicket: Bool
+        hasTicket: Bool,
+        locallyPaired: Bool
     ) -> Action {
-        // 自检的优先级最高：已经在名单里就再也不该碰码（这是"配对码过期"噪音的根治）。
+        // 唯一能跳过配对的是**电脑端确认**（自检命中）—— 那是活的事实，不是记录。
         if check == .listed { return .skip }
+        // 有新鲜码就无条件配一次：已配过 → 首行取反自愈（一次握手）；没配过 → 正常配对。
+        // 两种代价都远小于"看起来连上了、每个请求都失败"。
         if hasCode, !codeExpired { return .pairWithCode }
         return hasTicket ? .refresh : .giveUp
     }
